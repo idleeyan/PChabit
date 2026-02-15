@@ -17,6 +17,15 @@ bld/
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 
+# VS Code
+.vscode/
+
+# Trae IDE
+.trae/
+
+# Documentation (tracked separately)
+docs/
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
