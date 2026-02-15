@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+        <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+        <OutputType>WinExe</OutputType>
+        <UseWinUI>true</UseWinUI>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <RootNamespace>Tai.App</RootNamespace>
+        <AssemblyName>PChabit</AssemblyName>
+        <Product>PChabit</Product>
+        <Platforms>x64</Platforms>
+        <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <ApplicationIcon>tai.ico</ApplicationIcon>
+        <EnableMsixTooling>false</EnableMsixTooling>
+        <WindowsPackageType>None</WindowsPackageType>
+        <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+        <WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>true</WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>
+        <EnableMrtTargets>false</EnableMrtTargets>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Tai.Application\Tai.Application.csproj" />
+        <ProjectReference Include="..\Tai.Infrastructure\Tai.Infrastructure.csproj" />
+        <ProjectReference Include="..\Tai.Core\Tai.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="Assets\SplashScreen.scale-200.png" />
+        <Content Include="Assets\LockScreenLogo.scale-200.png" />
+        <Content Include="Assets\Square150x150Logo.scale-200.png" />
+        <Content Include="Assets\Square44x44Logo.scale-200.png" />
+        <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+        <Content Include="Assets\StoreLogo.png" />
+        <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.4.231115000" />
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.*" />
+        <PackageReference Include="CommunityToolkit.Mvvm" Version="8.*" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.*" />
+        <PackageReference Include="Serilog" Version="3.*" />
+        <PackageReference Include="Serilog.Sinks.File" Version="5.*" />
+        <PackageReference Include="System.Drawing.Common" Version="8.*" />
+    </ItemGroup>
+</Project>

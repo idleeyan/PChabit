@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Tai.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Tai.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

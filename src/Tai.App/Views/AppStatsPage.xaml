@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="Tai.App.Views.AppStatsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModel="using:Tai.App.ViewModels"
+    mc:Ignorable="d">
+    
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="24">
+            <Grid>
+                <TextBlock
+                    FontSize="24"
+                    FontWeight="SemiBold"
+                    Text="应用统计" />
+                
+                <StackPanel
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        Padding="12,6"
+                        Content="今天"
+                        Click="TodayButton_Click" />
+                    <Button
+                        Padding="12,6"
+                        Content="昨天"
+                        Click="YesterdayButton_Click" />
+                    <Button
+                        Padding="12,6"
+                        Content="本周"
+                        Click="WeekButton_Click" />
+                </StackPanel>
+            </Grid>
+            
+            <TextBlock
+                FontSize="16"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.SelectedDate, Mode=OneWay, Converter={StaticResource DateToStringConverter}}" />
+            
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                
+                <Border
+                    Grid.Column="0"
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="总使用时间" />
+                        <TextBlock
+                            FontSize="20"
+                            FontWeight="SemiBold"
+                            Text="{x:Bind ViewModel.TotalUsageTime, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border
+                    Grid.Column="1"
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="使用应用数" />
+                        <TextBlock
+                            FontSize="20"
+                            FontWeight="SemiBold"
+                            Text="{x:Bind ViewModel.TotalApps, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border
+                    Grid.Column="2"
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="最常用应用" />
+                        <TextBlock
+                            FontSize="20"
+                            FontWeight="SemiBold"
+                            Text="{x:Bind ViewModel.MostUsedApp, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+            
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                
+                <Border
+                    Grid.Column="0"
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="16">
+                        <TextBlock
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Text="应用使用排行" />
+                        
+                        <ListView
+                            ItemsSource="{x:Bind ViewModel.AppStats, Mode=OneWay}"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="viewModel:AppStatItem">
+                                    <Grid Margin="0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Grid Width="24" Height="24">
+                                                    <Image
+                                                        Width="24"
+                                                        Height="24"
+                                                        Source="{x:Bind Icon, Mode=OneWay}"
+                                                        Stretch="UniformToFill" />
+                                                </Grid>
+                                                <TextBlock FontWeight="Medium" Text="{x:Bind AppName}" />
+                                            </StackPanel>
+                                            <TextBlock
+                                                Margin="32,0,0,0"
+                                                FontSize="12"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{x:Bind Category}" />
+                                        </StackPanel>
+                                        
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock FontWeight="SemiBold" Text="{x:Bind Duration}" />
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{x:Bind Sessions}"
+                                                ToolTipService.ToolTip="会话次数：该应用被打开和使用的次数" />
+                                        </StackPanel>
+                                        
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Margin="16,0,0,0"
+                                            VerticalAlignment="Center"
+                                            FontWeight="SemiBold"
+                                            Foreground="{StaticResource PrimaryBrush}"
+                                            Text="{x:Bind Percentage}"
+                                            ToolTipService.ToolTip="使用占比：该应用使用时间占当日总使用时间的百分比" />
+                                        
+                                        <ToggleSwitch
+                                            Grid.Column="3"
+                                            Margin="8,0,0,0"
+                                            VerticalAlignment="Center"
+                                            IsOn="{x:Bind IsBackgroundMode, Mode=TwoWay}"
+                                            OffContent=""
+                                            OnContent=""
+                                            Toggled="BackgroundMode_Toggled"
+                                            ToolTipService.ToolTip="后台模式：即使窗口未激活也记录使用时间">
+                                            <ToggleSwitch.Resources>
+                                                <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#512BD4"/>
+                                            </ToggleSwitch.Resources>
+                                        </ToggleSwitch>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+                
+                <Border
+                    Grid.Column="1"
+                    Padding="16"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12">
+                    <StackPanel Spacing="16">
+                        <TextBlock
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Text="每小时活动"
+                            ToolTipService.ToolTip="显示每小时的应用使用活动强度，数值代表该小时内的使用时长（分钟）" />
+                        
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyUsage, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="viewModel:HourlyUsageItem">
+                                    <Grid Margin="0,2">
+                                        <TextBlock FontSize="11" Text="{x:Bind Hour}" />
+                                        <ProgressBar
+                                            Margin="50,0,0,0"
+                                            VerticalAlignment="Center"
+                                            Value="{x:Bind Activity}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
