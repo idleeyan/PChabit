@@ -73,6 +73,8 @@ LocalData/
 
 # Releases (build outputs)
 releases/
+publish/
+publish_backup*/
 
 # ========================================
 # 不宜公开的文档
