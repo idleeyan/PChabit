@@ -4,17 +4,31 @@
 
 ## 功能特性
 
+### 核心监控
 - 📊 **应用程序追踪**: 自动记录应用程序使用时间和窗口标题
 - ⌨️ **键盘监控**: 记录键盘按键次数、快捷键使用统计
 - 🖱️ **鼠标监控**: 记录鼠标点击、移动距离和滚动次数
 - 🌐 **网页浏览追踪**: 通过浏览器扩展记录网页访问历史
+
+### 数据管理
 - 📁 **程序分类管理**: 自定义程序分类，支持从运行中的程序添加映射
-- 📈 **数据可视化**: 仪表盘概览、应用排行、按键详情、网页统计
-- 🔔 **系统托盘**: 最小化到系统托盘，后台运行
+- � **SQLite 数据库**: 本地存储，数据安全可靠
 
-## 截图
+### 数据可视化
+- 📈 **仪表盘**: 统计卡片、活动趋势概览
+- 📅 **热力图**: 周热力图、月热力图展示使用模式
+- ⏱️ **时间线**: 详细的活动记录和时间分布
+- 📊 **分析页**: 周统计、趋势分析
+- 🔀 **应用流向图**: 可视化应用切换关系
 
-*待添加*
+### 数据导出
+- � **JSON 格式**: 结构化数据导出
+- 📝 **Markdown 格式**: 人类可读的报告
+- 🤖 **AI-Prompt 格式**: 便于 AI 分析的格式
+
+### 其他功能
+- �🔔 **系统托盘**: 最小化到系统托盘，后台运行
+- ⚡ **高性能**: 低内存占用，低 CPU 使用率
 
 ## 安装
 
@@ -61,7 +75,7 @@
 ### 环境要求
 - Visual Studio 2022
 - .NET 8 SDK
-- Windows App SDK
+- Windows App SDK 1.4
 
 ### 编译步骤
 
@@ -73,8 +87,9 @@ cd PChabit
 # 编译
 dotnet build src/Tai.App/Tai.App.csproj -c Release
 
-# 发布
-dotnet publish src/Tai.App/Tai.App.csproj -c Release -r win-x64 --self-contained
+# 发布 (推荐使用 Visual Studio)
+# 或使用 MSBuild
+"C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe" src/Tai.App/Tai.App.csproj /t:Publish /p:Configuration=Release /p:Platform=x64
 ```
 
 ### 项目结构
@@ -82,15 +97,25 @@ dotnet publish src/Tai.App/Tai.App.csproj -c Release -r win-x64 --self-contained
 ```
 PChabit/
 ├── src/
-│   ├── Tai.App/                 # WinUI 3 应用程序
-│   ├── Tai.Core/                # 核心接口和实体
-│   └── Tai.Infrastructure/      # 基础设施实现
+│   ├── Tai.App/                 # WinUI 3 应用程序 (表示层)
+│   ├── Tai.Core/                # 核心接口和实体 (领域层)
+│   ├── Tai.Infrastructure/      # 基础设施实现
+│   ├── Tai.Application/         # 应用层服务
+│   └── Tai.Tests/               # 单元测试
 ├── extensions/
 │   └── tai-browser-extension/   # 浏览器扩展
-├── docs/                        # 文档
 ├── CHANGELOG.md                 # 更新日志
 └── README.md                    # 说明文档
 ```
+
+## 性能指标
+
+| 指标 | 目标值 |
+|------|--------|
+| 内存占用 | < 30MB |
+| CPU 占用 (空闲时) | < 0.5% |
+| 数据库写入延迟 | < 100ms |
+| UI 响应时间 | < 16ms |
 
 ## 隐私说明
 
