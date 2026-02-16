@@ -10,7 +10,7 @@
         <RootNamespace>Tai.App</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>2.8.7</Version>
+        <Version>2.8.8</Version>
         <Platforms>x64</Platforms>
         <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
         <ApplicationManifest>app.manifest</ApplicationManifest>
