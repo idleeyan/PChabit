@@ -26,6 +26,9 @@ bld/
 # Trae IDE (local rules, not for public)
 .trae/
 
+# Internal documentation (not for public)
+docs/
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
@@ -80,17 +83,8 @@ publish_backup*/
 # 不宜公开的文档
 # ========================================
 
-# 问题修复记录（包含调试细节）
-docs/问题修复记录.md
-
-# 项目状态报告（内部文档）
-docs/项目状态报告.md
-
 # 重构计划书（内部文档）
 Tai重构计划书*.md
-
-# 设计计划文档（内部文档）
-docs/plans/
 
 # ========================================
 # 程序非必要文件
