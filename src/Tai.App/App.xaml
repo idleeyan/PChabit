@@ -34,6 +34,11 @@
             <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
             <converters:SystemCategoryConverter x:Key="SystemCategoryConverter" />
             <converters:InverseBooleanConverter x:Key="InverseBooleanConverter" />
+            <converters:TimeSpanToReadableConverter x:Key="TimeSpanToReadableConverter" />
+            <converters:DoubleToScoreConverter x:Key="DoubleToScoreConverter" />
+            <converters:ActivityToColorConverter x:Key="ActivityToColorConverter" />
+            <converters:ActivityToForegroundConverter x:Key="ActivityToForegroundConverter" />
+            <converters:DateToDetailConverter x:Key="DateToDetailConverter" />
             
             <Color x:Key="PrimaryColor">#512BD4</Color>
             <Color x:Key="SecondaryColor">#0078D4</Color>

@@ -24,7 +24,7 @@ public partial class TimelineViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasData;
     
-    public ObservableCollection<TimelineGroup> TimelineGroups { get; } = new();
+    public ObservableCollection<TimelineHourGroup> HourGroups { get; } = new();
     public ObservableCollection<DateSummary> RecentDates { get; } = new();
     
     public TimelineViewModel(TaiDbContext dbContext, IAppIconService iconService) : base()
@@ -36,6 +36,7 @@ public partial class TimelineViewModel : ViewModelBase
     
     public async Task LoadDataAsync()
     {
+        var totalSw = System.Diagnostics.Stopwatch.StartNew();
         IsLoading = true;
         
         try
@@ -43,16 +44,18 @@ public partial class TimelineViewModel : ViewModelBase
             var selectedDate = SelectedDate.Date;
             var nextDay = selectedDate.AddDays(1);
             
-            try { _dbContext.ChangeTracker.Clear(); } catch { }
-            
             List<Core.Entities.AppSession> appSessions;
             
             try
             {
+                var dbSw = System.Diagnostics.Stopwatch.StartNew();
                 appSessions = await _dbContext.AppSessions
+                    .AsNoTracking()
                     .Where(s => s.StartTime >= selectedDate && s.StartTime < nextDay)
-                    .OrderBy(s => s.StartTime)
+                    .OrderByDescending(s => s.StartTime)
                     .ToListAsync();
+                dbSw.Stop();
+                Log.Information("[Timeline] 数据库查询完成, 数量: {Count}, 耗时: {ElapsedMs}ms", appSessions.Count, dbSw.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
@@ -60,54 +63,61 @@ public partial class TimelineViewModel : ViewModelBase
                 appSessions = new List<Core.Entities.AppSession>();
             }
             
-            TimelineGroups.Clear();
+            HourGroups.Clear();
             
-            var morningSessions = appSessions.Where(s => s.StartTime.Hour < 12).ToList();
-            var afternoonSessions = appSessions.Where(s => s.StartTime.Hour >= 12 && s.StartTime.Hour < 18).ToList();
-            var eveningSessions = appSessions.Where(s => s.StartTime.Hour >= 18).ToList();
-            
-            if (morningSessions.Any())
-            {
-                var group = CreateTimelineGroup("上午", morningSessions);
-                TimelineGroups.Add(group);
-            }
-            
-            if (afternoonSessions.Any())
-            {
-                var group = CreateTimelineGroup("下午", afternoonSessions);
-                TimelineGroups.Add(group);
-            }
-            
-            if (eveningSessions.Any())
-            {
-                var group = CreateTimelineGroup("晚上", eveningSessions);
-                TimelineGroups.Add(group);
-            }
-            
-            HasData = TimelineGroups.Any();
-            
-            RecentDates.Clear();
-            for (int i = 0; i < 7; i++)
-            {
-                var date = DateTime.Today.AddDays(-i);
-                var dayStart = date.Date;
-                var dayEnd = dayStart.AddDays(1);
-                
-                var daySessions = appSessions.Where(s => s.StartTime >= dayStart && s.StartTime < dayEnd).ToList();
-                var totalMinutes = daySessions
-                    .Where(s => s.EndTime.HasValue)
-                    .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-                
-                RecentDates.Add(new DateSummary
+            var hourlyGroups = appSessions
+                .GroupBy(s => s.StartTime.Hour)
+                .Select(g => new
                 {
-                    Date = date,
-                    DayName = date.ToString("ddd"),
-                    DayNumber = date.Day.ToString(),
-                    TotalTime = $"{(int)(totalMinutes / 60)}h {(int)(totalMinutes % 60)}m",
-                    IsToday = i == 0,
-                    ProductivityScore = CalculateProductivityScore(daySessions)
-                });
+                    Hour = g.Key,
+                    Sessions = g.OrderByDescending(s => s.StartTime).ToList(),
+                    TotalMinutes = g.Where(s => s.EndTime.HasValue)
+                        .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes)
+                })
+                .OrderByDescending(g => g.Hour)
+                .ToList();
+            
+            var currentHour = DateTime.Now.Hour;
+            var hasCurrentHourData = false;
+            
+            foreach (var hg in hourlyGroups)
+            {
+                var hourGroup = new TimelineHourGroup
+                {
+                    Hour = hg.Hour,
+                    Date = selectedDate,
+                    TimeRange = $"{hg.Hour:D2}:00 - {hg.Hour:D2}:59",
+                    TotalDuration = FormatDuration(hg.TotalMinutes),
+                    ActivityCount = hg.Sessions.Count,
+                    IsExpanded = false,
+                    IsLoaded = false
+                };
+                
+                if (hg.Hour == currentHour || (!hasCurrentHourData && hg == hourlyGroups.First()))
+                {
+                    hourGroup.IsExpanded = true;
+                    hourGroup.IsLoaded = true;
+                    hasCurrentHourData = true;
+                    
+                    foreach (var session in hg.Sessions)
+                    {
+                        hourGroup.Activities.Add(CreateActivity(session));
+                    }
+                    
+                    var processNames = hg.Sessions
+                        .Where(s => !string.IsNullOrEmpty(s.ProcessName))
+                        .Select(s => s.ProcessName!)
+                        .Distinct()
+                        .ToList();
+                    _ = LoadIconsForGroupAsync(hourGroup, processNames);
+                }
+                
+                HourGroups.Add(hourGroup);
             }
+            
+            HasData = HourGroups.Any();
+            
+            UpdateRecentDates(appSessions);
         }
         catch (Exception ex)
         {
@@ -115,67 +125,155 @@ public partial class TimelineViewModel : ViewModelBase
         }
         finally
         {
+            totalSw.Stop();
+            Log.Information("[Timeline] LoadDataAsync 完成, 总耗时: {ElapsedMs}ms", totalSw.ElapsedMilliseconds);
             IsLoading = false;
         }
     }
     
-    private TimelineGroup CreateTimelineGroup(string period, List<Core.Entities.AppSession> sessions)
+    private TimelineActivity CreateActivity(Core.Entities.AppSession session)
     {
-        var group = new TimelineGroup
+        var duration = session.EndTime.HasValue 
+            ? (session.EndTime.Value - session.StartTime).TotalMinutes 
+            : 0;
+        
+        return new TimelineActivity
         {
-            Period = period,
-            StartTime = sessions.Min(s => s.StartTime).ToString("HH:mm"),
-            EndTime = sessions.Max(s => s.EndTime ?? DateTime.Now).ToString("HH:mm"),
-            TotalDuration = CalculateTotalDuration(sessions)
+            Time = session.StartTime.ToString("HH:mm"),
+            Duration = FormatDuration(duration),
+            Title = session.AppName ?? session.ProcessName ?? "",
+            Subtitle = session.WindowTitle ?? "",
+            Category = session.Category ?? "其他",
+            CategoryColor = GetCategoryColor(session.Category),
+            ProcessName = session.ProcessName ?? ""
         };
-        
-        foreach (var session in sessions)
-        {
-            var duration = session.EndTime.HasValue 
-                ? (session.EndTime.Value - session.StartTime).TotalMinutes 
-                : 0;
-            
-            var activity = new TimelineActivity
-            {
-                Time = session.StartTime.ToString("HH:mm"),
-                Duration = $"{(int)(duration / 60)}h {(int)(duration % 60)}m",
-                Title = session.AppName ?? session.ProcessName,
-                Subtitle = session.WindowTitle ?? "",
-                Category = session.Category ?? "其他",
-                CategoryColor = GetCategoryColor(session.Category),
-                ProcessName = session.ProcessName ?? ""
-            };
-            
-            group.Activities.Add(activity);
-            _ = LoadActivityIconAsync(activity);
-        }
-        
-        return group;
     }
     
-    private async Task LoadActivityIconAsync(TimelineActivity activity)
+    private void UpdateRecentDates(List<Core.Entities.AppSession> appSessions)
+    {
+        var sessionsByDate = appSessions
+            .GroupBy(s => s.StartTime.Date)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        
+        var newDateSummaries = new List<DateSummary>();
+        for (int i = 0; i < 7; i++)
+        {
+            var date = DateTime.Today.AddDays(-i);
+            
+            var daySessions = sessionsByDate.TryGetValue(date, out var ds) ? ds : new List<Core.Entities.AppSession>();
+            var totalMinutes = daySessions
+                .Where(s => s.EndTime.HasValue)
+                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+            
+            newDateSummaries.Add(new DateSummary
+            {
+                Date = date,
+                DayName = date.ToString("ddd"),
+                DayNumber = date.Day.ToString(),
+                TotalTime = FormatDuration(totalMinutes),
+                IsToday = i == 0,
+                ProductivityScore = CalculateProductivityScore(daySessions)
+            });
+        }
+        
+        RecentDates.Clear();
+        foreach (var summary in newDateSummaries)
+        {
+            RecentDates.Add(summary);
+        }
+    }
+    
+    public async Task ExpandHourGroupAsync(TimelineHourGroup group)
+    {
+        if (group.IsLoaded) 
+        {
+            group.IsExpanded = true;
+            return;
+        }
+        
+        try
+        {
+            var selectedDate = group.Date;
+            var hourStart = selectedDate.AddHours(group.Hour);
+            var hourEnd = hourStart.AddHours(1);
+            
+            var sessions = await _dbContext.AppSessions
+                .AsNoTracking()
+                .Where(s => s.StartTime >= hourStart && s.StartTime < hourEnd)
+                .OrderByDescending(s => s.StartTime)
+                .ToListAsync();
+            
+            group.Activities.Clear();
+            foreach (var session in sessions)
+            {
+                group.Activities.Add(CreateActivity(session));
+            }
+            
+            var processNames = sessions
+                .Where(s => !string.IsNullOrEmpty(s.ProcessName))
+                .Select(s => s.ProcessName!)
+                .Distinct()
+                .ToList();
+            
+            _ = LoadIconsForGroupAsync(group, processNames);
+            
+            group.IsLoaded = true;
+            group.IsExpanded = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "展开时段失败: {Hour}", group.Hour);
+        }
+    }
+    
+    private async Task LoadIconsForGroupAsync(TimelineHourGroup group, List<string> processNames)
     {
         try
         {
-            var icon = await _iconService.GetAppIconAsync(activity.ProcessName, 20);
-            if (icon != null)
+            await Task.Delay(100);
+            
+            var iconDict = await _iconService.GetIconsBatchAsync(processNames, 20);
+            
+            var batch = new List<(TimelineActivity activity, ImageSource icon)>();
+            
+            foreach (var activity in group.Activities)
             {
-                activity.Icon = icon;
+                if (iconDict.TryGetValue(activity.ProcessName, out var icon) && icon != null)
+                {
+                    batch.Add((activity, icon));
+                    
+                    if (batch.Count >= 10)
+                    {
+                        var currentBatch = batch.ToList();
+                        RunOnUIThread(() =>
+                        {
+                            foreach (var (a, i) in currentBatch)
+                            {
+                                a.Icon = i;
+                            }
+                        });
+                        batch.Clear();
+                        await Task.Delay(16);
+                    }
+                }
+            }
+            
+            if (batch.Count > 0)
+            {
+                var finalBatch = batch.ToList();
+                RunOnUIThread(() =>
+                {
+                    foreach (var (a, i) in finalBatch)
+                    {
+                        a.Icon = i;
+                    }
+                });
             }
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "加载应用图标失败: {ProcessName}", activity.ProcessName);
+            Log.Warning(ex, "[Timeline] 加载时段图标失败");
         }
-    }
-    
-    private static string CalculateTotalDuration(List<Core.Entities.AppSession> sessions)
-    {
-        var totalMinutes = sessions
-            .Where(s => s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-        
-        return $"{(int)(totalMinutes / 60)}小时 {(int)(totalMinutes % 60)}分钟";
     }
     
     private static int CalculateProductivityScore(List<Core.Entities.AppSession> sessions)
@@ -187,10 +285,25 @@ public partial class TimelineViewModel : ViewModelBase
             .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
         
         var productiveMinutes = sessions
-            .Where(s => s.EndTime.HasValue && (s.Category == "开发" || s.Category == "办公"))
+            .Where(s => s.EndTime.HasValue && IsProductiveCategory(s.Category))
             .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
         
         return totalMinutes > 0 ? (int)(productiveMinutes / totalMinutes * 100) : 0;
+    }
+    
+    private static bool IsProductiveCategory(string? category)
+    {
+        if (string.IsNullOrEmpty(category))
+            return false;
+        
+        return category switch
+        {
+            "开发" => true,
+            "开发工具" => true,
+            "办公" => true,
+            "办公软件" => true,
+            _ => false
+        };
     }
     
     private static string GetCategoryColor(string? category)
@@ -205,19 +318,28 @@ public partial class TimelineViewModel : ViewModelBase
         };
     }
     
+    private static string FormatDuration(double totalMinutes)
+    {
+        if (totalMinutes < 1)
+        {
+            var seconds = (int)(totalMinutes * 60);
+            return seconds > 0 ? $"{seconds}秒" : "0秒";
+        }
+        
+        var hours = (int)(totalMinutes / 60);
+        var minutes = (int)(totalMinutes % 60);
+        
+        if (hours > 0 && minutes > 0)
+            return $"{hours}小时{minutes}分钟";
+        if (hours > 0)
+            return $"{hours}小时";
+        return $"{minutes}分钟";
+    }
+    
     partial void OnSelectedDateChanged(DateTime value)
     {
         _ = LoadDataAsync();
     }
-}
-
-public class TimelineGroup
-{
-    public string Period { get; init; } = string.Empty;
-    public string StartTime { get; init; } = string.Empty;
-    public string EndTime { get; init; } = string.Empty;
-    public string TotalDuration { get; init; } = string.Empty;
-    public ObservableCollection<TimelineActivity> Activities { get; } = new();
 }
 
 public class TimelineActivity : ObservableObject
@@ -246,4 +368,29 @@ public class DateSummary
     public string TotalTime { get; init; } = string.Empty;
     public bool IsToday { get; init; }
     public int ProductivityScore { get; init; }
+}
+
+public class TimelineHourGroup : ObservableObject
+{
+    public int Hour { get; init; }
+    public string TimeRange { get; init; } = string.Empty;
+    public string TotalDuration { get; init; } = string.Empty;
+    public int ActivityCount { get; init; }
+    public DateTime Date { get; init; }
+    
+    private bool _isExpanded;
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+    
+    private bool _isLoaded;
+    public bool IsLoaded
+    {
+        get => _isLoaded;
+        set => SetProperty(ref _isLoaded, value);
+    }
+    
+    public ObservableCollection<TimelineActivity> Activities { get; } = new();
 }

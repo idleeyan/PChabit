@@ -143,10 +143,25 @@ public partial class AnalyticsViewModel : ViewModelBase
             var totalWebPages = webSessions.Count;
             
             var productiveMinutes = appSessions
-                .Where(s => s.Category == "开发" || s.Category == "办公")
+                .Where(s => IsProductiveCategory(s.Category))
                 .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
             
             var avgProductivity = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0;
+            
+            Log.Information("AnalyticsViewModel: 总时间={TotalMinutes:F1}分钟, 有数据天数={DaysWithData}, 平均时间={AvgMinutes:F1}分钟", 
+                totalMinutes, daysWithData, avgMinutes);
+            Log.Information("AnalyticsViewModel: 生产力时间={ProductiveMinutes:F1}分钟, 平均效率={AvgProductivity}%", 
+                productiveMinutes, avgProductivity);
+            
+            var categories = appSessions
+                .Where(s => s.EndTime.HasValue)
+                .GroupBy(s => s.Category)
+                .Select(g => new { Category = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
+                .ToList();
+            foreach (var cat in categories)
+            {
+                Log.Information("AnalyticsViewModel: 分类 {Category} = {Minutes:F1}分钟", cat.Category, cat.Minutes);
+            }
             
             var dayStats = appSessions
                 .Where(s => s.EndTime.HasValue)
@@ -180,7 +195,7 @@ public partial class AnalyticsViewModel : ViewModelBase
             TotalWebPages = totalWebPages;
             
             LoadWeeklyData(appSessions, weekStart);
-            LoadTrends(appSessions, webSessions, weekStart);
+            await LoadTrendsAsync(appSessions, webSessions, weekStart);
             LoadPatterns(appSessions);
             LoadInsights(appSessions, avgProductivity);
         }
@@ -198,44 +213,67 @@ public partial class AnalyticsViewModel : ViewModelBase
     {
         WeeklyData.Clear();
         
+        Log.Information("LoadWeeklyData: 开始加载周数据, weekStart={WeekStart}", weekStart);
+        
         for (int i = 0; i < 7; i++)
         {
             var dayStart = weekStart.AddDays(i);
             var dayEnd = dayStart.AddDays(1);
             
-            var dayMinutes = sessions
+            var daySessions = sessions
                 .Where(s => s.StartTime >= dayStart && s.StartTime < dayEnd && s.EndTime.HasValue)
-                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+                .ToList();
             
-            var productiveMinutes = sessions
-                .Where(s => s.StartTime >= dayStart && s.StartTime < dayEnd && s.EndTime.HasValue && (s.Category == "开发" || s.Category == "办公"))
+            var dayMinutes = daySessions.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+            
+            var productiveMinutes = daySessions
+                .Where(s => IsProductiveCategory(s.Category))
                 .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
             
             var productivity = dayMinutes > 0 ? (int)(productiveMinutes / dayMinutes * 100) : 0;
             
+            Log.Information("LoadWeeklyData: {Day} ({Date}), 会话数={Count}, 分钟={Minutes:F1}, 生产力={Productivity}%", 
+                GetDayName(dayStart.DayOfWeek), dayStart.ToString("yyyy-MM-dd"), daySessions.Count, dayMinutes, productivity);
+            
             WeeklyData.Add(new WeeklyDataItem
             {
-                Day = GetDayName((DayOfWeek)((i + 1) % 7)),
+                Day = GetDayName(dayStart.DayOfWeek),
                 Hours = (int)(dayMinutes / 60),
                 Productivity = productivity
             });
         }
     }
     
-    private void LoadTrends(List<Core.Entities.AppSession> sessions, List<Core.Entities.WebSession> webSessions, DateTime weekStart)
+    private async Task LoadTrendsAsync(List<Core.Entities.AppSession> sessions, List<Core.Entities.WebSession> webSessions, DateTime weekStart)
     {
         Trends.Clear();
         
         var currentWeekDevMinutes = sessions
-            .Where(s => s.StartTime >= weekStart && s.Category == "开发" && s.EndTime.HasValue)
+            .Where(s => s.StartTime >= weekStart && IsProductiveCategory(s.Category) && s.EndTime.HasValue)
             .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
         
         var previousWeekStart = weekStart.AddDays(-7);
         var previousWeekEnd = weekStart;
         
-        var previousWeekDevMinutes = sessions
-            .Where(s => s.StartTime >= previousWeekStart && s.StartTime < previousWeekEnd && s.Category == "开发" && s.EndTime.HasValue)
+        List<Core.Entities.AppSession> previousWeekSessions;
+        try
+        {
+            previousWeekSessions = await _dbContext.AppSessions
+                .Where(s => s.StartTime >= previousWeekStart && s.StartTime < previousWeekEnd)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载上周 AppSessions 失败");
+            previousWeekSessions = new List<Core.Entities.AppSession>();
+        }
+        
+        var previousWeekDevMinutes = previousWeekSessions
+            .Where(s => IsProductiveCategory(s.Category) && s.EndTime.HasValue)
             .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+        
+        Log.Information("LoadTrends: 本周开发时间={CurrentWeek:F1}分钟, 上周开发时间={PreviousWeek:F1}分钟", 
+            currentWeekDevMinutes, previousWeekDevMinutes);
         
         if (previousWeekDevMinutes > 0)
         {
@@ -414,6 +452,21 @@ public partial class AnalyticsViewModel : ViewModelBase
                 Message = $"你本周使用 {topApp.Key} 的时间最多"
             });
         }
+    }
+    
+    private static bool IsProductiveCategory(string? category)
+    {
+        if (string.IsNullOrEmpty(category))
+            return false;
+        
+        return category switch
+        {
+            "开发" => true,
+            "开发工具" => true,
+            "办公" => true,
+            "办公软件" => true,
+            _ => false
+        };
     }
     
     private static string GetDayName(DayOfWeek day)

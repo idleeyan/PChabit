@@ -20,11 +20,11 @@ bld/
 # VS Code
 .vscode/
 
-# Trae IDE
-.trae/
+# JetBrains Rider
+.idea/
 
-# Documentation (tracked separately)
-docs/
+# Trae IDE (local rules, not for public)
+.trae/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
@@ -43,7 +43,7 @@ publish/
 *.pubxml
 *.publishsettings
 
-# Database
+# Database (user data)
 *.db
 *.db-shm
 *.db-wal
@@ -68,11 +68,80 @@ Desktop.ini
 # Recycle Bin used on file shares
 $RECYCLE.BIN/
 
-# VS Code
-.vscode/
-
-# JetBrains Rider
-.idea/
-
-# Local data
+# Local data directory
 LocalData/
+
+# Releases (build outputs)
+releases/
+
+# ========================================
+# 不宜公开的文档
+# ========================================
+
+# 问题修复记录（包含调试细节）
+docs/问题修复记录.md
+
+# 项目状态报告（内部文档）
+docs/项目状态报告.md
+
+# 重构计划书（内部文档）
+Tai重构计划书*.md
+
+# 设计计划文档（内部文档）
+docs/plans/
+
+# ========================================
+# 程序非必要文件
+# ========================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Crash dumps
+*.dmp
+*.mdmp
+
+# Performance data
+*.etl
+*.etl.*
+
+# Windows Installer
+*.msi
+*.msix
+*.msm
+*.msp
+
+# ClickOnce
+*.appx
+*.appxbundle
+
+# Native binaries (generated)
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Resource cache
+*.pri
+*.xbf
+
+# Test coverage
+coverage/
+*.coverage
+*.coveragexml
+
+# Code analysis
+*.sarif
+
+# Package lock files (optional, uncomment if needed)
+# package-lock.json
+# yarn.lock

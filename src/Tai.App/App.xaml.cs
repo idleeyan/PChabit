@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Serilog;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Tai.App.Services;
 using Tai.App.ViewModels;
 using Tai.App.Views;
@@ -19,6 +21,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     private DataCollectionService? _dataCollectionService;
     private TrayService? _trayService;
     private bool _isExiting;
+    private readonly object _exitLock = new();
     
     public static IServiceProvider Services => ((App)Current)._serviceProvider!;
     
@@ -128,8 +131,8 @@ public partial class App : Microsoft.UI.Xaml.Application
             
             _trayService.ExitRequested += (s, e) =>
             {
-                _isExiting = true;
-                Shutdown();
+                Log.Information("ExitRequested 事件触发");
+                BeginShutdown();
             };
             
             _window!.Closed += OnWindowClosed;
@@ -146,12 +149,14 @@ public partial class App : Microsoft.UI.Xaml.Application
     {
         if (_isExiting)
         {
+            Log.Information("窗口关闭 - 正在退出中，允许关闭");
             return;
         }
         
         var settings = _serviceProvider!.GetRequiredService<SettingsViewModel>();
         if (settings.MinimizeToTray)
         {
+            Log.Information("窗口关闭 - 最小化到托盘");
             args.Handled = true;
             _trayService!.MinimizeToTray();
         }
@@ -179,16 +184,130 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
     }
     
-    public void Shutdown()
+    private void BeginShutdown()
     {
-        _isExiting = true;
-        _trayService?.Dispose();
-        _dataCollectionService?.Stop();
-        _monitorManager?.StopAllAsync().Wait();
-        _serviceProvider?.Dispose();
+        lock (_exitLock)
+        {
+            if (_isExiting)
+            {
+                Log.Warning("已经在退出过程中，跳过重复请求");
+                return;
+            }
+            _isExiting = true;
+        }
         
-        _window?.Close();
-        Exit();
+        Log.Information("开始异步关闭流程");
+        
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await PerformShutdownAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "异步关闭流程失败");
+                ForceTerminate();
+            }
+        });
+    }
+    
+    private async Task PerformShutdownAsync()
+    {
+        var processId = Environment.ProcessId;
+        Log.Information("开始关闭应用程序 - 进程ID: {ProcessId}", processId);
+        
+        try
+        {
+            Log.Information("步骤 1/5: 停止数据收集服务...");
+            _dataCollectionService?.Stop();
+            Log.Information("数据收集服务已停止");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "停止数据收集服务失败");
+        }
+        
+        try
+        {
+            Log.Information("步骤 2/5: 停止监控器...");
+            if (_monitorManager != null)
+            {
+                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await _monitorManager.StopAllAsync().WaitAsync(cts.Token);
+            }
+            Log.Information("监控器已停止");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "停止监控器失败");
+        }
+        
+        try
+        {
+            Log.Information("步骤 3/5: 释放托盘服务...");
+            _trayService?.Dispose();
+            Log.Information("托盘服务已释放");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "释放托盘服务失败");
+        }
+        
+        try
+        {
+            Log.Information("步骤 4/5: 关闭窗口...");
+            _window?.DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    _window.Close();
+                    Log.Information("窗口已关闭");
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "关闭窗口失败");
+                }
+            });
+            
+            await Task.Delay(500);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "关闭窗口失败");
+        }
+        
+        try
+        {
+            Log.Information("步骤 5/5: 释放服务提供者...");
+            _serviceProvider?.Dispose();
+            Log.Information("服务提供者已释放");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "释放服务提供者失败");
+        }
+        
+        Log.Information("所有清理步骤完成，准备退出");
+        Log.CloseAndFlush();
+        
+        await Task.Delay(100);
+        
+        ForceTerminate();
+    }
+    
+    private void ForceTerminate()
+    {
+        try
+        {
+            Log.Information("强制终止进程...");
+            var currentProcess = Process.GetCurrentProcess();
+            currentProcess.Kill();
+        }
+        catch
+        {
+            Environment.Exit(0);
+        }
     }
     
     void OnNavigationFailed(object sender, NavigationFailedEventArgs e)

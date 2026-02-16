@@ -406,3 +406,123 @@ public class InverseBooleanConverter : IValueConverter
         return false;
     }
 }
+
+public class TimeSpanToReadableConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is TimeSpan ts)
+        {
+            if (ts.TotalHours >= 1)
+                return $"{(int)ts.TotalHours}小时{ts.Minutes}分钟";
+            if (ts.TotalMinutes >= 1)
+                return $"{(int)ts.TotalMinutes}分钟";
+            return $"{ts.Seconds}秒";
+        }
+        return "0秒";
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class DoubleToScoreConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is double score)
+        {
+            return $"{score:F1}";
+        }
+        return "0.0";
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class ActivityToColorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is double score)
+        {
+            if (score < 0)
+            {
+                return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+            
+            var normalizedScore = Math.Min(score / 100.0, 1.0);
+            
+            var color = normalizedScore switch
+            {
+                0 => Microsoft.UI.ColorHelper.FromArgb(255, 26, 26, 46),
+                < 0.25 => Microsoft.UI.ColorHelper.FromArgb(255, 22, 33, 62),
+                < 0.5 => Microsoft.UI.ColorHelper.FromArgb(255, 15, 52, 96),
+                < 0.75 => Microsoft.UI.ColorHelper.FromArgb(255, 233, 69, 96),
+                _ => Microsoft.UI.ColorHelper.FromArgb(255, 255, 107, 107)
+            };
+            return new SolidColorBrush(color);
+        }
+        return new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 26, 26, 46));
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class ActivityToForegroundConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is double score)
+        {
+            if (score < 0)
+            {
+                return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            }
+            
+            var normalizedScore = Math.Min(score / 100.0, 1.0);
+            
+            var color = normalizedScore switch
+            {
+                < 0.5 => Microsoft.UI.Colors.White,
+                _ => Microsoft.UI.Colors.White
+            };
+            return new SolidColorBrush(color);
+        }
+        return new SolidColorBrush(Microsoft.UI.Colors.White);
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class DateToDetailConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is DateTime date)
+        {
+            if (date == DateTime.MinValue)
+            {
+                return string.Empty;
+            }
+            return date.ToString("MM月dd日 dddd");
+        }
+        return string.Empty;
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}

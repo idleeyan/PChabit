@@ -36,35 +36,79 @@
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Text="{x:Bind ViewModel.SelectedDate, Mode=OneWay, Converter={StaticResource DateToStringConverter}}" />
             
-            <ItemsControl ItemsSource="{x:Bind ViewModel.TimelineGroups, Mode=OneWay}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="viewModel:TimelineGroup">
-                        <Border
-                            Margin="0,0,0,16"
-                            Padding="16"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12">
-                            <StackPanel Spacing="12">
-                                <Grid>
+            <ListView
+                ItemsSource="{x:Bind ViewModel.HourGroups, Mode=OneWay}"
+                ScrollViewer.IsDeferredScrollingEnabled="True"
+                SelectionMode="None">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="viewModel:TimelineHourGroup">
+                        <Expander
+                            Margin="0,0,0,8"
+                            Padding="0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                            Expanding="HourGroup_Expanding">
+                            <Expander.Header>
+                                <Grid Padding="16,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    
                                     <TextBlock
+                                        VerticalAlignment="Center"
                                         FontSize="16"
                                         FontWeight="SemiBold"
-                                        Text="{x:Bind Period}" />
+                                        Text="{x:Bind TimeRange}" />
+                                    
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        Margin="16,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="12">
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{x:Bind ActivityCount}" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Text="项活动" />
+                                    </StackPanel>
+                                    
                                     <TextBlock
-                                        HorizontalAlignment="Right"
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        FontSize="14"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                         Text="{x:Bind TotalDuration}" />
                                 </Grid>
-                                
-                                <ItemsControl ItemsSource="{x:Bind Activities}">
-                                    <ItemsControl.ItemTemplate>
+                            </Expander.Header>
+                            
+                            <Expander.Content>
+                                <ListView
+                                    ItemsSource="{x:Bind Activities}"
+                                    ScrollViewer.IsDeferredScrollingEnabled="True"
+                                    SelectionMode="None"
+                                    IsItemClickEnabled="False">
+                                    <ListView.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <VirtualizingStackPanel />
+                                        </ItemsPanelTemplate>
+                                    </ListView.ItemsPanel>
+                                    <ListView.ItemTemplate>
                                         <DataTemplate x:DataType="viewModel:TimelineActivity">
                                             <Grid
-                                                Margin="0,4"
-                                                Padding="8"
+                                                Margin="8,2"
+                                                Padding="12,8"
                                                 Background="{ThemeResource LayerFillColorDefaultBrush}"
                                                 CornerRadius="8">
                                                 <Grid.ColumnDefinitions>
@@ -114,13 +158,13 @@
                                                 </StackPanel>
                                             </Grid>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Expander.Content>
+                        </Expander>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ListView.ItemTemplate>
+            </ListView>
             
             <Border
                 Padding="16"

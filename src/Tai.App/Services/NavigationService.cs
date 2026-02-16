@@ -31,6 +31,7 @@ public class NavigationService
         Register<ExportPage>("Export");
         Register<CategoryManagementPage>("CategoryManagement");
         Register<SettingsPage>("Settings");
+        Register<HeatmapPage>("Heatmap");
     }
     
     public void Register<T>(string key) where T : Microsoft.UI.Xaml.Controls.Page

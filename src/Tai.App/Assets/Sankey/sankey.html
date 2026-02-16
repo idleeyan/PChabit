@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <script src="echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { 
+            width: 100%; 
+            height: 100%; 
+            background: #f8f9fa;
+            overflow: hidden; 
+        }
+        #chart { width: 100%; height: 100%; }
+        #empty {
+            display: none;
+            width: 100%;
+            height: 100%;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+        }
+        #empty-icon { font-size: 48px; margin-bottom: 16px; }
+        #empty-text { font-size: 16px; }
+    </style>
+</head>
+<body>
+    <div id="chart"></div>
+    <div id="empty" style="display: none;">
+        <div id="empty-icon">📊</div>
+        <div id="empty-text">暂无数据</div>
+    </div>
+    <script>
+        var chart = null;
+        
+        var categoryColors = {
+            '开发': '#512BD4',
+            '浏览': '#0078D4',
+            '沟通': '#107C10',
+            '娱乐': '#FF8C00',
+            '办公': '#00B7C3',
+            '社交': '#E74856',
+            '其他': '#8B5CF6'
+        };
+        
+        var categoryList = ['开发', '浏览', '沟通', '娱乐', '办公', '社交', '其他'];
+        
+        function getCategoryColor(category) {
+            return categoryColors[category] || categoryColors['其他'];
+        }
+        
+        function showEmpty() {
+            document.getElementById('chart').style.display = 'none';
+            document.getElementById('empty').style.display = 'flex';
+        }
+        
+        function hideEmpty() {
+            document.getElementById('chart').style.display = 'block';
+            document.getElementById('empty').style.display = 'none';
+        }
+        
+        function renderSankey(data) {
+            try {
+                if (!data || !data.nodes || !data.links) {
+                    showEmpty();
+                    return 'error: invalid data';
+                }
+                
+                if (data.nodes.length === 0) {
+                    showEmpty();
+                    return 'error: no nodes';
+                }
+                
+                hideEmpty();
+                
+                if (chart) {
+                    chart.dispose();
+                }
+                chart = echarts.init(document.getElementById('chart'));
+                
+                var maxValue = 0;
+                for (var i = 0; i < data.nodes.length; i++) {
+                    if (data.nodes[i].value > maxValue) {
+                        maxValue = data.nodes[i].value;
+                    }
+                }
+                
+                var nodes = [];
+                for (var i = 0; i < data.nodes.length; i++) {
+                    var n = data.nodes[i];
+                    var size = 25;
+                    if (maxValue > 0) {
+                        size = 15 + (n.value / maxValue) * 45;
+                    }
+                    var color = getCategoryColor(n.category);
+                    nodes.push({
+                        name: n.name,
+                        symbolSize: size,
+                        category: n.category || '其他',
+                        itemStyle: {
+                            color: color,
+                            borderColor: '#fff',
+                            borderWidth: 2,
+                            shadowBlur: 10,
+                            shadowColor: 'rgba(0, 0, 0, 0.2)'
+                        },
+                        label: {
+                            show: true,
+                            fontSize: 11,
+                            fontWeight: 'bold',
+                            color: '#333'
+                        }
+                    });
+                }
+                
+                var maxLinkValue = 0;
+                for (var j = 0; j < data.links.length; j++) {
+                    if (data.links[j].value > maxLinkValue) {
+                        maxLinkValue = data.links[j].value;
+                    }
+                }
+                
+                var links = [];
+                for (var j = 0; j < data.links.length; j++) {
+                    var l = data.links[j];
+                    var width = 1;
+                    if (maxLinkValue > 0) {
+                        width = 0.5 + (l.value / maxLinkValue) * 6;
+                    }
+                    
+                    links.push({
+                        source: l.source,
+                        target: l.target,
+                        value: l.value,
+                        lineStyle: {
+                            width: width,
+                            opacity: 0.4,
+                            curveness: 0.2,
+                            color: 'source'
+                        }
+                    });
+                }
+                
+                var categories = [];
+                for (var k = 0; k < categoryList.length; k++) {
+                    var cat = categoryList[k];
+                    categories.push({
+                        name: cat,
+                        itemStyle: {
+                            color: categoryColors[cat]
+                        }
+                    });
+                }
+                
+                chart.setOption({
+                    backgroundColor: '#f8f9fa',
+                    title: {
+                        text: '应用切换关系图',
+                        left: 'center',
+                        top: 10,
+                        textStyle: {
+                            fontSize: 16,
+                            fontWeight: 'bold',
+                            color: '#333'
+                        }
+                    },
+                    tooltip: {
+                        trigger: 'item',
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        borderColor: '#ddd',
+                        borderWidth: 1,
+                        textStyle: {
+                            color: '#333'
+                        },
+                        formatter: function(params) {
+                            if (params.dataType === 'node') {
+                                var mins = params.data.value || 0;
+                                return '<div style="padding: 4px 8px;"><strong style="font-size: 14px;">' + params.name + '</strong><br/><span style="color: #666;">使用时长: ' + mins + ' 分钟</span></div>';
+                            } else {
+                                return '<div style="padding: 4px 8px;"><strong>' + params.data.source + ' → ' + params.data.target + '</strong><br/><span style="color: #666;">切换次数: ' + params.data.value + ' 次</span></div>';
+                            }
+                        }
+                    },
+                    legend: {
+                        data: categoryList,
+                        orient: 'vertical',
+                        right: 20,
+                        top: 60,
+                        itemWidth: 12,
+                        itemHeight: 12,
+                        textStyle: {
+                            fontSize: 12,
+                            color: '#333'
+                        },
+                        selectedMode: 'multiple'
+                    },
+                    series: [{
+                        type: 'graph',
+                        layout: 'force',
+                        data: nodes,
+                        links: links,
+                        categories: categories,
+                        roam: true,
+                        draggable: true,
+                        label: {
+                            show: true,
+                            position: 'right',
+                            formatter: '{b}'
+                        },
+                        labelLayout: {
+                            hideOverlap: true
+                        },
+                        force: {
+                            repulsion: 400,
+                            edgeLength: [80, 180],
+                            gravity: 0.08,
+                            layoutAnimation: false
+                        },
+                        emphasis: {
+                            focus: 'adjacency',
+                            itemStyle: {
+                                shadowBlur: 20,
+                                shadowColor: 'rgba(0, 0, 0, 0.3)'
+                            },
+                            lineStyle: {
+                                width: 8,
+                                opacity: 0.8
+                            }
+                        },
+                        lineStyle: {
+                            opacity: 0.4,
+                            curveness: 0.2
+                        }
+                    }]
+                });
+                
+                return 'success: ' + nodes.length + ' nodes, ' + links.length + ' links';
+            } catch (e) {
+                return 'error: ' + e.message;
+            }
+        }
+        
+        function resize() {
+            if (chart) chart.resize();
+        }
+        
+        window.onresize = resize;
+    </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 # PChabit 项目规则
 
-> 版本: 2.8.0  
-> 最后更新: 2026-02-14  
+> 版本: 2.10.28  
+> 最后更新: 2026-02-16  
 > 项目状态: **已完成发布**
 
 ## 一、全局规则遵从
@@ -38,7 +38,7 @@ src/
 │   └── Services/          # 服务实现 (WebSocket, EventBus, Export, Cache, TaskScheduler)
 │
 ├── Tai.Application/       # 应用层 - 用例、查询/命令处理
-│   ├── Aggregators/       # 数据聚合服务 (DailyAggregator, SessionAggregator, PatternDetector)
+│   ├── Aggregators/       # 数据聚合服务 (DailyAggregator, SessionAggregator, PatternDetector, HeatmapAggregator)
 │   └── Analysis/          # 行为分析服务 (BehaviorAnalyzer, ContextResolver)
 │
 ├── Tai.App/               # 表示层 - WinUI 3 应用
@@ -79,32 +79,29 @@ src/
 
 | 组件 | 版本 | 用途 |
 |------|------|------|
-| .NET | 8.0 | 运行时框架 |
-| Windows App SDK | 1.8 | WinUI 3 应用框架 |
-| Entity Framework Core | 8.0 | ORM 数据访问 |
+| .NET SDK | 8.0.418 | 运行时框架 |
+| Windows App SDK | 1.4.231115000 | WinUI 3 应用框架 |
+| Entity Framework Core | 8.0.* | ORM 数据访问 |
 | SQLite | 3.x | 本地数据库 |
-| Serilog | 3.x | 日志系统 |
-| CommunityToolkit.Mvvm | 8.x | MVVM 工具包 |
-| xUnit | 2.7 | 单元测试框架 |
-| Moq | 4.20 | Mock 框架 |
-| FluentAssertions | 6.12 | 断言库 |
+| Serilog | 3.* | 日志系统 |
+| CommunityToolkit.Mvvm | 8.* | MVVM 工具包 |
+| xUnit | 2.7.0 | 单元测试框架 |
+| Moq | 4.20.70 | Mock 框架 |
+| FluentAssertions | 6.12.0 | 断言库 |
 
 ## 七、发布规则
 
-**发布输出目录统一为项目根目录的 `publish` 文件夹：**
-```
-E:\同步保存\My VS\PChabit\publish\
-```
+**发布输出目录统一为项目根目录的 `publish` 文件夹。**
 
 发布命令：
 ```bash
 dotnet publish src/Tai.App/Tai.App.csproj -c Release -p:Platform=x64 -p:PublishProfile=win-x64
 ```
 
-或使用发布脚本：
-```bash
-pwsh scripts/publish.ps1 -SkipTests
-```
+**发布注意事项**：
+1. PRI 文件必须复制到发布目录
+2. XBF 文件必须复制到 Views 目录
+3. 推荐使用 Visual Studio IDE 发布
 
 ## 八、Git 提交规范
 
@@ -135,6 +132,11 @@ Scope: monitor, data, export, ui, analysis, core
 - ✅ 行为模式检测
 - ✅ 生产力分析
 
+### 数据可视化
+- ✅ 热力图 (周热力图、月热力图)
+- ✅ 时间线 (活动详情)
+- ✅ 分析页 (周统计、趋势分析)
+
 ### 导出功能
 - ✅ JSON 格式导出
 - ✅ Markdown 格式导出
@@ -154,8 +156,41 @@ Scope: monitor, data, export, ui, analysis, core
 - ✅ 性能监控
 - ✅ 发布脚本
 
-## 十、相关文档
+## 十、版本规划摘要
 
-- [重构计划书](Tai重构计划书_v2.md)
-- [问题修复记录](docs/问题修复记录.md)
-- [浏览器扩展 README](extensions/tai-browser-extension/README.md)
+### v1.1.0 (2026年3月)
+- 数据备份与恢复
+- 系统托盘增强
+- 自定义统计周期
+- 深色/浅色主题切换
+
+### v1.2.0 (2026年6月)
+- 云端数据同步 (WebDAV)
+- AI 行为洞察报告
+- 目标设置与提醒
+- Sankey 图
+
+### v2.0.0 (2026年12月)
+- 插件系统
+- 开放 API
+- 跨平台支持调研
+
+## 十一、故障排查快速参考
+
+| 问题 | 解决方案 |
+|------|---------|
+| .NET SDK 版本冲突 | 删除预览版 SDK，更新 global.json |
+| PRI 资源生成失败 | 安装 VS UWP 工作负载 |
+| IDbContextFactory 未注册 | 添加 AddDbContextFactory 注册 |
+| Windows App Runtime 缺失 | 安装 Windows App Runtime MSIX |
+| XAML 解析失败 | 复制 XBF/PRI 文件到发布目录 |
+
+## 十二、相关文档
+
+| 文档 | 路径 |
+|------|------|
+| 项目状态报告 | `docs/项目状态报告.md` |
+| 问题修复记录 | `docs/问题修复记录.md` |
+| 重构计划书 | `Tai重构计划书_v2.md` |
+| 浏览器扩展 README | `extensions/tai-browser-extension/README.md` |
+| 更新日志 | `CHANGELOG.md` |

@@ -691,6 +691,7 @@ public class DataCollectionService : IDisposable
         
         var session = _currentAppSession;
         session.EndTime = DateTime.Now;
+        session.Duration = session.EndTime.Value - session.StartTime;
         
         Log.Debug("入队保存应用会话: {ProcessName}, 时长: {Duration}", session.ProcessName, session.Duration);
         
@@ -709,6 +710,7 @@ public class DataCollectionService : IDisposable
         _backgroundSessions.Remove(processName);
         
         session.EndTime = DateTime.Now;
+        var duration = session.EndTime.Value - session.StartTime;
         
         var sessionToSave = new AppSession
         {
@@ -718,6 +720,7 @@ public class DataCollectionService : IDisposable
             ExecutablePath = session.ExecutablePath,
             StartTime = session.StartTime,
             EndTime = session.EndTime,
+            Duration = duration,
             AppName = session.AppName,
             Category = session.Category
         };
@@ -743,6 +746,7 @@ public class DataCollectionService : IDisposable
         try
         {
             _currentAppSession.EndTime = DateTime.Now;
+            _currentAppSession.Duration = _currentAppSession.EndTime.Value - _currentAppSession.StartTime;
             
             using var scope = _scopeFactory.CreateScope();
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -779,6 +783,7 @@ public class DataCollectionService : IDisposable
         try
         {
             session.EndTime = DateTime.Now;
+            session.Duration = session.EndTime.Value - session.StartTime;
             
             using var scope = _scopeFactory.CreateScope();
             var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();

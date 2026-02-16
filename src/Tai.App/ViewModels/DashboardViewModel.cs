@@ -231,7 +231,7 @@ public partial class DashboardViewModel : ViewModelBase
             }
             
             var productiveMinutes = appSessions
-                .Where(s => s.Category == "开发" || s.Category == "办公")
+                .Where(s => IsProductiveCategory(s.Category))
                 .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
             
             ProductivityScore = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0;
@@ -302,6 +302,21 @@ public partial class DashboardViewModel : ViewModelBase
         var hours = totalMinutes / 60;
         var minutes = totalMinutes % 60;
         return $"{hours}h {minutes}m";
+    }
+    
+    private static bool IsProductiveCategory(string? category)
+    {
+        if (string.IsNullOrEmpty(category))
+            return false;
+        
+        return category switch
+        {
+            "开发" => true,
+            "开发工具" => true,
+            "办公" => true,
+            "办公软件" => true,
+            _ => false
+        };
     }
     
     private static SolidColorBrush CreateBrush(string hexColor)

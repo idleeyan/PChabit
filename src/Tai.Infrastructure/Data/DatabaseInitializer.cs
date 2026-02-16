@@ -55,6 +55,26 @@ public static class DatabaseInitializer
                 await updateCmd.ExecuteNonQueryAsync();
             }
             
+            using (var updateCmd = connection.CreateCommand())
+            {
+                updateCmd.CommandText = @"
+                    UPDATE AppSessions 
+                    SET Duration = CAST((julianday(EndTime) - julianday(StartTime)) * 864000000000 AS INTEGER)
+                    WHERE Duration = 0 AND EndTime IS NOT NULL";
+                var rowsUpdated = await updateCmd.ExecuteNonQueryAsync();
+                Log.Information("修复 AppSessions Duration 数据，更新了 {Count} 条记录", rowsUpdated);
+            }
+            
+            using (var updateCmd = connection.CreateCommand())
+            {
+                updateCmd.CommandText = @"
+                    UPDATE WebSessions 
+                    SET Duration = CAST((julianday(EndTime) - julianday(StartTime)) * 864000000000 AS INTEGER)
+                    WHERE Duration = 0 AND EndTime IS NOT NULL";
+                var rowsUpdated = await updateCmd.ExecuteNonQueryAsync();
+                Log.Information("修复 WebSessions Duration 数据，更新了 {Count} 条记录", rowsUpdated);
+            }
+            
             await MigrateProgramCategoryTablesAsync(connection);
             
             await connection.CloseAsync();

@@ -5,6 +5,7 @@ using Tai.Core.Interfaces;
 using Tai.Infrastructure.Data;
 using Tai.Infrastructure.Monitoring;
 using Tai.Infrastructure.Services;
+using Tai.Application;
 
 namespace Tai.App.Services;
 
@@ -19,6 +20,8 @@ public static class ServiceConfiguration
         
         services.AddDbContextFactory<TaiDbContext>(options =>
             options.UseSqlite(connectionString));
+        
+        services.AddTaiApplication();
         
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         
@@ -59,6 +62,8 @@ public static class ServiceConfiguration
         services.AddScoped<CategoryEditDialogViewModel>();
         services.AddScoped<CategoryDetailDialogViewModel>();
         services.AddScoped<CategoryManagementViewModel>();
+        services.AddScoped<HeatmapViewModel>();
+        services.AddScoped<SankeyViewModel>();
         
         return services;
     }
