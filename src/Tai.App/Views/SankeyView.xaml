@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<UserControl
+    x:Class="Tai.App.Views.SankeyView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    
+    <Grid RowDefinitions="Auto,*">
+        <StackPanel
+            Padding="16,8"
+            Orientation="Horizontal"
+            Spacing="12">
+            <CalendarDatePicker
+                Date="{x:Bind ViewModel.StartDate, Mode=TwoWay}"
+                Header="开始日期" />
+            <TextBlock
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,8"
+                Text="至" />
+            <CalendarDatePicker
+                Date="{x:Bind ViewModel.EndDate, Mode=TwoWay}"
+                Header="结束日期" />
+            <ComboBox
+                VerticalAlignment="Bottom"
+                Header="显示数量"
+                SelectedItem="{x:Bind ViewModel.TopN, Mode=TwoWay}">
+                <x:Int32>5</x:Int32>
+                <x:Int32>10</x:Int32>
+                <x:Int32>15</x:Int32>
+                <x:Int32>20</x:Int32>
+            </ComboBox>
+            <Button
+                VerticalAlignment="Bottom"
+                Click="Refresh_Click"
+                Content="刷新"
+                Style="{StaticResource AccentButtonStyle}" />
+            
+            <ProgressRing
+                VerticalAlignment="Bottom"
+                Margin="8,0,0,8"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                Width="20"
+                Height="20" />
+        </StackPanel>
+        
+        <Grid Grid.Row="1" Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <WebView2 
+                x:Name="ChartWebView" 
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch" />
+        </Grid>
+        
+        <Border
+            Grid.Row="1"
+            VerticalAlignment="Bottom"
+            Padding="16,8"
+            Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
+            CornerRadius="8"
+            Margin="16"
+            HorizontalAlignment="Center">
+            <TextBlock
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" />
+        </Border>
+    </Grid>
+</UserControl>

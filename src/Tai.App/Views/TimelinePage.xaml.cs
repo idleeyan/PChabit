@@ -39,4 +39,12 @@ public sealed partial class TimelinePage : Page
     {
         ViewModel.SelectedDate = DateTime.Today.AddDays(-1);
     }
+    
+    private async void HourGroup_Expanding(Expander sender, ExpanderExpandingEventArgs args)
+    {
+        if (sender.DataContext is TimelineHourGroup group)
+        {
+            await ViewModel.ExpandHourGroupAsync(group);
+        }
+    }
 }

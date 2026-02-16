@@ -99,9 +99,9 @@ public class AppCategoryResolver
     {
         return category switch
         {
-            AppCategory.Development => "开发工具",
+            AppCategory.Development => "开发",
             AppCategory.Browser => "浏览器",
-            AppCategory.Office => "办公软件",
+            AppCategory.Office => "办公",
             AppCategory.Communication => "通讯工具",
             AppCategory.Media => "媒体播放",
             AppCategory.Design => "设计工具",

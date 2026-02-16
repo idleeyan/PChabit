@@ -38,6 +38,7 @@ public class TrayService : IDisposable
     private const int TPM_RIGHTALIGN = 0x0008;
     private const int TPM_BOTTOMALIGN = 0x0020;
     private const int TPM_RIGHTBUTTON = 0x0002;
+    private const int TPM_RETURNCMD = 0x0100;
     
     private const int IDI_APPLICATION = 32512;
     
@@ -264,21 +265,29 @@ public class TrayService : IDisposable
         
         var cmd = TrackPopupMenu(
             menu,
-            TPM_RIGHTALIGN | TPM_BOTTOMALIGN | TPM_RIGHTBUTTON,
+            TPM_RIGHTALIGN | TPM_BOTTOMALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
             pt.X,
             pt.Y,
             0,
             _hwnd,
             IntPtr.Zero);
         
-        switch (cmd)
+        if (cmd != 0)
         {
-            case 1:
-                RestoreWindow();
-                break;
-            case 2:
-                ExitRequested?.Invoke(this, EventArgs.Empty);
-                break;
+            switch (cmd)
+            {
+                case 1:
+                    RestoreWindow();
+                    break;
+                case 2:
+                    Log.Information("托盘菜单点击: 退出");
+                    ExitRequested?.Invoke(this, EventArgs.Empty);
+                    break;
+            }
+        }
+        else
+        {
+            Log.Debug("托盘菜单未选择任何命令");
         }
         
         DestroyMenu(menu);

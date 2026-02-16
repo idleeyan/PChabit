@@ -12,6 +12,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<DailyAggregator>();
         services.AddScoped<SessionAggregator>();
         services.AddScoped<PatternDetector>();
+        services.AddScoped<HeatmapAggregator>();
+        services.AddScoped<SankeyAggregator>();
         
         return services;
     }

@@ -1,0 +1,31 @@
+{
+	"folders": [
+		{
+			"name": "PChabit",
+			"path": "."
+		},
+		{
+			"name": "Tai.App",
+			"path": "src/Tai.App"
+		},
+		{
+			"name": "Tai.Application",
+			"path": "src/Tai.Application"
+		},
+		{
+			"name": "Tai.Core",
+			"path": "src/Tai.Core"
+		},
+		{
+			"name": "Tai.Infrastructure",
+			"path": "src/Tai.Infrastructure"
+		},
+		{
+			"name": "Tai.Tests",
+			"path": "src/Tai.Tests"
+		}
+	],
+	"settings": {
+		"dotnet.defaultSolution": "Tai.sln"
+	}
+}

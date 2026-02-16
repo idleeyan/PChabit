@@ -75,13 +75,19 @@ public class TaiDbContext : DbContext
             entity.HasIndex(e => e.ProcessName);
             entity.HasIndex(e => new { e.StartTime, e.ProcessName });
             
-            entity.Property(e => e.Duration).HasConversion(
-                v => v.Ticks,
-                v => TimeSpan.FromTicks(v));
+            entity.Property(e => e.Duration)
+                .HasConversion(
+                    v => v.Ticks,
+                    v => TimeSpan.FromTicks(v))
+                .HasField("_duration")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
             
-            entity.Property(e => e.ActiveDuration).HasConversion(
-                v => v.Ticks,
-                v => TimeSpan.FromTicks(v));
+            entity.Property(e => e.ActiveDuration)
+                .HasConversion(
+                    v => v.Ticks,
+                    v => TimeSpan.FromTicks(v))
+                .HasField("_activeDuration")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
         });
     }
     
@@ -134,13 +140,19 @@ public class TaiDbContext : DbContext
             entity.HasIndex(e => e.StartTime);
             entity.HasIndex(e => e.Domain);
             
-            entity.Property(e => e.Duration).HasConversion(
-                v => v.Ticks,
-                v => TimeSpan.FromTicks(v));
+            entity.Property(e => e.Duration)
+                .HasConversion(
+                    v => v.Ticks,
+                    v => TimeSpan.FromTicks(v))
+                .HasField("_duration")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
             
-            entity.Property(e => e.ActiveDuration).HasConversion(
-                v => v.Ticks,
-                v => TimeSpan.FromTicks(v));
+            entity.Property(e => e.ActiveDuration)
+                .HasConversion(
+                    v => v.Ticks,
+                    v => TimeSpan.FromTicks(v))
+                .HasField("_activeDuration")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
             
             entity.Ignore(e => e.InteractedElements);
             entity.Ignore(e => e.SearchQueries);
