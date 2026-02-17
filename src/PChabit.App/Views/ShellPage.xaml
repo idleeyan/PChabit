@@ -1,0 +1,129 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="PChabit.App.Views.ShellPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    
+    <Grid>
+        <NavigationView
+            x:Name="NavView"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="True"
+            ItemInvoked="NavView_ItemInvoked"
+            PaneDisplayMode="Left">
+            
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="仪表盘" Tag="Dashboard">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE80F;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="时间线" Tag="Timeline">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE823;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="应用统计" Tag="AppStats">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8FD;" />
+                    </NavigationViewItem.Icon>
+                    <NavigationViewItem.MenuItems>
+                        <NavigationViewItem Content="应用列表" Tag="AppStats">
+                            <NavigationViewItem.Icon>
+                                <FontIcon Glyph="&#xE8FD;" />
+                            </NavigationViewItem.Icon>
+                        </NavigationViewItem>
+                        <NavigationViewItem Content="分类管理" Tag="CategoryManagement">
+                            <NavigationViewItem.Icon>
+                                <FontIcon Glyph="&#xE8E5;" />
+                            </NavigationViewItem.Icon>
+                        </NavigationViewItem>
+                    </NavigationViewItem.MenuItems>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="按键详情" Tag="KeyboardDetails">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE92E;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="网页访问" Tag="WebDetails">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE774;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="分析" Tag="Analytics">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE9D9;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="热力图" Tag="Heatmap">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8F9;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                
+                <NavigationViewItem Content="导出" Tag="Export">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE896;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+            
+            <Grid>
+                <Frame x:Name="ContentFrame" />
+                
+                <Border
+                    x:Name="StatusBar"
+                    VerticalAlignment="Bottom"
+                    Background="{ThemeResource SystemControlBackgroundAltHighBrush}"
+                    BorderBrush="{ThemeResource SystemControlForegroundBaseLowBrush}"
+                    BorderThickness="0,1,0,0"
+                    Padding="16,8">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" Spacing="16">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon
+                                    x:Name="StatusIcon"
+                                    FontSize="12"
+                                    Glyph="&#xE73E;" />
+                                <TextBlock
+                                    x:Name="StatusText"
+                                    VerticalAlignment="Center"
+                                    FontSize="12"
+                                    Text="就绪" />
+                            </StackPanel>
+                            
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="今日活跃: 5小时 32分钟" />
+                        </StackPanel>
+                        
+                        <StackPanel
+                            HorizontalAlignment="Right"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <Button
+                                x:Name="ToggleMonitorButton"
+                                Padding="8,4"
+                                VerticalAlignment="Center"
+                                Click="ToggleMonitorButton_Click"
+                                Content="开始监控"
+                                CornerRadius="4"
+                                FontSize="12" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </NavigationView>
+    </Grid>
+</Page>
