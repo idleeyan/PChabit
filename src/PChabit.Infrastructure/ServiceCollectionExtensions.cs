@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
@@ -41,7 +41,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
         services.AddSingleton<IExportFormatter, MarkdownExportFormatter>();
         services.AddSingleton<IExportFormatter, AiPromptExportFormatter>();
+        services.AddSingleton<IExportFormatter, CsvExportFormatter>();
+        services.AddSingleton<IExportFormatter, ExcelExportFormatter>();
         services.AddScoped<IExportService, ExportService>();
+        
+        services.AddSingleton<IBackupService, BackupService>();
         
         services.AddSingleton<MonitorManager>();
         

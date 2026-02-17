@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Serilog;
 
@@ -14,6 +14,7 @@ public class TrayService : IDisposable
     private bool _disposed;
     private WndProcDelegate? _wndProcDelegate;
     private IntPtr _oldWndProc;
+    private IntPtr _customIcon;
     
     public event EventHandler? ExitRequested;
     
@@ -41,12 +42,17 @@ public class TrayService : IDisposable
     private const int TPM_RETURNCMD = 0x0100;
     
     private const int IDI_APPLICATION = 32512;
+    private const int IMAGE_ICON = 1;
+    private const int LR_LOADFROMFILE = 0x00000010;
     
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern bool Shell_NotifyIcon(int dwMessage, ref NotifyIconData lpData);
     
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr LoadIcon(IntPtr hInstance, IntPtr lpIconName);
+    
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadImage(IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
     
     [DllImport("user32.dll")]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
@@ -74,6 +80,9 @@ public class TrayService : IDisposable
     
     [DllImport("user32.dll")]
     private static extern bool DestroyMenu(IntPtr hMenu);
+    
+    [DllImport("user32.dll")]
+    private static extern bool DestroyIcon(IntPtr hIcon);
     
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr GetModuleHandle(string? lpModuleName);
@@ -170,13 +179,35 @@ public class TrayService : IDisposable
             Shell_NotifyIcon(NIM_DELETE, ref _notifyIconData);
         }
         
-        var hInstance = GetModuleHandle(null);
-        var hIcon = LoadIcon(hInstance, (IntPtr)32512);
+        IntPtr hIcon = IntPtr.Zero;
+        
+        var exePath = AppContext.BaseDirectory;
+        var iconPath = System.IO.Path.Combine(exePath, "pchabit.ico");
+        
+        if (System.IO.File.Exists(iconPath))
+        {
+            hIcon = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, 16, 16, LR_LOADFROMFILE);
+            Log.Information("从文件加载托盘图标: {IconPath}", iconPath);
+        }
+        
+        if (hIcon == IntPtr.Zero)
+        {
+            var hInstance = GetModuleHandle(null);
+            hIcon = LoadIcon(hInstance, (IntPtr)32512);
+            Log.Information("从资源加载托盘图标");
+        }
         
         if (hIcon == IntPtr.Zero)
         {
             hIcon = LoadIcon(IntPtr.Zero, (IntPtr)IDI_APPLICATION);
+            Log.Warning("使用默认应用程序图标");
         }
+        
+        if (_customIcon != IntPtr.Zero && _customIcon != hIcon)
+        {
+            DestroyIcon(_customIcon);
+        }
+        _customIcon = hIcon;
         
         _notifyIconData = new NotifyIconData
         {
@@ -186,7 +217,7 @@ public class TrayService : IDisposable
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage = WM_USER + 1,
             hIcon = hIcon,
-            szTip = "Tai - 电脑使用习惯追踪"
+            szTip = "PChabit - 电脑使用习惯追踪"
         };
         
         var result = Shell_NotifyIcon(NIM_ADD, ref _notifyIconData);
@@ -307,6 +338,12 @@ public class TrayService : IDisposable
         if (_disposed) return;
         
         RemoveNotifyIcon();
+        
+        if (_customIcon != IntPtr.Zero)
+        {
+            DestroyIcon(_customIcon);
+            _customIcon = IntPtr.Zero;
+        }
         
         _disposed = true;
     }

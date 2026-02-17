@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <ContentDialog
     x:Class="PChabit.App.Views.DetailDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -192,20 +192,20 @@
                                     Grid.ColumnSpan="3"
                                     Height="1"
                                     Background="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                    Visibility="{x:Bind IsDivider, Mode=OneWay}" />
+                                    Visibility="{x:Bind IsDivider, Mode=OneTime}" />
                                 
                                 <StackPanel
                                     Grid.Column="0"
                                     Orientation="Horizontal"
-                                    Visibility="{x:Bind IsDivider, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneWay}">
+                                    Visibility="{x:Bind IsDivider, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneTime}">
                                     <Border
                                         Width="8"
                                         Height="8"
                                         Margin="0,0,8,0"
                                         VerticalAlignment="Center"
-                                        Background="{x:Bind Color, Mode=OneWay}"
+                                        Background="{x:Bind Color, Mode=OneTime}"
                                         CornerRadius="2"
-                                        Visibility="{x:Bind Color, Converter={StaticResource NullToVisibilityConverter}, Mode=OneWay}" />
+                                        Visibility="{x:Bind Color, Converter={StaticResource NullToVisibilityConverter}, Mode=OneTime}" />
                                     <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 
@@ -214,13 +214,13 @@
                                     Margin="16,0"
                                     FontWeight="SemiBold"
                                     Text="{x:Bind Value}"
-                                    Visibility="{x:Bind IsDivider, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneWay}" />
+                                    Visibility="{x:Bind IsDivider, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneTime}" />
                                 
                                 <TextBlock
                                     Grid.Column="2"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Text="{x:Bind SubValue}"
-                                    Visibility="{x:Bind IsDivider, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneWay}" />
+                                    Visibility="{x:Bind IsDivider, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneTime}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

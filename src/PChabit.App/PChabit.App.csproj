@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>2.8.8</Version>
+        <Version>2.15.0</Version>
         <Platforms>x64</Platforms>
         <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
         <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -20,7 +20,9 @@
         <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
         <WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>true</WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>
         <EnableMrtTargets>false</EnableMrtTargets>
+        <EnableMsixTooling>false</EnableMsixTooling>
         <SatelliteResourceLanguages>en-US;zh-CN</SatelliteResourceLanguages>
+        <NoWarn>$(NoWarn);MVVMTK0045;NETSDK1206</NoWarn>
     </PropertyGroup>
 
     <Target Name="RemoveUnusedLanguageFolders" AfterTargets="Build">
@@ -99,8 +101,95 @@
             <LanguageFoldersToDelete Include="$(OutDir)ur-PK" />
             <LanguageFoldersToDelete Include="$(OutDir)vi-VN" />
             <LanguageFoldersToDelete Include="$(OutDir)zh-TW" />
+            <LanguageFoldersToDelete Include="$(OutDir)fil-PH" />
+            <LanguageFoldersToDelete Include="$(OutDir)kok-IN" />
+            <LanguageFoldersToDelete Include="$(OutDir)quz-PE" />
         </ItemGroup>
         <RemoveDir Directories="@(LanguageFoldersToDelete)" Condition="Exists('%(Identity)')" />
+    </Target>
+
+    <Target Name="RemoveUnusedLanguageFoldersForPublish" AfterTargets="Publish">
+        <ItemGroup>
+            <LanguageFoldersToDelete Include="$(PublishDir)af-ZA" />
+            <LanguageFoldersToDelete Include="$(PublishDir)am-ET" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ar-SA" />
+            <LanguageFoldersToDelete Include="$(PublishDir)as-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)bg-BG" />
+            <LanguageFoldersToDelete Include="$(PublishDir)bn-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ca-ES" />
+            <LanguageFoldersToDelete Include="$(PublishDir)cs-CZ" />
+            <LanguageFoldersToDelete Include="$(PublishDir)cy-GB" />
+            <LanguageFoldersToDelete Include="$(PublishDir)da-DK" />
+            <LanguageFoldersToDelete Include="$(PublishDir)de-DE" />
+            <LanguageFoldersToDelete Include="$(PublishDir)el-GR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)en-GB" />
+            <LanguageFoldersToDelete Include="$(PublishDir)es-ES" />
+            <LanguageFoldersToDelete Include="$(PublishDir)es-MX" />
+            <LanguageFoldersToDelete Include="$(PublishDir)et-EE" />
+            <LanguageFoldersToDelete Include="$(PublishDir)eu-ES" />
+            <LanguageFoldersToDelete Include="$(PublishDir)fa-IR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)fi-FI" />
+            <LanguageFoldersToDelete Include="$(PublishDir)fr-CA" />
+            <LanguageFoldersToDelete Include="$(PublishDir)fr-FR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ga-IE" />
+            <LanguageFoldersToDelete Include="$(PublishDir)gd-gb" />
+            <LanguageFoldersToDelete Include="$(PublishDir)gl-ES" />
+            <LanguageFoldersToDelete Include="$(PublishDir)gu-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)he-IL" />
+            <LanguageFoldersToDelete Include="$(PublishDir)hi-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)hr-HR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)hu-HU" />
+            <LanguageFoldersToDelete Include="$(PublishDir)hy-AM" />
+            <LanguageFoldersToDelete Include="$(PublishDir)id-ID" />
+            <LanguageFoldersToDelete Include="$(PublishDir)is-IS" />
+            <LanguageFoldersToDelete Include="$(PublishDir)it-IT" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ja-JP" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ka-GE" />
+            <LanguageFoldersToDelete Include="$(PublishDir)kk-KZ" />
+            <LanguageFoldersToDelete Include="$(PublishDir)km-KH" />
+            <LanguageFoldersToDelete Include="$(PublishDir)kn-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ko-KR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)lb-LU" />
+            <LanguageFoldersToDelete Include="$(PublishDir)lo-LA" />
+            <LanguageFoldersToDelete Include="$(PublishDir)lt-LT" />
+            <LanguageFoldersToDelete Include="$(PublishDir)lv-LV" />
+            <LanguageFoldersToDelete Include="$(PublishDir)mi-NZ" />
+            <LanguageFoldersToDelete Include="$(PublishDir)mk-MK" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ml-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)mr-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ms-MY" />
+            <LanguageFoldersToDelete Include="$(PublishDir)mt-MT" />
+            <LanguageFoldersToDelete Include="$(PublishDir)nb-NO" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ne-NP" />
+            <LanguageFoldersToDelete Include="$(PublishDir)nl-NL" />
+            <LanguageFoldersToDelete Include="$(PublishDir)nn-NO" />
+            <LanguageFoldersToDelete Include="$(PublishDir)or-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)pa-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)pl-PL" />
+            <LanguageFoldersToDelete Include="$(PublishDir)pt-BR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)pt-PT" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ro-RO" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ru-RU" />
+            <LanguageFoldersToDelete Include="$(PublishDir)sk-SK" />
+            <LanguageFoldersToDelete Include="$(PublishDir)sl-SI" />
+            <LanguageFoldersToDelete Include="$(PublishDir)sq-AL" />
+            <LanguageFoldersToDelete Include="$(PublishDir)sv-SE" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ta-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)te-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)th-TH" />
+            <LanguageFoldersToDelete Include="$(PublishDir)tr-TR" />
+            <LanguageFoldersToDelete Include="$(PublishDir)tt-RU" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ug-CN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)uk-UA" />
+            <LanguageFoldersToDelete Include="$(PublishDir)ur-PK" />
+            <LanguageFoldersToDelete Include="$(PublishDir)vi-VN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)zh-TW" />
+            <LanguageFoldersToDelete Include="$(PublishDir)fil-PH" />
+            <LanguageFoldersToDelete Include="$(PublishDir)kok-IN" />
+            <LanguageFoldersToDelete Include="$(PublishDir)quz-PE" />
+        </ItemGroup>
+        <RemoveDir Directories="@(LanguageFoldersToDelete)" Condition="Exists('%(Identity)')" />
+        <Message Text="已清理发布目录中的不需要语言文件夹" Importance="high" />
     </Target>
 
     <ItemGroup>
@@ -118,6 +207,9 @@
         <Content Include="Assets\StoreLogo.png" />
         <Content Include="Assets\Wide310x150Logo.scale-200.png" />
         <Content Include="Assets\Sankey\**\*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="pchabit.ico">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

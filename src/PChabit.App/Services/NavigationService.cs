@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Animation;
 using Serilog;
 using PChabit.App.Views;
@@ -30,8 +30,12 @@ public class NavigationService
         Register<AnalyticsPage>("Analytics");
         Register<ExportPage>("Export");
         Register<CategoryManagementPage>("CategoryManagement");
+        Register<WebsiteCategoryManagementPage>("WebsiteCategoryManagement");
         Register<SettingsPage>("Settings");
         Register<HeatmapPage>("Heatmap");
+        Register<BackupManagementPage>("BackupManagement");
+        Register<InsightsPage>("Insights");
+        Register<GoalsPage>("Goals");
     }
     
     public void Register<T>(string key) where T : Microsoft.UI.Xaml.Controls.Page

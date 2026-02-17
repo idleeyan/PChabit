@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -31,9 +31,9 @@ public class WebSocketServer : IDisposable
         _cts = new CancellationTokenSource();
     }
     
-    public async Task StartAsync()
+    public Task StartAsync()
     {
-        if (_isRunning) return;
+        if (_isRunning) return Task.CompletedTask;
         
         try
         {
@@ -42,6 +42,7 @@ public class WebSocketServer : IDisposable
             Log.Information("WebSocket 服务器启动在端口 {Port}", Port);
             
             _ = Task.Run(() => AcceptClientsAsync(_cts.Token));
+            return Task.CompletedTask;
         }
         catch (Exception ex)
         {
@@ -50,9 +51,9 @@ public class WebSocketServer : IDisposable
         }
     }
     
-    public async Task StopAsync()
+    public Task StopAsync()
     {
-        if (!_isRunning) return;
+        if (!_isRunning) return Task.CompletedTask;
         
         _cts.Cancel();
         
@@ -72,6 +73,7 @@ public class WebSocketServer : IDisposable
         _listener.Stop();
         _isRunning = false;
         Log.Information("WebSocket 服务器已停止");
+        return Task.CompletedTask;
     }
     
     private async Task AcceptClientsAsync(CancellationToken cancellationToken)

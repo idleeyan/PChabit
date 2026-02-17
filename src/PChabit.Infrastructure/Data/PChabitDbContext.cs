@@ -14,6 +14,14 @@ public class PChabitDbContext : DbContext
     public DbSet<DailyPattern> DailyPatterns { get; set; }
     public DbSet<ProgramCategory> ProgramCategories { get; set; }
     public DbSet<ProgramCategoryMapping> ProgramCategoryMappings { get; set; }
+    public DbSet<WebsiteCategory> WebsiteCategories { get; set; }
+    public DbSet<WebsiteDomainMapping> WebsiteDomainMappings { get; set; }
+    public DbSet<BackupRecord> BackupRecords { get; set; }
+    public DbSet<ArchiveRecord> ArchiveRecords { get; set; }
+    public DbSet<UserGoal> UserGoals { get; set; }
+    public DbSet<EfficiencyScore> EfficiencyScores { get; set; }
+    public DbSet<WorkPattern> WorkPatterns { get; set; }
+    public DbSet<InsightReport> InsightReports { get; set; }
     
     public PChabitDbContext(DbContextOptions<PChabitDbContext> options) : base(options)
     {
@@ -64,6 +72,13 @@ public class PChabitDbContext : DbContext
         ConfigureWorkflowSession(modelBuilder);
         ConfigureDailyPattern(modelBuilder);
         ConfigureProgramCategory(modelBuilder);
+        ConfigureWebsiteCategory(modelBuilder);
+        ConfigureBackupRecord(modelBuilder);
+        ConfigureArchiveRecord(modelBuilder);
+        ConfigureUserGoal(modelBuilder);
+        ConfigureEfficiencyScore(modelBuilder);
+        ConfigureWorkPattern(modelBuilder);
+        ConfigureInsightReport(modelBuilder);
     }
     
     private static void ConfigureAppSession(ModelBuilder modelBuilder)
@@ -71,6 +86,9 @@ public class PChabitDbContext : DbContext
         modelBuilder.Entity<AppSession>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
             entity.HasIndex(e => e.StartTime);
             entity.HasIndex(e => e.ProcessName);
             entity.HasIndex(e => new { e.StartTime, e.ProcessName });
@@ -96,6 +114,9 @@ public class PChabitDbContext : DbContext
         modelBuilder.Entity<KeyboardSession>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
             entity.HasIndex(e => new { e.Date, e.Hour }).IsUnique();
             
             entity.Property(e => e.KeyFrequency).HasConversion(
@@ -121,6 +142,9 @@ public class PChabitDbContext : DbContext
         modelBuilder.Entity<MouseSession>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
             entity.HasIndex(e => new { e.Date, e.Hour }).IsUnique();
             
             entity.Ignore(e => e.ClickByArea);
@@ -137,6 +161,9 @@ public class PChabitDbContext : DbContext
         modelBuilder.Entity<WebSession>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
             entity.HasIndex(e => e.StartTime);
             entity.HasIndex(e => e.Domain);
             
@@ -165,6 +192,9 @@ public class PChabitDbContext : DbContext
         modelBuilder.Entity<WorkflowSession>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
             entity.HasIndex(e => e.StartTime);
             
             entity.Ignore(e => e.ActiveApplications);
@@ -180,6 +210,9 @@ public class PChabitDbContext : DbContext
         modelBuilder.Entity<DailyPattern>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
             entity.HasIndex(e => e.Date).IsUnique();
             
             entity.Ignore(e => e.FocusBlocks);
@@ -208,6 +241,103 @@ public class PChabitDbContext : DbContext
                 .WithMany(c => c.ProgramMappings)
                 .HasForeignKey(e => e.CategoryId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureWebsiteCategory(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WebsiteCategory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.HasIndex(e => e.SortOrder);
+        });
+
+        modelBuilder.Entity<WebsiteDomainMapping>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.DomainPattern);
+            entity.HasIndex(e => new { e.DomainPattern, e.CategoryId }).IsUnique();
+
+            entity.HasOne(e => e.Category)
+                .WithMany(c => c.DomainMappings)
+                .HasForeignKey(e => e.CategoryId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureBackupRecord(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BackupRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.CreatedAt);
+        });
+    }
+
+    private static void ConfigureArchiveRecord(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ArchiveRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => e.DateRangeStart);
+        });
+    }
+
+    private static void ConfigureUserGoal(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<UserGoal>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.TargetType);
+            entity.HasIndex(e => e.IsActive);
+        });
+    }
+
+    private static void ConfigureEfficiencyScore(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<EfficiencyScore>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.Date).IsUnique();
+        });
+    }
+
+    private static void ConfigureWorkPattern(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WorkPattern>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.Date).IsUnique();
+        });
+    }
+
+    private static void ConfigureInsightReport(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<InsightReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.ReportType);
+            entity.HasIndex(e => e.StartDate);
         });
     }
 }

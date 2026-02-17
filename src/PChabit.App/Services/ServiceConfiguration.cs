@@ -1,10 +1,11 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PChabit.App.ViewModels;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 using PChabit.Infrastructure.Services;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Application;
 
 namespace PChabit.App.Services;
@@ -47,6 +48,15 @@ public static class ServiceConfiguration
         services.AddSingleton<IWebDAVSyncService>(sp => sp.GetRequiredService<WebDAVSyncService>());
         
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<IWebsiteCategoryService, WebsiteCategoryService>();
+        
+        services.AddSingleton<IBackupService, BackupService>();
+        
+        services.AddSingleton<IPatternAnalyzer, PatternAnalyzer>();
+        services.AddSingleton<IEfficiencyCalculator, EfficiencyCalculator>();
+        services.AddSingleton<IInsightService, InsightService>();
+        services.AddSingleton<IGoalService, GoalService>();
+        services.AddSingleton<INotificationService, NotificationService>();
         
         services.AddScoped<SettingsViewModel>();
         
@@ -62,8 +72,15 @@ public static class ServiceConfiguration
         services.AddScoped<CategoryEditDialogViewModel>();
         services.AddScoped<CategoryDetailDialogViewModel>();
         services.AddScoped<CategoryManagementViewModel>();
+        services.AddScoped<WebsiteCategoryManagementViewModel>();
+        services.AddTransient<WebsiteCategoryEditDialogViewModel>();
+        services.AddTransient<WebsiteCategoryEditDialog>();
         services.AddScoped<HeatmapViewModel>();
         services.AddScoped<SankeyViewModel>();
+        services.AddScoped<BackupManagementViewModel>();
+        services.AddScoped<InsightsViewModel>();
+        services.AddScoped<GoalsViewModel>();
+        services.AddScoped<MouseDetailsViewModel>();
         
         return services;
     }

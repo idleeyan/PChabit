@@ -1,25 +1,51 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
+using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Services;
 
 namespace PChabit.App.ViewModels;
 
 public partial class WebDetailsViewModel : ViewModelBase
 {
     private readonly PChabitDbContext _dbContext;
+    private readonly IWebsiteCategoryService? _websiteCategoryService;
+    private List<WebsiteCategory>? _websiteCategories;
+    private List<WebsiteDomainMapping>? _websiteDomainMappings;
     
-    public WebDetailsViewModel(PChabitDbContext dbContext) : base()
+    public WebDetailsViewModel(PChabitDbContext dbContext, IWebsiteCategoryService? websiteCategoryService = null) : base()
     {
         _dbContext = dbContext;
+        _websiteCategoryService = websiteCategoryService;
         Title = "网页访问详情";
         _startDateOffset = new DateTimeOffset(DateTime.Today);
         _endDateOffset = new DateTimeOffset(DateTime.Today);
         _startDate = DateTime.Today;
         _endDate = DateTime.Today;
+        
+        _ = InitializeWebsiteCategoriesAsync();
+    }
+
+    private async Task InitializeWebsiteCategoriesAsync()
+    {
+        if (_websiteCategoryService != null)
+        {
+            try
+            {
+                await _websiteCategoryService.InitializeDefaultCategoriesAsync();
+                _websiteCategories = _websiteCategoryService.GetAllCategoriesSync();
+                _websiteDomainMappings = _websiteCategoryService.GetAllMappingsSync();
+                Log.Information("WebDetailsViewModel: 网站分类初始化完成");
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "WebDetailsViewModel: 网站分类初始化失败，使用后备分类");
+            }
+        }
     }
     
     private DateTimeOffset _startDateOffset;
@@ -349,7 +375,57 @@ public partial class WebDetailsViewModel : ViewModelBase
         }
     }
     
-    private static string GetCategory(string domain)
+    private string GetCategory(string domain)
+    {
+        if (string.IsNullOrEmpty(domain)) return "浏览";
+
+        if (_websiteDomainMappings != null && _websiteCategories != null)
+        {
+            var category = GetCategoryFromNewSystem(domain);
+            if (category != null)
+            {
+                return category;
+            }
+        }
+
+        return GetCategoryFallback(domain);
+    }
+
+    private string? GetCategoryFromNewSystem(string domain)
+    {
+        if (string.IsNullOrEmpty(domain) || _websiteDomainMappings == null) return null;
+
+        var lowerDomain = domain.ToLower();
+
+        foreach (var mapping in _websiteDomainMappings.OrderByDescending(m => m.DomainPattern.Length))
+        {
+            if (DomainMatches(lowerDomain, mapping.DomainPattern))
+            {
+                var category = _websiteCategories?.FirstOrDefault(c => c.Id == mapping.CategoryId);
+                if (category != null)
+                {
+                    return category.Name;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool DomainMatches(string domain, string pattern)
+    {
+        var lowerPattern = pattern.ToLower();
+
+        if (lowerPattern.StartsWith("*."))
+        {
+            var suffix = lowerPattern.Substring(2);
+            return domain.EndsWith("." + suffix) || domain == suffix;
+        }
+
+        return domain == lowerPattern || domain.EndsWith("." + lowerPattern);
+    }
+
+    private static string GetCategoryFallback(string domain)
     {
         if (string.IsNullOrEmpty(domain)) return "浏览";
         
@@ -399,7 +475,21 @@ public partial class WebDetailsViewModel : ViewModelBase
         return "浏览";
     }
     
-    private static SolidColorBrush GetCategoryColor(string category)
+    private SolidColorBrush GetCategoryColor(string category)
+    {
+        if (_websiteCategories != null)
+        {
+            var categoryObj = _websiteCategories.FirstOrDefault(c => c.Name == category);
+            if (categoryObj != null)
+            {
+                return CreateBrush(categoryObj.Color);
+            }
+        }
+
+        return GetCategoryColorFallback(category);
+    }
+
+    private static SolidColorBrush GetCategoryColorFallback(string category)
     {
         var hexColor = category switch
         {

@@ -1,4 +1,4 @@
-﻿namespace PChabit.Core.Interfaces;
+namespace PChabit.Core.Interfaces;
 
 public interface ISettingsService
 {
@@ -22,6 +22,13 @@ public interface ISettingsService
     string WebDAVPassword { get; set; }
     bool WebDAVEnabled { get; set; }
     DateTime? WebDAVLastSync { get; set; }
+    
+    string BackupPath { get; set; }
+    bool AutoBackupEnabled { get; set; }
+    int AutoBackupIntervalHours { get; set; }
+    int MaxBackupCount { get; set; }
+    int DataRetentionDays { get; set; }
+    bool ArchiveBeforeCleanup { get; set; }
     
     event EventHandler<SettingsChangedEventArgs>? SettingsChanged;
     

@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using System;
@@ -516,9 +516,26 @@ public class DateToDetailConverter : IValueConverter
             {
                 return string.Empty;
             }
-            return date.ToString("MM月dd日 dddd");
+            return date.ToString("MM 月 dd 日 dddd");
         }
         return string.Empty;
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class HourToTimeConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is int hour)
+        {
+            return $"{hour:D2}:00";
+        }
+        return "00:00";
     }
     
     public object ConvertBack(object value, Type targetType, object parameter, string language)

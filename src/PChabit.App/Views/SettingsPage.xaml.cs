@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -70,15 +70,67 @@ public sealed partial class SettingsPage : Page
                 OnSettingChanged("SelectedLanguageKey", item.Tag?.ToString() ?? "zh-CN");
         };
         
-        RetentionDaysBox.ValueChanged += (s, e) => OnSettingChanged("RetentionDays", (int)e.NewValue);
-        
-        ClearDataButton.Click += (s, e) => ViewModel.ClearDataCommand.Execute(null);
         ViewChangelogButton.Click += OnViewChangelogClick;
     }
     
     private async void OnViewChangelogClick(object sender, RoutedEventArgs e)
     {
         var changelogContent = """
+            ## v2.14.5 (2026-02-18)
+            
+            ### 编译错误修复
+            - MouseDetailsViewModel 编译错误修复：解决多个编译问题
+              - 修复 Windows.UI.ColorHelper 和 Windows.UI.Colors 命名空间引用错误
+              - 修复 TimeSpan 总和计算错误
+              - 修复 ProgramCategory 类型转换错误
+            - CA1416 平台兼容性警告修复：在 Infrastructure 项目中抑制 CA1416 警告
+            
+            ## v2.14.4 (2026-02-18)
+            
+            ### 新功能
+            - 鼠标点击详情页面：在分析页面新增鼠标点击详情标签页
+              - 统计卡片：总点击次数、左/右/中键点击、移动距离、滚动次数
+              - 按程序统计：显示各应用程序的点击次数和移动距离
+              - 每小时统计：展示一天中每小时的鼠标活动热力图
+              - 详细记录：按时间顺序显示鼠标会话详情
+              - 支持按今日、本周、上周筛选数据
+            
+            ## v2.14.3 (2026-02-18)
+            
+            ### 导航优化
+            - 分析页面结构调整：将"热力图"和"智能洞察"从主菜单移到"分析"子菜单下
+              - 分析页面现在包含三个子页面：周统计、热力图、智能洞察
+              - 导航结构更清晰，所有分析相关功能统一归类
+            
+            ## v2.14.2 (2026-02-18)
+            
+            ### 功能优化
+            - 设置页优化：删除数据管理模块，避免与备份管理页功能重复
+            - 数据管理功能统一在备份管理页中进行
+            
+            ## v2.14.1 (2026-02-17)
+            
+            ### 技术改进
+            - 完善语言文件夹清理，添加缺失的语言代码
+              - fil-PH (菲律宾语)
+              - kok-IN (孔卡尼语)
+              - quz-PE (库斯科语)
+            
+            ## v2.14.0 (2026-02-17)
+            
+            ### 新功能
+            - 图标系统完善：程序图标和任务栏图标统一使用 pchabit.ico
+              - 窗口标题栏图标动态加载
+              - 系统托盘图标动态加载
+              - 图标文件自动复制到输出目录
+            
+            ## v2.13.9 (2026-02-17)
+            
+            ### 技术改进
+            - 消除剩余编译警告
+              - CA1416: 添加 Windows 平台支持标记到 ApplyStartupSetting 方法
+              - NETSDK1206: 抑制 Windows App SDK RID 警告
+            
             ## v1.0.0 (2026-02-15)
             
             ### 新功能
@@ -155,9 +207,6 @@ public sealed partial class SettingsPage : Page
             case "TrackWebBrowsing":
                 ViewModel.TrackWebBrowsing = (bool)value;
                 break;
-            case "RetentionDays":
-                ViewModel.RetentionDays = (int)value;
-                break;
             case "SelectedThemeKey":
                 ViewModel.SelectedThemeKey = (string)value;
                 break;
@@ -219,10 +268,6 @@ public sealed partial class SettingsPage : Page
         LanguageComboBox.Items.Add(new ComboBoxItem { Content = "简体中文", Tag = "zh-CN" });
         LanguageComboBox.Items.Add(new ComboBoxItem { Content = "English", Tag = "en-US" });
         LanguageComboBox.SelectedIndex = ViewModel.SelectedLanguageKey == "en-US" ? 1 : 0;
-        
-        RetentionDaysBox.Value = ViewModel.RetentionDays;
-        DataPathText.Text = ViewModel.DataPath;
-        DatabaseSizeText.Text = ViewModel.DatabaseSize;
         
         Log.Information("SettingsPage: 设置已加载到 UI");
     }
