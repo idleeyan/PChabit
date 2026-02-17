@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using PChabit.Core.Interfaces;
 
 namespace PChabit.Infrastructure.Formatters;
@@ -112,7 +112,7 @@ public class AiPromptExportFormatter : IExportFormatter
                 .Select(g => new
                 {
                     process = g.Key,
-                    category = g.First().Category.ToString(),
+                    category = g.First().Category?.ToString() ?? "未分类",
                     totalDuration = FormatDuration(TimeSpan.FromMinutes(g.Sum(s => s.Duration.TotalMinutes))),
                     sessionCount = g.Count(),
                     avgDuration = FormatDuration(TimeSpan.FromMinutes(g.Average(s => s.Duration.TotalMinutes)))

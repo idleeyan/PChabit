@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -161,9 +161,10 @@ public partial class CategoryManagementViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task AddCategory()
+    private Task AddCategory()
     {
         Log.Information("AddCategoryCommand: 执行");
+        return Task.CompletedTask;
     }
 
     private void FilterMappings()

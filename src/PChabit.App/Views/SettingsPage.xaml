@@ -121,48 +121,6 @@
                     <TextBlock
                         FontSize="16"
                         FontWeight="SemiBold"
-                        Text="数据管理" />
-
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="数据保存天数" />
-                        <NumberBox
-                            x:Name="RetentionDaysBox"
-                            Minimum="7"
-                            Maximum="365" />
-                    </StackPanel>
-
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="数据库位置" />
-                        <TextBlock
-                            x:Name="DataPathText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <StackPanel Spacing="8">
-                        <TextBlock Text="数据库大小" />
-                        <TextBlock
-                            x:Name="DatabaseSizeText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    </StackPanel>
-
-                    <Button 
-                        Content="清除所有数据" 
-                        x:Name="ClearDataButton"
-                        Style="{StaticResource AccentButtonStyle}" />
-                </StackPanel>
-            </Border>
-
-            <Border
-                Padding="16"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="12">
-                <StackPanel Spacing="16">
-                    <TextBlock
-                        FontSize="16"
-                        FontWeight="SemiBold"
                         Text="关于" />
 
                     <StackPanel Spacing="8">

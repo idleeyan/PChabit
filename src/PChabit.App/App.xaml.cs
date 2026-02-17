@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
@@ -18,6 +18,16 @@ public partial class App : Microsoft.UI.Xaml.Application
     private Window? _window;
     private ServiceProvider? _serviceProvider;
     private MonitorManager? _monitorManager;
+    
+    private const int WM_SETICON = 0x0080;
+    private const int IMAGE_ICON = 1;
+    private const int LR_LOADFROMFILE = 0x00000010;
+    
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadImage(IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
+    
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
     private DataCollectionService? _dataCollectionService;
     private TrayService? _trayService;
     private bool _isExiting;
@@ -31,6 +41,8 @@ public partial class App : Microsoft.UI.Xaml.Application
     }
     
     public static TrayService Tray => ((App)Current)._trayService!;
+    
+    public static Window MainWindow => ((App)Current)._window!;
     
     public App()
     {
@@ -108,17 +120,50 @@ public partial class App : Microsoft.UI.Xaml.Application
             
             Log.Information("导航到 ShellPage");
             _ = rootFrame.Navigate(typeof(ShellPage), e.Arguments);
+            
+            SetWindowIcon();
+            
             _window.Activate();
             
             Log.Information("窗口已激活");
             
             InitializeTrayService();
             StartMonitoring();
+            StartBackupService();
         }
         catch (Exception ex)
         {
             Log.Fatal(ex, "OnLaunched 失败");
             throw;
+        }
+    }
+    
+    private void SetWindowIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "pchabit.ico");
+            if (File.Exists(iconPath))
+            {
+                var hWnd = WinRT.Interop.WindowNative.GetWindowHandle(_window!);
+                var hIcon = LoadImage(
+                    IntPtr.Zero,
+                    iconPath,
+                    IMAGE_ICON,
+                    32, 32,
+                    LR_LOADFROMFILE);
+                
+                if (hIcon != IntPtr.Zero)
+                {
+                    SendMessage(hWnd, WM_SETICON, IntPtr.Zero, hIcon);
+                    SendMessage(hWnd, WM_SETICON, (IntPtr)1, hIcon);
+                    Log.Information("窗口图标设置成功");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "设置窗口图标失败");
         }
     }
     
@@ -172,8 +217,8 @@ public partial class App : Microsoft.UI.Xaml.Application
             _monitorManager.StartAllAsync().Wait();
             Log.Information("监控器已启动 - AppMonitor: {AppRunning}, KeyboardMonitor: {KeyboardRunning}, MouseMonitor: {MouseRunning}", 
                 _monitorManager.IsRunning, 
-                _serviceProvider.GetRequiredService<Core.Interfaces.IKeyboardMonitor>().IsRunning,
-                _serviceProvider.GetRequiredService<Core.Interfaces.IMouseMonitor>().IsRunning);
+                _serviceProvider!.GetRequiredService<Core.Interfaces.IKeyboardMonitor>().IsRunning,
+                _serviceProvider!.GetRequiredService<Core.Interfaces.IMouseMonitor>().IsRunning);
             
             _dataCollectionService.Start();
             Log.Information("数据收集服务已启动");
@@ -181,6 +226,28 @@ public partial class App : Microsoft.UI.Xaml.Application
         catch (Exception ex)
         {
             Log.Error(ex, "启动监控服务失败");
+        }
+    }
+
+    private void StartBackupService()
+    {
+        try
+        {
+            var backupService = _serviceProvider!.GetRequiredService<Core.Interfaces.IBackupService>();
+            var settings = _serviceProvider!.GetRequiredService<Core.Interfaces.ISettingsService>();
+            
+            if (settings.AutoBackupEnabled)
+            {
+                Log.Information("执行启动时自动备份");
+                _ = backupService.CreateBackupAsync();
+                
+                backupService.StartPeriodicBackupAsync(TimeSpan.FromHours(settings.AutoBackupIntervalHours));
+                Log.Information("定时备份服务已启动，间隔: {Hours} 小时", settings.AutoBackupIntervalHours);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "启动备份服务失败");
         }
     }
     

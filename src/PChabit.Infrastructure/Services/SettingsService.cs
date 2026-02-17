@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Serilog;
 using PChabit.Core.Interfaces;
 
@@ -256,6 +256,84 @@ public class SettingsService : ISettingsService
         }
     }
     
+    public string BackupPath 
+    { 
+        get => _settings.BackupPath; 
+        set 
+        {
+            if (_settings.BackupPath != value)
+            {
+                _settings.BackupPath = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BackupPath) });
+            }
+        }
+    }
+    
+    public bool AutoBackupEnabled 
+    { 
+        get => _settings.AutoBackupEnabled; 
+        set 
+        {
+            if (_settings.AutoBackupEnabled != value)
+            {
+                _settings.AutoBackupEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AutoBackupEnabled) });
+            }
+        }
+    }
+    
+    public int AutoBackupIntervalHours 
+    { 
+        get => _settings.AutoBackupIntervalHours; 
+        set 
+        {
+            if (_settings.AutoBackupIntervalHours != value)
+            {
+                _settings.AutoBackupIntervalHours = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AutoBackupIntervalHours) });
+            }
+        }
+    }
+    
+    public int MaxBackupCount 
+    { 
+        get => _settings.MaxBackupCount; 
+        set 
+        {
+            if (_settings.MaxBackupCount != value)
+            {
+                _settings.MaxBackupCount = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(MaxBackupCount) });
+            }
+        }
+    }
+    
+    public int DataRetentionDays 
+    { 
+        get => _settings.DataRetentionDays; 
+        set 
+        {
+            if (_settings.DataRetentionDays != value)
+            {
+                _settings.DataRetentionDays = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(DataRetentionDays) });
+            }
+        }
+    }
+    
+    public bool ArchiveBeforeCleanup 
+    { 
+        get => _settings.ArchiveBeforeCleanup; 
+        set 
+        {
+            if (_settings.ArchiveBeforeCleanup != value)
+            {
+                _settings.ArchiveBeforeCleanup = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(ArchiveBeforeCleanup) });
+            }
+        }
+    }
+    
     public event EventHandler<SettingsChangedEventArgs>? SettingsChanged;
     
     public SettingsService()
@@ -353,6 +431,7 @@ public class SettingsService : ISettingsService
         SettingsChanged?.Invoke(this, new SettingsChangedEventArgs());
     }
     
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private void ApplySettings()
     {
         try
@@ -365,6 +444,7 @@ public class SettingsService : ISettingsService
         }
     }
     
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private void ApplyStartupSetting()
     {
         var startupFolderPath = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
@@ -392,6 +472,7 @@ public class SettingsService : ISettingsService
         }
     }
     
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static void CreateShortcut(string shortcutPath, string targetPath)
     {
         dynamic? shell = null;
@@ -410,7 +491,7 @@ public class SettingsService : ISettingsService
             
             var shortcutType = shortcut.GetType();
             shortcutType.InvokeMember("TargetPath", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
-            shortcutType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { Path.GetDirectoryName(targetPath) });
+            shortcutType.InvokeMember("WorkingDirectory", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { Path.GetDirectoryName(targetPath) ?? string.Empty });
             shortcutType.InvokeMember("Description", System.Reflection.BindingFlags.SetProperty, null, shortcut, new object[] { "PChabit Activity Tracker" });
             shortcutType.InvokeMember("Save", System.Reflection.BindingFlags.InvokeMethod, null, shortcut, null);
         }
@@ -450,4 +531,11 @@ internal class AppSettings
     public string WebDAVPassword { get; set; } = "";
     public bool WebDAVEnabled { get; set; } = false;
     public DateTime? WebDAVLastSync { get; set; }
+    
+    public string BackupPath { get; set; } = "";
+    public bool AutoBackupEnabled { get; set; } = true;
+    public int AutoBackupIntervalHours { get; set; } = 4;
+    public int MaxBackupCount { get; set; } = 7;
+    public int DataRetentionDays { get; set; } = 180;
+    public bool ArchiveBeforeCleanup { get; set; } = true;
 }

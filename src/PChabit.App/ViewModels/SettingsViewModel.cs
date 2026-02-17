@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -47,15 +47,6 @@ public partial class SettingsViewModel : ViewModelBase
     private bool _anonymizeData = false;
     
     [ObservableProperty]
-    private string _dataPath = string.Empty;
-    
-    [ObservableProperty]
-    private string _databaseSize = "0 MB";
-    
-    [ObservableProperty]
-    private int _retentionDays = 90;
-    
-    [ObservableProperty]
     private string _webSocketPort = "8765";
     
     [ObservableProperty]
@@ -102,7 +93,6 @@ public partial class SettingsViewModel : ViewModelBase
         _monitorManager = monitorManager;
         _categoryService = categoryService;
         Title = "设置";
-        DataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "Data", "pchabit.db");
         
         LoadSettings();
         
@@ -142,7 +132,6 @@ public partial class SettingsViewModel : ViewModelBase
             }
             
             UpdateSelectedCategoryCount();
-            UpdateDatabaseSize();
             UpdateConnectedBrowsers();
             StatusMessage = $"已加载 {Categories.Count} 个类别";
             Log.Information("SettingsViewModel: InitializeAsync 完成");
@@ -446,7 +435,6 @@ public partial class SettingsViewModel : ViewModelBase
         TrackMouse = _settingsService.TrackMouse;
         TrackWebBrowsing = _settingsService.TrackWebBrowsing;
         AnonymizeData = _settingsService.AnonymizeData;
-        RetentionDays = _settingsService.RetentionDays;
         WebSocketPort = _settingsService.WebSocketPort;
         SelectedThemeKey = _settingsService.CurrentTheme;
         SelectedLanguageKey = _settingsService.CurrentLanguage;
@@ -485,9 +473,6 @@ public partial class SettingsViewModel : ViewModelBase
             case "TrackWebBrowsing":
                 _settingsService.TrackWebBrowsing = TrackWebBrowsing;
                 break;
-            case "RetentionDays":
-                _settingsService.RetentionDays = RetentionDays;
-                break;
             case "SelectedThemeKey":
                 _settingsService.CurrentTheme = SelectedThemeKey;
                 break;
@@ -509,33 +494,6 @@ public partial class SettingsViewModel : ViewModelBase
         CategoryMappings.Add(new CategoryMapping { ProcessName = "msedge.exe", Category = "浏览", IsEditable = true });
         CategoryMappings.Add(new CategoryMapping { ProcessName = "slack.exe", Category = "沟通", IsEditable = true });
         CategoryMappings.Add(new CategoryMapping { ProcessName = "spotify.exe", Category = "娱乐", IsEditable = true });
-    }
-    
-    private void UpdateDatabaseSize()
-    {
-        try
-        {
-            var dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "Data", "pchabit.db");
-            if (File.Exists(dbPath))
-            {
-                var size = new FileInfo(dbPath).Length;
-                if (size < 1024)
-                    DatabaseSize = $"{size} B";
-                else if (size < 1024 * 1024)
-                    DatabaseSize = $"{size / 1024.0:F1} KB";
-                else
-                    DatabaseSize = $"{size / 1024.0 / 1024.0:F2} MB";
-            }
-            else
-            {
-                DatabaseSize = "未找到数据库";
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "获取数据库大小失败");
-            DatabaseSize = "获取失败";
-        }
     }
     
     private void UpdateConnectedBrowsers()
@@ -624,14 +582,6 @@ public partial class SettingsViewModel : ViewModelBase
         _settingsService.AnonymizeData = value;
         _settingsService.Save();
         Log.Information("设置已保存: AnonymizeData = {Value}", value);
-    }
-    
-    partial void OnRetentionDaysChanged(int value)
-    {
-        Log.Information("OnRetentionDaysChanged: {Value}", value);
-        _settingsService.RetentionDays = value;
-        _settingsService.Save();
-        Log.Information("设置已保存: RetentionDays = {Value}", value);
     }
     
     partial void OnWebSocketPortChanged(string value)
@@ -727,25 +677,6 @@ public partial class SettingsViewModel : ViewModelBase
         _settingsService.ResetToDefaults();
         LoadSettings();
         Log.Information("设置已重置为默认值");
-    }
-    
-    [RelayCommand]
-    private void ClearData()
-    {
-        try
-        {
-            var dbPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "data.db");
-            if (File.Exists(dbPath))
-            {
-                File.Delete(dbPath);
-                Log.Information("数据库已清除");
-                DatabaseSize = "0 MB";
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "清除数据失败");
-        }
     }
     
     [RelayCommand]

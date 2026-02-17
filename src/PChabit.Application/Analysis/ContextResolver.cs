@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
 
@@ -95,12 +95,12 @@ public class ContextResolver : IContextResolver
         _appSessionRepo = appSessionRepo;
     }
     
-    public async Task<ActivityContext> ResolveContextAsync(AppSession session)
+    public Task<ActivityContext> ResolveContextAsync(AppSession session)
     {
-        return await ResolveContextAsync(session.ProcessName, session.WindowTitle, session.StartTime);
+        return ResolveContextAsync(session.ProcessName, session.WindowTitle, session.StartTime);
     }
     
-    public async Task<ActivityContext> ResolveContextAsync(string processName, string? windowTitle, DateTime timestamp)
+    public Task<ActivityContext> ResolveContextAsync(string processName, string? windowTitle, DateTime timestamp)
     {
         var context = new ActivityContext
         {
@@ -118,7 +118,7 @@ public class ContextResolver : IContextResolver
             context.Description = CleanWindowTitle(windowTitle);
         }
         
-        return context;
+        return Task.FromResult(context);
     }
     
     public async Task<List<ContextTag>> GetContextTagsAsync(DateTime startTime, DateTime endTime)
