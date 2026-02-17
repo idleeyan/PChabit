@@ -14,7 +14,7 @@
         <Platforms>x64</Platforms>
         <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
         <ApplicationManifest>app.manifest</ApplicationManifest>
-        <ApplicationIcon>tai.ico</ApplicationIcon>
+        <ApplicationIcon>pchabit.ico</ApplicationIcon>
         <EnableMsixTooling>false</EnableMsixTooling>
         <WindowsPackageType>None</WindowsPackageType>
         <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
