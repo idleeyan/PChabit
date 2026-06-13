@@ -1,8 +1,9 @@
-﻿namespace PChabit.Core.Interfaces;
+namespace PChabit.Core.Interfaces;
 
 public interface IAppMonitor : IMonitor<AppActiveEventArgs>
 {
     event EventHandler<WindowTitleChangedEventArgs>? OnWindowTitleChanged;
+    string? GetCurrentProcess();
 }
 
 public class AppActiveEventArgs : EventArgs

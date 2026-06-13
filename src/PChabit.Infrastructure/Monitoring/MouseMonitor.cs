@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
 
@@ -7,6 +7,7 @@ namespace PChabit.Infrastructure.Monitoring;
 public class MouseMonitor : IMouseMonitor
 {
     public bool IsRunning { get; private set; }
+    public DateTime LastActivityTime { get; private set; } = DateTime.MinValue;
     public event EventHandler<MouseClickEventArgs>? OnMouseClick;
     public event EventHandler<MouseMoveEventArgs>? OnMouseMove;
     public event EventHandler<MouseScrollEventArgs>? OnMouseScroll;
@@ -24,25 +25,29 @@ public class MouseMonitor : IMouseMonitor
     private double _lastY;
     private DateTime _lastMoveTime = DateTime.MinValue;
     private DateTime _lastTrailTime = DateTime.MinValue;
-    
-    private readonly List<MouseTrailPoint> _currentTrail = [];
+
     private double _totalTrailDistance;
+    private string? _currentProcess;
     
     public event EventHandler<MouseTrailEventArgs>? OnTrailCompleted;
-    
+
     public void Start()
     {
         if (IsRunning) return;
-        
+
         _proc = HookCallback;
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         using var module = process.MainModule;
+        var moduleHandle = Win32Helper.GetModuleHandle(module?.ModuleName ?? string.Empty);
         _hook = Win32Helper.SetWindowsHookEx(
-            Win32Helper.WH_MOUSE_LL, 
-            _proc, 
-            Win32Helper.GetModuleHandle(module?.ModuleName ?? string.Empty), 
+            Win32Helper.WH_MOUSE_LL,
+            _proc,
+            moduleHandle,
             0);
-        
+
+        Serilog.Log.Debug("[MS-Start] ModuleName={ModuleName} ModuleHandle=0x{Handle:X} HookHandle=0x{Hook:X}",
+            module?.ModuleName ?? "null", moduleHandle.ToInt64(), _hook.ToInt64());
+
         IsRunning = _hook != IntPtr.Zero;
     }
     
@@ -60,55 +65,69 @@ public class MouseMonitor : IMouseMonitor
         IsRunning = false;
     }
     
+    public void SetCurrentProcess(string? processName)
+    {
+        _currentProcess = processName;
+    }
+    
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
         {
-            var hookStruct = Marshal.PtrToStructure<Win32Helper.MOUSEHOOKSTRUCT>(lParam);
-            var wParamInt = wParam.ToInt32();
-            var now = DateTime.Now;
-            
-            switch (wParamInt)
+            try
             {
-                case Win32Helper.WM_LBUTTONDOWN:
-                    OnMouseClick?.Invoke(this, new MouseClickEventArgs(
-                        MouseButtonType.Left, hookStruct.pt.X, hookStruct.pt.Y, now));
-                    break;
-                    
-                case Win32Helper.WM_RBUTTONDOWN:
-                    OnMouseClick?.Invoke(this, new MouseClickEventArgs(
-                        MouseButtonType.Right, hookStruct.pt.X, hookStruct.pt.Y, now));
-                    break;
-                    
-                case Win32Helper.WM_MBUTTONDOWN:
-                    OnMouseClick?.Invoke(this, new MouseClickEventArgs(
-                        MouseButtonType.Middle, hookStruct.pt.X, hookStruct.pt.Y, now));
-                    break;
-                    
-                case Win32Helper.WM_XBUTTONDOWN:
-                    var xButton = (hookStruct.mouseData >> 16) switch
-                    {
-                        1 => MouseButtonType.XButton1,
-                        2 => MouseButtonType.XButton2,
-                        _ => MouseButtonType.XButton1
-                    };
-                    OnMouseClick?.Invoke(this, new MouseClickEventArgs(
-                        xButton, hookStruct.pt.X, hookStruct.pt.Y, now));
-                    break;
-                    
-                case Win32Helper.WM_MOUSEWHEEL:
-                case Win32Helper.WM_MOUSEHWHEEL:
-                    var delta = (short)(hookStruct.mouseData >> 16);
-                    OnMouseScroll?.Invoke(this, new MouseScrollEventArgs(
-                        delta, hookStruct.pt.X, hookStruct.pt.Y, now));
-                    break;
-                    
-                case Win32Helper.WM_MOUSEMOVE:
-                    HandleMouseMove(hookStruct.pt.X, hookStruct.pt.Y, now);
-                    break;
+                LastActivityTime = DateTime.Now;
+                var hookStruct = Marshal.PtrToStructure<Win32Helper.MOUSEHOOKSTRUCT>(lParam);
+                var wParamInt = wParam.ToInt32();
+                var now = DateTime.Now;
+
+                switch (wParamInt)
+                {
+                    case Win32Helper.WM_LBUTTONDOWN:
+                        Serilog.Log.Debug("[MS-Hook] 左键点击 ({X},{Y})", hookStruct.pt.X, hookStruct.pt.Y);
+                        OnMouseClick?.Invoke(this, new MouseClickEventArgs(
+                            MouseButtonType.Left, hookStruct.pt.X, hookStruct.pt.Y, now));
+                        break;
+
+                    case Win32Helper.WM_RBUTTONDOWN:
+                        OnMouseClick?.Invoke(this, new MouseClickEventArgs(
+                            MouseButtonType.Right, hookStruct.pt.X, hookStruct.pt.Y, now));
+                        break;
+
+                    case Win32Helper.WM_MBUTTONDOWN:
+                        OnMouseClick?.Invoke(this, new MouseClickEventArgs(
+                            MouseButtonType.Middle, hookStruct.pt.X, hookStruct.pt.Y, now));
+                        break;
+
+                    case Win32Helper.WM_XBUTTONDOWN:
+                        var xButton = (hookStruct.mouseData >> 16) switch
+                        {
+                            1 => MouseButtonType.XButton1,
+                            2 => MouseButtonType.XButton2,
+                            _ => MouseButtonType.XButton1
+                        };
+                        OnMouseClick?.Invoke(this, new MouseClickEventArgs(
+                            xButton, hookStruct.pt.X, hookStruct.pt.Y, now));
+                        break;
+
+                    case Win32Helper.WM_MOUSEWHEEL:
+                    case Win32Helper.WM_MOUSEHWHEEL:
+                        var delta = (short)(hookStruct.mouseData >> 16);
+                        OnMouseScroll?.Invoke(this, new MouseScrollEventArgs(
+                            delta, hookStruct.pt.X, hookStruct.pt.Y, now));
+                        break;
+
+                    case Win32Helper.WM_MOUSEMOVE:
+                        HandleMouseMove(hookStruct.pt.X, hookStruct.pt.Y, now);
+                        break;
+                }
+            }
+            catch
+            {
+                // 吞掉所有异常，防止钩子被 Windows 静默卸载
             }
         }
-        
+
         return Win32Helper.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
     
@@ -120,76 +139,52 @@ public class MouseMonitor : IMouseMonitor
             _lastY = y;
             _lastMoveTime = now;
             _lastTrailTime = now;
-            _currentTrail.Add(new MouseTrailPoint(x, y, now));
             return;
         }
-        
-        var distance = Math.Sqrt(Math.Pow(x - _lastX, 2) + Math.Pow(y - _lastY, 2));
-        
+
+        var dx = x - _lastX;
+        var dy = y - _lastY;
+        var distance = Math.Sqrt(dx * dx + dy * dy);
+
         if (distance < MoveThreshold) return;
         if ((now - _lastMoveTime).TotalMilliseconds < MoveThrottleMs) return;
-        
+
         OnMouseMove?.Invoke(this, new MouseMoveEventArgs(_lastX, _lastY, x, y, now));
-        
+
         _totalTrailDistance += distance;
-        
+
         if ((now - _lastTrailTime).TotalMilliseconds >= TrailSampleInterval)
         {
-            _currentTrail.Add(new MouseTrailPoint(x, y, now));
             _lastTrailTime = now;
-            
-            if (_currentTrail.Count >= 50)
+
+            if (_totalTrailDistance > 0)
             {
-                CompleteTrail();
+                OnTrailCompleted?.Invoke(this, new MouseTrailEventArgs(_totalTrailDistance));
+                _totalTrailDistance = 0;
             }
         }
-        
+
         _lastX = x;
         _lastY = y;
         _lastMoveTime = now;
     }
-    
+
     private void CompleteTrail()
     {
-        if (_currentTrail.Count < 2)
+        if (_totalTrailDistance > 0)
         {
-            _currentTrail.Clear();
+            OnTrailCompleted?.Invoke(this, new MouseTrailEventArgs(_totalTrailDistance));
             _totalTrailDistance = 0;
-            return;
         }
-        
-        var trail = _currentTrail.ToList();
-        var totalDistance = _totalTrailDistance;
-        
-        OnTrailCompleted?.Invoke(this, new MouseTrailEventArgs(trail, totalDistance));
-        
-        _currentTrail.Clear();
-        _totalTrailDistance = 0;
-    }
-}
-
-public class MouseTrailPoint
-{
-    public double X { get; }
-    public double Y { get; }
-    public DateTime Timestamp { get; }
-    
-    public MouseTrailPoint(double x, double y, DateTime timestamp)
-    {
-        X = x;
-        Y = y;
-        Timestamp = timestamp;
     }
 }
 
 public class MouseTrailEventArgs : EventArgs
 {
-    public List<MouseTrailPoint> Trail { get; }
     public double TotalDistance { get; }
-    
-    public MouseTrailEventArgs(List<MouseTrailPoint> trail, double totalDistance)
+
+    public MouseTrailEventArgs(double totalDistance)
     {
-        Trail = trail;
         TotalDistance = totalDistance;
     }
 }

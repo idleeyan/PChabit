@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>2.15.0</Version>
+        <Version>2.23.1</Version>
         <Platforms>x64</Platforms>
         <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
         <ApplicationManifest>app.manifest</ApplicationManifest>
@@ -23,6 +23,8 @@
         <EnableMsixTooling>false</EnableMsixTooling>
         <SatelliteResourceLanguages>en-US;zh-CN</SatelliteResourceLanguages>
         <NoWarn>$(NoWarn);MVVMTK0045;NETSDK1206</NoWarn>
+        <PublishReadyToRun>true</PublishReadyToRun>
+        <TieredPGO>true</TieredPGO>
     </PropertyGroup>
 
     <Target Name="RemoveUnusedLanguageFolders" AfterTargets="Build">
@@ -192,6 +194,21 @@
         <Message Text="已清理发布目录中的不需要语言文件夹" Importance="high" />
     </Target>
 
+    <!-- WinUI 3 unpacked publish fix: dotnet publish may miss XBF/PRI files -->
+    <Target Name="CopyWinUIAssetsToPublish" AfterTargets="Publish">
+        <PropertyGroup>
+            <WinUIBuildOutput>$(OutDir)</WinUIBuildOutput>
+        </PropertyGroup>
+        <Copy SourceFiles="$(WinUIBuildOutput)PChabit.pri" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('$(WinUIBuildOutput)PChabit.pri')" />
+        <Copy SourceFiles="$(WinUIBuildOutput)App.xbf" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('$(WinUIBuildOutput)App.xbf')" />
+        <Copy SourceFiles="@(WinUIBuildXbf)" DestinationFolder="$(PublishDir)Views" SkipUnchangedFiles="true" />
+        <ItemGroup>
+            <WinUIBuildXbf Include="$(WinUIBuildOutput)Views\**\*.xbf" />
+        </ItemGroup>
+        <Copy SourceFiles="@(WinUIBuildXbf)" DestinationFolder="$(PublishDir)Views\%(RecursiveDir)" SkipUnchangedFiles="true" />
+        <Message Text="已复制 WinUI 资源文件到发布目录" Importance="high" />
+    </Target>
+
     <ItemGroup>
         <ProjectReference Include="..\PChabit.Application\PChabit.Application.csproj" />
         <ProjectReference Include="..\PChabit.Infrastructure\PChabit.Infrastructure.csproj" />
@@ -209,8 +226,15 @@
         <Content Include="Assets\Sankey\**\*">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="Assets\PieChart\**\*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Content Include="pchabit.ico">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\..\CHANGELOG.md">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+            <Link>CHANGELOG.md</Link>
         </Content>
     </ItemGroup>
 

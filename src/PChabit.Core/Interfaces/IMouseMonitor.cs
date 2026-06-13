@@ -1,10 +1,11 @@
-﻿namespace PChabit.Core.Interfaces;
+namespace PChabit.Core.Interfaces;
 
 public interface IMouseMonitor : IMonitor
 {
     event EventHandler<MouseClickEventArgs>? OnMouseClick;
     event EventHandler<MouseMoveEventArgs>? OnMouseMove;
     event EventHandler<MouseScrollEventArgs>? OnMouseScroll;
+    void SetCurrentProcess(string? processName);
 }
 
 public class MouseEventArgs : EventArgs
