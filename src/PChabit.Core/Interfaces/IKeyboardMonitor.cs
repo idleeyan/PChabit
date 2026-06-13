@@ -1,7 +1,8 @@
-﻿namespace PChabit.Core.Interfaces;
+namespace PChabit.Core.Interfaces;
 
 public interface IKeyboardMonitor : IMonitor<KeyboardEventArgs>
 {
+    void SetCurrentProcess(string? processName);
 }
 
 public class KeyboardEventArgs : EventArgs

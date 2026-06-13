@@ -95,14 +95,29 @@ public partial class App : Microsoft.UI.Xaml.Application
         
         _serviceProvider = services.BuildServiceProvider();
         
-        using (var scope = _serviceProvider.CreateScope())
+        // 数据库初始化异步执行，不阻塞 UI 线程
+        _ = Task.Run(async () =>
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
-            DatabaseInitializer.InitializeAsync(dbContext).Wait();
-            Log.Information("数据库初始化完成: {Path}", databasePath);
-        }
+            try
+            {
+                await ServiceConfiguration.EnableWalModeAsync(databasePath);
+                
+                using (var scope = _serviceProvider.CreateScope())
+                {
+                    var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+                    await DatabaseInitializer.InitializeAsync(dbContext);
+                    Log.Information("数据库初始化完成: {Path}", databasePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "数据库初始化失败");
+            }
+        });
     }
     
+    private bool _startupServicesInitialized;
+
     protected override void OnLaunched(LaunchActivatedEventArgs e)
     {
         try
@@ -123,19 +138,49 @@ public partial class App : Microsoft.UI.Xaml.Application
             
             SetWindowIcon();
             
+            // 在窗口首次激活后延迟初始化非关键服务，确保 UI 先渲染
+            _window.Activated += OnWindowFirstActivated;
+            
             _window.Activate();
             
             Log.Information("窗口已激活");
-            
-            InitializeTrayService();
-            StartMonitoring();
-            StartBackupService();
         }
         catch (Exception ex)
         {
             Log.Fatal(ex, "OnLaunched 失败");
             throw;
         }
+    }
+    
+    private void OnWindowFirstActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (_startupServicesInitialized) return;
+        _startupServicesInitialized = true;
+        
+        // 注销一次性事件处理
+        if (sender is Window window)
+        {
+            window.Activated -= OnWindowFirstActivated;
+        }
+        
+        Log.Information("窗口首次激活，延迟初始化后台服务");
+        
+        // 使用低优先级延迟初始化，确保 UI 已完全渲染
+        _ = Task.Run(async () =>
+        {
+            // 短暂延迟让 UI 线程完成首次渲染
+            await Task.Delay(100);
+            
+            // 回到 UI 线程初始化托盘和监控（Win32 钩子需要 UI 线程的消息循环）
+            _window!.DispatcherQueue.TryEnqueue(() =>
+            {
+                InitializeTrayService();
+                StartMonitoring();
+            });
+            
+            // 后台服务可以在任意线程启动
+            StartBackupService();
+        });
     }
     
     private void SetWindowIcon()
@@ -214,6 +259,9 @@ public partial class App : Microsoft.UI.Xaml.Application
             _monitorManager = _serviceProvider!.GetRequiredService<MonitorManager>();
             _dataCollectionService = _serviceProvider!.GetRequiredService<DataCollectionService>();
             
+            // Win32 低级钩子 (WH_KEYBOARD_LL, WH_MOUSE_LL) 必须安装在有消息循环的线程上。
+            // 后台线程池线程没有消息泵，钩子回调不会被调用。
+            // 因此必须在 UI 线程上同步启动监控器。
             _monitorManager.StartAllAsync().Wait();
             Log.Information("监控器已启动 - AppMonitor: {AppRunning}, KeyboardMonitor: {KeyboardRunning}, MouseMonitor: {MouseRunning}", 
                 _monitorManager.IsRunning, 
@@ -300,8 +348,15 @@ public partial class App : Microsoft.UI.Xaml.Application
             Log.Information("步骤 2/5: 停止监控器...");
             if (_monitorManager != null)
             {
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                await _monitorManager.StopAllAsync().WaitAsync(cts.Token);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                try
+                {
+                    await _monitorManager.StopAllAsync().WaitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    Log.Warning("停止监控器超时，继续关闭");
+                }
             }
             Log.Information("监控器已停止");
         }
@@ -337,7 +392,7 @@ public partial class App : Microsoft.UI.Xaml.Application
                 }
             });
             
-            await Task.Delay(500);
+            await Task.Delay(200);
         }
         catch (Exception ex)
         {
@@ -357,8 +412,6 @@ public partial class App : Microsoft.UI.Xaml.Application
         
         Log.Information("所有清理步骤完成，准备退出");
         Log.CloseAndFlush();
-        
-        await Task.Delay(100);
         
         ForceTerminate();
     }

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
 using PChabit.Infrastructure.Services;
@@ -8,6 +8,7 @@ namespace PChabit.Infrastructure.Monitoring;
 public class AppMonitor : IAppMonitor
 {
     public bool IsRunning { get; private set; }
+    public DateTime LastActivityTime { get; private set; } = DateTime.MinValue;
     public event EventHandler<AppActiveEventArgs>? OnDataCollected;
     
     public event EventHandler<WindowTitleChangedEventArgs>? OnWindowTitleChanged;
@@ -64,11 +65,6 @@ public class AppMonitor : IAppMonitor
         {
             IsRunning = true;
             Task.Run(() => HandleForegroundWindow());
-            Debug.WriteLine("AppMonitor 已启动");
-        }
-        else
-        {
-            Debug.WriteLine("AppMonitor 启动失败: 无法设置事件钩子");
         }
     }
     
@@ -86,22 +82,29 @@ public class AppMonitor : IAppMonitor
             Win32Helper.UnhookWinEvent(_foregroundHook);
             _foregroundHook = IntPtr.Zero;
         }
-        
+
         if (_titleChangeHook != IntPtr.Zero)
         {
             Win32Helper.UnhookWinEvent(_titleChangeHook);
             _titleChangeHook = IntPtr.Zero;
         }
-        
+
         IsRunning = false;
-        Debug.WriteLine("AppMonitor 已停止");
     }
-    
-    private void ForegroundEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, 
+
+    public string? GetCurrentProcess()
+    {
+        lock (_lock)
+        {
+            return _currentApp?.ProcessName;
+        }
+    }
+
+    private void ForegroundEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
         if (idObject != 0 || idChild != 0) return;
-        
+
         _windowChangeChannel.Writer.TryWrite(hwnd);
     }
     
@@ -119,20 +122,17 @@ public class AppMonitor : IAppMonitor
     
     private async Task ProcessWindowChangesAsync(CancellationToken cancellationToken)
     {
-        await Task.Run(async () =>
+        await foreach (var hwnd in _windowChangeChannel.Reader.ReadAllAsync(cancellationToken))
         {
-            await foreach (var hwnd in _windowChangeChannel.Reader.ReadAllAsync(cancellationToken))
+            try
             {
-                try
-                {
-                    HandleWindow(hwnd);
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"处理窗口变化失败: {ex.Message}");
-                }
+                HandleWindow(hwnd);
             }
-        }, cancellationToken);
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"处理窗口变更失败: {ex.Message}");
+            }
+        }
     }
     
     private void HandleForegroundWindow()
