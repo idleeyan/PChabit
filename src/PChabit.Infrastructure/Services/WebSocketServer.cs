@@ -88,6 +88,10 @@ public class WebSocketServer : IDisposable
                 {
                     _ = Task.Run(() => HandleClientAsync(context, cancellationToken), cancellationToken);
                 }
+                else if (context.Request.HttpMethod == "GET")
+                {
+                    _ = Task.Run(() => ServeSettingsPage(context), cancellationToken);
+                }
                 else
                 {
                     context.Response.StatusCode = 400;
@@ -219,6 +223,78 @@ public class WebSocketServer : IDisposable
         var userAgent = context.Request.Headers["User-Agent"] ?? "Unknown";
         var origin = context.Request.Headers["Origin"] ?? "Unknown";
         return $"{origin} - {userAgent}";
+    }
+
+    private static async Task ServeSettingsPage(HttpListenerContext context)
+    {
+        try
+        {
+            var html = @"<!DOCTYPE html>
+<html lang=""zh-CN"">
+<head>
+    <meta charset=""UTF-8"">
+    <meta name=""viewport"" content=""width=device-width, initial-scale=1.0"">
+    <title>Tai Activity Tracker - 设置</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e; color: #eee;
+            min-height: 100vh; display: flex; justify-content: center; align-items: center;
+        }
+        .container { max-width: 480px; width: 100%; padding: 32px; }
+        .card {
+            background: #16213e; border-radius: 12px; padding: 24px;
+            margin-bottom: 16px;
+        }
+        h1 { font-size: 20px; margin-bottom: 8px; }
+        .status-row { display: flex; align-items: center; gap: 10px; margin: 16px 0; }
+        .dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: #22c55e; animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+        .label { font-size: 12px; color: #888; margin-bottom: 4px; }
+        .value { font-size: 14px; }
+        .footer { text-align: center; font-size: 11px; color: #555; margin-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class=""container"">
+        <div class=""card"">
+            <h1>Tai Activity Tracker</h1>
+            <p style=""color:#888;font-size:13px;"">浏览器活动追踪插件</p>
+            <div class=""status-row"">
+                <div class=""dot""></div>
+                <span>服务运行中 — 端口 " + context.Request.LocalEndPoint!.Port + @"</span>
+            </div>
+            <div>
+                <div class=""label"">客户端数量</div>
+                <div class=""value"">已连接 WebSocket 客户端: <span id=""clientCount"">-</span></div>
+            </div>
+        </div>
+        <div class=""card"">
+            <h1 style=""font-size:16px;"">使用说明</h1>
+            <p style=""font-size:13px;color:#aaa;line-height:1.6;margin-top:8px;"">
+                安装插件后，浏览器网页浏览活动将自动记录到 PChabit。
+                点击浏览器工具栏中的插件图标可查看实时统计。
+            </p>
+        </div>
+        <div class=""footer"">Tai-AI v1.0</div>
+    </div>
+</body>
+</html>";
+
+            var buffer = Encoding.UTF8.GetBytes(html);
+            context.Response.ContentType = "text/html; charset=utf-8";
+            context.Response.ContentLength64 = buffer.Length;
+            context.Response.StatusCode = 200;
+            await context.Response.OutputStream.WriteAsync(buffer);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "提供设置页面时发生错误");
+        }
     }
     
     public void Dispose()

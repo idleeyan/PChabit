@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Serilog;
@@ -44,8 +44,8 @@ public sealed partial class HeatmapPage : Page
         
         try
         {
-            await ViewModel.InitializeAsync();
-            Log.Information("[HeatmapPage] ViewModel.InitializeAsync 完成");
+            await ViewModel.LoadDataAsync();
+            Log.Information("[HeatmapPage] ViewModel.LoadDataAsync 完成");
         }
         catch (Exception ex)
         {

@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     settingsBtn.addEventListener('click', () => {
-        chrome.tabs.create({ url: 'https://localhost:8765' });
+        chrome.tabs.create({ url: 'http://localhost:8765' });
     });
     
     chrome.storage.local.get(['pagesViewed', 'sessionStart', 'connected'], (result) => {
@@ -83,6 +83,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (result.connected !== undefined) {
             updateConnectionStatus(result.connected);
         }
+        // 仅在 sessionStart 就绪后首次更新活跃时间
+        updateActiveTime();
     });
     
     chrome.storage.onChanged.addListener((changes) => {
@@ -100,6 +102,4 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(updateActiveTime, 60000);
     setInterval(checkConnection, 5000);
     setInterval(getCurrentTab, 2000);
-    
-    updateActiveTime();
 });

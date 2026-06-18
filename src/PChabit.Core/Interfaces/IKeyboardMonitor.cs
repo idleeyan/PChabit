@@ -13,6 +13,7 @@ public class KeyboardEventArgs : EventArgs
     public bool IsShiftPressed { get; init; }
     public bool IsCtrlPressed { get; init; }
     public bool IsAltPressed { get; init; }
+    public bool IsWinPressed { get; init; }
     public string? ActiveProcess { get; init; }
     public DateTime Timestamp { get; }
     public int KeyCount { get; set; } = 1;
@@ -25,7 +26,7 @@ public class KeyboardEventArgs : EventArgs
         Timestamp = timestamp;
     }
     
-    public bool IsShortcut => IsCtrlPressed || IsAltPressed;
+    public bool IsShortcut => IsCtrlPressed || IsAltPressed || IsWinPressed;
     
     public string GetShortcutString()
     {
@@ -33,6 +34,7 @@ public class KeyboardEventArgs : EventArgs
         if (IsCtrlPressed) parts.Add("Ctrl");
         if (IsShiftPressed) parts.Add("Shift");
         if (IsAltPressed) parts.Add("Alt");
+        if (IsWinPressed) parts.Add("Win");
         if (KeyName != null) parts.Add(KeyName);
         return string.Join("+", parts);
     }

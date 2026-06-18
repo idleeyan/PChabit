@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Page
     x:Class="PChabit.App.Views.TimelinePage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -31,10 +31,48 @@
                 </StackPanel>
             </Grid>
             
-            <TextBlock
-                FontSize="16"
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="{x:Bind ViewModel.SelectedDate, Mode=OneWay, Converter={StaticResource DateToStringConverter}}" />
+            <!-- 7天日期快速切换条 -->
+            <ListView
+                ItemsSource="{x:Bind ViewModel.RecentDates, Mode=OneWay}"
+                SelectionMode="None"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                ScrollViewer.HorizontalScrollMode="Disabled">
+                <ListView.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                    </ItemsPanelTemplate>
+                </ListView.ItemsPanel>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="viewModel:DateSummary">
+                        <Border
+                            Padding="12,8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            PointerPressed="DateItem_Click"
+                            Tag="{x:Bind Date}">
+                            <StackPanel HorizontalAlignment="Center" Spacing="2">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind DayName}" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind DayNumber}" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="10"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="{x:Bind TotalTime}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
             
             <ListView
                 ItemsSource="{x:Bind ViewModel.HourGroups, Mode=OneWay}"
@@ -56,6 +94,10 @@
                             Expanding="HourGroup_Expanding">
                             <Expander.Header>
                                 <Grid Padding="16,12">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -90,21 +132,35 @@
                                         FontSize="14"
                                         Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                         Text="{x:Bind TotalDuration}" />
+                                    
+                                    <!-- 迷你时间条 -->
+                                    <ItemsControl
+                                        Grid.Row="1"
+                                        Grid.ColumnSpan="3"
+                                        Margin="0,8,0,0"
+                                        ItemsSource="{x:Bind BarSegments}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="1" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="viewModel:TimelineBarSegment">
+                                                <Border
+                                                    Height="4"
+                                                    Background="{x:Bind Color, Converter={StaticResource StringToBrushConverter}}"
+                                                    CornerRadius="2"
+                                                    Width="{x:Bind PixelWidth}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </Grid>
                             </Expander.Header>
                             
                             <Expander.Content>
-                                <ListView
-                                    ItemsSource="{x:Bind Activities}"
-                                    ScrollViewer.IsDeferredScrollingEnabled="True"
-                                    SelectionMode="None"
-                                    IsItemClickEnabled="False">
-                                    <ListView.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <VirtualizingStackPanel />
-                                        </ItemsPanelTemplate>
-                                    </ListView.ItemsPanel>
-                                    <ListView.ItemTemplate>
+                                <ItemsControl
+                                    ItemsSource="{x:Bind Activities}">
+                                    <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="viewModel:TimelineActivity">
                                             <Grid
                                                 Margin="8,2"
@@ -158,8 +214,8 @@
                                                 </StackPanel>
                                             </Grid>
                                         </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </Expander.Content>
                         </Expander>
                     </DataTemplate>

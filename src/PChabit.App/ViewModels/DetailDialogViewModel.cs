@@ -1,19 +1,20 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
+using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
 public partial class DetailDialogViewModel : ObservableObject
 {
-    private readonly PChabitDbContext _dbContext;
-    
-    public DetailDialogViewModel(PChabitDbContext dbContext)
+    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+
+    public DetailDialogViewModel(IDbContextFactory<PChabitDbContext> dbFactory)
     {
-        _dbContext = dbContext;
+        _dbFactory = dbFactory;
     }
     
     [ObservableProperty]
@@ -28,13 +29,15 @@ public partial class DetailDialogViewModel : ObservableObject
     public async Task LoadKeyboardDetailsAsync(DateTime date)
     {
         Title = "按键详情";
-        
+
+        await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
         List<Core.Entities.KeyboardSession> sessions;
-        
+
         try
         {
-            sessions = await _dbContext.KeyboardSessions
-                .Where(s => s.Date == date)
+            sessions = await dbContext.KeyboardSessions
+                .Where(s => s.Date >= date && s.Date < date.AddDays(1))
                 .ToListAsync();
         }
         catch (Exception ex)
@@ -134,13 +137,15 @@ public partial class DetailDialogViewModel : ObservableObject
     public async Task LoadMouseDetailsAsync(DateTime date)
     {
         Title = "鼠标点击详情";
-        
+
+        await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
         List<Core.Entities.MouseSession> sessions;
-        
+
         try
         {
-            sessions = await _dbContext.MouseSessions
-                .Where(s => s.Date == date)
+            sessions = await dbContext.MouseSessions
+                .Where(s => s.Date >= date && s.Date < date.AddDays(1))
                 .ToListAsync();
         }
         catch (Exception ex)
@@ -192,15 +197,16 @@ public partial class DetailDialogViewModel : ObservableObject
     public async Task LoadWebDetailsAsync(DateTime date)
     {
         Title = "网页访问详情";
-        
-        try { _dbContext.ChangeTracker.Clear(); } catch { }
-        
+
         var tomorrow = date.AddDays(1);
+
+        await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
         List<Core.Entities.WebSession> sessions;
-        
+
         try
         {
-            sessions = await _dbContext.WebSessions
+            sessions = await dbContext.WebSessions
                 .AsNoTracking()
                 .Where(s => s.StartTime >= date && s.StartTime < tomorrow)
                 .OrderByDescending(s => s.StartTime)
@@ -244,10 +250,15 @@ public partial class DetailDialogViewModel : ObservableObject
         }
     }
     
-    private static string GetWebCategory(string domain, string url)
+    private string GetWebCategory(string domain, string url)
     {
-        if (string.IsNullOrEmpty(domain)) return "其他";
-        
+        if (string.IsNullOrEmpty(domain)) return "浏览";
+
+        return GetCategoryFallback(domain, url);
+    }
+
+    private static string GetCategoryFallback(string domain, string url)
+    {
         var lowerDomain = domain.ToLower();
         var lowerUrl = url.ToLower();
         
@@ -296,6 +307,11 @@ public partial class DetailDialogViewModel : ObservableObject
     }
     
     private static SolidColorBrush GetCategoryColor(string category)
+    {
+        return GetCategoryColorFallback(category);
+    }
+
+    private static SolidColorBrush GetCategoryColorFallback(string category)
     {
         var hexColor = category switch
         {

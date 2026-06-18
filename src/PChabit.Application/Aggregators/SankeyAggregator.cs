@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Entities;
-using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Data;
 
 namespace PChabit.Application.Aggregators;
 
@@ -31,17 +32,22 @@ public class SankeyData
 
 public class SankeyAggregator
 {
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
 
-    public SankeyAggregator(IUnitOfWork unitOfWork)
+    public SankeyAggregator(IDbContextFactory<PChabitDbContext> dbContextFactory)
     {
-        _unitOfWork = unitOfWork;
+        _dbContextFactory = dbContextFactory;
     }
 
     public async Task<SankeyData> GetSankeyDataAsync(DateTime startDate, DateTime endDate, int topN = 10)
     {
-        var sessions = await _unitOfWork.AppSessions.GetByDateRangeAsync(startDate, endDate);
-        var sortedSessions = sessions.OrderBy(s => s.StartTime).ToList();
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        var sessions = await dbContext.AppSessions
+            .AsNoTracking()
+            .Where(s => s.StartTime >= startDate && s.StartTime <= endDate)
+            .OrderBy(s => s.StartTime)
+            .ToListAsync();
 
         var appUsage = new Dictionary<string, TimeSpan>();
         var transitions = new Dictionary<string, int>();
@@ -49,26 +55,19 @@ public class SankeyAggregator
         string? previousProcess = null;
         DateTime? previousEndTime = null;
 
-        foreach (var session in sortedSessions)
+        foreach (var session in sessions)
         {
             var processName = GetAppDisplayName(session.ProcessName ?? "Unknown");
 
-            if (!appUsage.ContainsKey(processName))
-                appUsage[processName] = TimeSpan.Zero;
-            appUsage[processName] += session.Duration;
+            appUsage[processName] = appUsage.GetValueOrDefault(processName) + session.Duration;
 
-            if (previousProcess != null && previousProcess != processName)
+            if (previousProcess != null && previousProcess != processName && previousEndTime.HasValue)
             {
-                if (previousEndTime.HasValue)
+                var timeGap = session.StartTime - previousEndTime.Value;
+                if (timeGap.TotalSeconds <= 30)
                 {
-                    var timeGap = session.StartTime - previousEndTime.Value;
-                    if (timeGap.TotalSeconds <= 30)
-                    {
-                        var key = $"{previousProcess}->{processName}";
-                        if (!transitions.ContainsKey(key))
-                            transitions[key] = 0;
-                        transitions[key]++;
-                    }
+                    var key = $"{previousProcess}->{processName}";
+                    transitions[key] = transitions.GetValueOrDefault(key) + 1;
                 }
             }
 
@@ -83,7 +82,7 @@ public class SankeyAggregator
             .ToHashSet();
 
         var nodes = new List<SankeyNode>();
-        var nodeIdMap = new Dictionary<string, string>();
+        var nodeIdMap = new Dictionary<string, string>(topN + 1);
         var otherUsage = TimeSpan.Zero;
 
         foreach (var kvp in appUsage.OrderByDescending(kv => kv.Value))
@@ -125,8 +124,8 @@ public class SankeyAggregator
             var source = parts[0];
             var target = parts[1];
 
-            var sourceId = nodeIdMap.TryGetValue(source, out var sId) ? sId : nodeIdMap["Other"];
-            var targetId = nodeIdMap.TryGetValue(target, out var tId) ? tId : nodeIdMap["Other"];
+            var sourceId = nodeIdMap.TryGetValue(source, out var sId) ? sId : otherId;
+            var targetId = nodeIdMap.TryGetValue(target, out var tId) ? tId : otherId;
 
             if (sourceId == targetId)
                 continue;
@@ -134,11 +133,11 @@ public class SankeyAggregator
             var key = (sourceId, targetId);
             var reverseKey = (targetId, sourceId);
 
-            if (linkMap.ContainsKey(reverseKey))
+            if (linkMap.TryGetValue(reverseKey, out var existingLink))
             {
-                linkMap[reverseKey].SwitchCount += kvp.Value;
+                existingLink.SwitchCount += kvp.Value;
             }
-            else if (!linkMap.ContainsKey(key))
+            else if (!linkMap.TryGetValue(key, out _))
             {
                 linkMap[key] = new SankeyLink
                 {

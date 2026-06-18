@@ -2,10 +2,13 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 
 namespace PChabit.App.ViewModels;
@@ -14,7 +17,7 @@ public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ISettingsService _settingsService;
     private readonly MonitorManager _monitorManager;
-    private readonly ICategoryService _categoryService;
+    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
     
     [ObservableProperty]
     private bool _startWithWindows = true;
@@ -56,6 +59,12 @@ public partial class SettingsViewModel : ViewModelBase
     private string _selectedLanguageKey = "zh-CN";
     
     [ObservableProperty]
+    private int _dataRetentionDays = 90;
+    
+    [ObservableProperty]
+    private bool _autoCleanupEnabled = true;
+    
+    [ObservableProperty]
     private int _connectedBrowsers = 0;
     
     [ObservableProperty]
@@ -87,14 +96,15 @@ public partial class SettingsViewModel : ViewModelBase
     
     public ObservableCollection<CategoryDisplayItem> Categories { get; } = new();
     
-    public SettingsViewModel(ISettingsService settingsService, MonitorManager monitorManager, ICategoryService categoryService) : base()
+    public SettingsViewModel(ISettingsService settingsService, MonitorManager monitorManager, IDbContextFactory<PChabitDbContext> dbFactory) : base()
     {
         _settingsService = settingsService;
         _monitorManager = monitorManager;
-        _categoryService = categoryService;
+        _dbFactory = dbFactory;
         Title = "设置";
         
-        LoadSettings();
+        // LoadSettings 已改为异步，在 InitializeAsync 中调用以避免构造函数中同步文件 I/O 阻塞 UI
+        LoadCategoryMappings();
         
         Log.Information("SettingsViewModel: 构造函数完成");
     }
@@ -102,38 +112,65 @@ public partial class SettingsViewModel : ViewModelBase
     public async Task InitializeAsync()
     {
         Log.Information("SettingsViewModel: InitializeAsync 开始");
-        
+
         try
         {
-            await Task.Run(() => _categoryService.InitializeDefaultCategoriesSync());
-            Log.Information("SettingsViewModel: 默认分类初始化完成");
-            
-            var categories = await Task.Run(() => _categoryService.GetAllCategoriesSync());
-            Log.Information("SettingsViewModel: 获取到 {Count} 个分类", categories.Count);
-            
-            var mappings = await Task.Run(() => _categoryService.GetAllMappingsSync());
-            Log.Information("SettingsViewModel: 获取到 {Count} 个映射", mappings.Count);
-            
-            Categories.Clear();
-            foreach (var category in categories)
+            // Phase 1: 线程池 — 文件 I/O + DB 查询
+            var (catItems, totalCount) = await Task.Run(async () =>
             {
-                var programCount = mappings.Count(m => m.CategoryId == category.Id);
-                Categories.Add(new CategoryDisplayItem
+                _settingsService.Load();
+
+                await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+                await InitializeDefaultCategoriesAsync(dbContext);
+
+                var categories = await dbContext.ProgramCategories
+                    .Include(c => c.ProgramMappings)
+                    .Where(c => c.IsActive)
+                    .OrderBy(c => c.SortOrder)
+                    .ThenBy(c => c.Name)
+                    .ToListAsync();
+
+                var mappings = await dbContext.ProgramCategoryMappings.ToListAsync();
+
+                var items = categories.Select(category =>
                 {
-                    Id = category.Id,
-                    Name = category.Name,
-                    Description = category.Description ?? "",
-                    Icon = category.Icon,
-                    Color = category.Color,
-                    IsSystem = category.IsSystem,
-                    ProgramCount = programCount,
-                    SortOrder = category.SortOrder
-                });
-            }
-            
+                    var programCount = mappings.Count(m => m.CategoryId == category.Id);
+                    return new CategoryDisplayItem
+                    {
+                        Id = category.Id,
+                        Name = category.Name,
+                        Description = category.Description ?? "",
+                        Icon = category.Icon,
+                        Color = category.Color,
+                        IsSystem = category.IsSystem,
+                        ProgramCount = programCount,
+                        SortOrder = category.SortOrder
+                    };
+                }).ToList();
+
+                Log.Information("SettingsViewModel: 获取到 {Count} 个分类", items.Count);
+                Log.Information("SettingsViewModel: 获取到 {Count} 个映射", mappings.Count);
+
+                return (items, items.Count);
+            });
+
+            // Phase 2: UI 线程 — 设置 UI 状态 + ObservableCollection 更新
+            await RunOnUIThreadAsync(() =>
+            {
+                LoadUiFromSettings();
+
+                Categories.Clear();
+                foreach (var item in catItems)
+                {
+                    Categories.Add(item);
+                }
+                return Task.CompletedTask;
+            });
+
             UpdateSelectedCategoryCount();
             UpdateConnectedBrowsers();
-            StatusMessage = $"已加载 {Categories.Count} 个类别";
+            StatusMessage = $"已加载 {totalCount} 个类别";
             Log.Information("SettingsViewModel: InitializeAsync 完成");
         }
         catch (Exception ex)
@@ -142,34 +179,107 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "加载类别失败";
         }
     }
+
+    private static async Task InitializeDefaultCategoriesAsync(PChabitDbContext dbContext)
+    {
+        if (await dbContext.ProgramCategories.AnyAsync())
+        {
+            return;
+        }
+
+        var now = DateTime.Now;
+        var defaultCategories = new List<ProgramCategory>
+        {
+            new() { Name = "开发", Description = "开发工具和IDE", Color = "#4A90E4", Icon = "💻", SortOrder = 1, IsSystem = true, IsActive = true, CreatedAt = now },
+            new() { Name = "浏览", Description = "浏览器", Color = "#50C878", Icon = "🌐", SortOrder = 2, IsSystem = true, IsActive = true, CreatedAt = now },
+            new() { Name = "沟通", Description = "即时通讯和邮件", Color = "#FF6B6B", Icon = "💬", SortOrder = 3, IsSystem = true, IsActive = true, CreatedAt = now },
+            new() { Name = "娱乐", Description = "游戏和娱乐", Color = "#9B59B6", Icon = "🎮", SortOrder = 4, IsSystem = true, IsActive = true, CreatedAt = now },
+            new() { Name = "办公", Description = "办公软件", Color = "#F39C12", Icon = "📊", SortOrder = 5, IsSystem = true, IsActive = true, CreatedAt = now },
+            new() { Name = "设计", Description = "设计工具", Color = "#E74C3C", Icon = "🎨", SortOrder = 6, IsSystem = true, IsActive = true, CreatedAt = now },
+            new() { Name = "其他", Description = "未分类程序", Color = "#95A5A6", Icon = "📁", SortOrder = 99, IsSystem = true, IsActive = true, CreatedAt = now }
+        };
+
+        var defaultMappings = new List<ProgramCategoryMapping>
+        {
+            new() { ProcessName = "code.exe", CategoryId = 1 },
+            new() { ProcessName = "devenv.exe", CategoryId = 1 },
+            new() { ProcessName = "idea64.exe", CategoryId = 1 },
+            new() { ProcessName = "pycharm64.exe", CategoryId = 1 },
+            new() { ProcessName = "chrome.exe", CategoryId = 2 },
+            new() { ProcessName = "msedge.exe", CategoryId = 2 },
+            new() { ProcessName = "firefox.exe", CategoryId = 2 },
+            new() { ProcessName = "slack.exe", CategoryId = 3 },
+            new() { ProcessName = "discord.exe", CategoryId = 3 },
+            new() { ProcessName = "teams.exe", CategoryId = 3 },
+            new() { ProcessName = "outlook.exe", CategoryId = 3 },
+            new() { ProcessName = "spotify.exe", CategoryId = 4 },
+            new() { ProcessName = "steam.exe", CategoryId = 4 },
+            new() { ProcessName = "wmplayer.exe", CategoryId = 4 },
+            new() { ProcessName = "WINWORD.EXE", CategoryId = 5 },
+            new() { ProcessName = "EXCEL.EXE", CategoryId = 5 },
+            new() { ProcessName = "POWERPNT.EXE", CategoryId = 5 },
+            new() { ProcessName = "Photoshop.exe", CategoryId = 6 },
+            new() { ProcessName = "Figma.exe", CategoryId = 6 }
+        };
+
+        dbContext.ProgramCategories.AddRange(defaultCategories);
+        await dbContext.SaveChangesAsync();
+
+        foreach (var mapping in defaultMappings)
+        {
+            var category = defaultCategories.FirstOrDefault(c => c.Id == mapping.CategoryId);
+            if (category != null)
+            {
+                mapping.ProcessAlias = category.Name;
+            }
+        }
+
+        dbContext.ProgramCategoryMappings.AddRange(defaultMappings);
+        await dbContext.SaveChangesAsync();
+
+        Log.Information("已初始化默认类别和映射");
+    }
     
-    public void LoadCategories()
+    public async Task LoadCategoriesAsync()
     {
         try
         {
-            _categoryService.InitializeDefaultCategoriesSync();
-            var categories = _categoryService.GetAllCategoriesSync();
-            var mappings = _categoryService.GetAllMappingsSync();
-            
-            Categories.Clear();
-            foreach (var category in categories)
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            await InitializeDefaultCategoriesAsync(dbContext);
+
+            var categories = await dbContext.ProgramCategories
+                .Include(c => c.ProgramMappings)
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.SortOrder)
+                .ThenBy(c => c.Name)
+                .ToListAsync();
+
+            var mappings = await dbContext.ProgramCategoryMappings.ToListAsync();
+
+            await RunOnUIThreadAsync(() =>
             {
-                var programCount = mappings.Count(m => m.CategoryId == category.Id);
-                Categories.Add(new CategoryDisplayItem
+                Categories.Clear();
+                foreach (var category in categories)
                 {
-                    Id = category.Id,
-                    Name = category.Name,
-                    Description = category.Description ?? "",
-                    Icon = category.Icon,
-                    Color = category.Color,
-                    IsSystem = category.IsSystem,
-                    ProgramCount = programCount,
-                    SortOrder = category.SortOrder
-                });
-            }
-            
-            UpdateSelectedCategoryCount();
-            StatusMessage = $"已加载 {Categories.Count} 个类别";
+                    var programCount = mappings.Count(m => m.CategoryId == category.Id);
+                    Categories.Add(new CategoryDisplayItem
+                    {
+                        Id = category.Id,
+                        Name = category.Name,
+                        Description = category.Description ?? "",
+                        Icon = category.Icon,
+                        Color = category.Color,
+                        IsSystem = category.IsSystem,
+                        ProgramCount = programCount,
+                        SortOrder = category.SortOrder
+                    });
+                }
+
+                UpdateSelectedCategoryCount();
+                StatusMessage = $"已加载 {Categories.Count} 个类别";
+                return Task.CompletedTask;
+            });
         }
         catch (Exception ex)
         {
@@ -179,30 +289,35 @@ public partial class SettingsViewModel : ViewModelBase
     }
     
     [RelayCommand]
-    private void AddCategory()
+    private async Task AddCategory()
     {
         if (string.IsNullOrWhiteSpace(NewCategoryName)) return;
-        
+
         try
         {
-            if (_categoryService.CategoryExists(NewCategoryName))
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            if (await dbContext.ProgramCategories.AnyAsync(c => c.Name == NewCategoryName && c.IsActive))
             {
                 StatusMessage = "类别名称已存在";
                 return;
             }
-            
+
             var category = new ProgramCategory
             {
                 Name = NewCategoryName,
                 Description = "",
                 Color = "#4A90E4",
                 Icon = "📁",
-                SortOrder = Categories.Count + 1
+                SortOrder = Categories.Count + 1,
+                IsActive = true,
+                CreatedAt = DateTime.Now
             };
-            
-            _categoryService.CreateCategory(category);
-            LoadCategories();
-            
+
+            dbContext.ProgramCategories.Add(category);
+            await dbContext.SaveChangesAsync();
+            await LoadCategoriesAsync();
+
             NewCategoryName = "";
             StatusMessage = "类别创建成功";
         }
@@ -213,22 +328,37 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
     
-    public void SaveCategoryFromDialog(ProgramCategory category, bool isEditMode)
+    public async Task SaveCategoryFromDialogAsync(ProgramCategory category, bool isEditMode)
     {
         try
         {
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
             if (isEditMode)
             {
-                _categoryService.UpdateCategory(category);
+                var existing = await dbContext.ProgramCategories.FindAsync(category.Id);
+                if (existing != null)
+                {
+                    existing.Name = category.Name;
+                    existing.Description = category.Description;
+                    existing.Color = category.Color;
+                    existing.Icon = category.Icon;
+                    existing.SortOrder = category.SortOrder;
+                    existing.UpdatedAt = DateTime.Now;
+                    await dbContext.SaveChangesAsync();
+                }
                 StatusMessage = $"分类 \"{category.Name}\" 已更新";
             }
             else
             {
-                _categoryService.CreateCategory(category);
+                category.IsActive = true;
+                category.CreatedAt = DateTime.Now;
+                dbContext.ProgramCategories.Add(category);
+                await dbContext.SaveChangesAsync();
                 StatusMessage = $"分类 \"{category.Name}\" 已创建";
             }
-            
-            LoadCategories();
+
+            await LoadCategoriesAsync();
         }
         catch (Exception ex)
         {
@@ -238,20 +368,28 @@ public partial class SettingsViewModel : ViewModelBase
     }
     
     [RelayCommand]
-    private void DeleteCategory(CategoryDisplayItem? item)
+    private async Task DeleteCategory(CategoryDisplayItem? item)
     {
         if (item == null) return;
-        
+
         if (item.IsSystem)
         {
             StatusMessage = "系统分类不能删除";
             return;
         }
-        
+
         try
         {
-            _categoryService.DeleteCategory(item.Id);
-            LoadCategories();
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            var category = await dbContext.ProgramCategories.FindAsync(item.Id);
+            if (category != null)
+            {
+                category.IsActive = false;
+                await dbContext.SaveChangesAsync();
+            }
+
+            await LoadCategoriesAsync();
             StatusMessage = $"分类 \"{item.Name}\" 已删除";
         }
         catch (Exception ex)
@@ -294,18 +432,29 @@ public partial class SettingsViewModel : ViewModelBase
     private async Task DeleteSelectedCategories()
     {
         var selectedIds = Categories.Where(c => c.IsSelected && !c.IsSystem).Select(c => c.Id).ToList();
-        
+
         if (selectedIds.Count == 0)
         {
             StatusMessage = "请选择要删除的分类";
             return;
         }
-        
+
         try
         {
-            var deletedCount = await _categoryService.DeleteCategoriesAsync(selectedIds);
-            LoadCategories();
-            StatusMessage = $"已删除 {deletedCount} 个分类";
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            var categories = await dbContext.ProgramCategories
+                .Where(c => selectedIds.Contains(c.Id) && !c.IsSystem)
+                .ToListAsync();
+
+            foreach (var category in categories)
+            {
+                category.IsActive = false;
+            }
+
+            await dbContext.SaveChangesAsync();
+            await LoadCategoriesAsync();
+            StatusMessage = $"已删除 {categories.Count} 个分类";
         }
         catch (Exception ex)
         {
@@ -315,23 +464,28 @@ public partial class SettingsViewModel : ViewModelBase
     }
     
     [RelayCommand]
-    private void MoveCategoryUp(CategoryDisplayItem? item)
+    private async Task MoveCategoryUp(CategoryDisplayItem? item)
     {
         if (item == null) return;
-        
+
         var index = Categories.IndexOf(item);
         if (index <= 0) return;
-        
+
         var previousItem = Categories[index - 1];
         var tempOrder = item.SortOrder;
         item.SortOrder = previousItem.SortOrder;
         previousItem.SortOrder = tempOrder;
-        
+
         try
         {
-            _categoryService.UpdateCategorySortOrderAsync(item.Id, item.SortOrder);
-            _categoryService.UpdateCategorySortOrderAsync(previousItem.Id, previousItem.SortOrder);
-            
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            var cat1 = await dbContext.ProgramCategories.FindAsync(item.Id);
+            var cat2 = await dbContext.ProgramCategories.FindAsync(previousItem.Id);
+            if (cat1 != null) cat1.SortOrder = item.SortOrder;
+            if (cat2 != null) cat2.SortOrder = previousItem.SortOrder;
+            await dbContext.SaveChangesAsync();
+
             Categories.Move(index, index - 1);
             StatusMessage = "排序已更新";
         }
@@ -341,25 +495,30 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "更新排序失败";
         }
     }
-    
+
     [RelayCommand]
-    private void MoveCategoryDown(CategoryDisplayItem? item)
+    private async Task MoveCategoryDown(CategoryDisplayItem? item)
     {
         if (item == null) return;
-        
+
         var index = Categories.IndexOf(item);
         if (index < 0 || index >= Categories.Count - 1) return;
-        
+
         var nextItem = Categories[index + 1];
         var tempOrder = item.SortOrder;
         item.SortOrder = nextItem.SortOrder;
         nextItem.SortOrder = tempOrder;
-        
+
         try
         {
-            _categoryService.UpdateCategorySortOrderAsync(item.Id, item.SortOrder);
-            _categoryService.UpdateCategorySortOrderAsync(nextItem.Id, nextItem.SortOrder);
-            
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            var cat1 = await dbContext.ProgramCategories.FindAsync(item.Id);
+            var cat2 = await dbContext.ProgramCategories.FindAsync(nextItem.Id);
+            if (cat1 != null) cat1.SortOrder = item.SortOrder;
+            if (cat2 != null) cat2.SortOrder = nextItem.SortOrder;
+            await dbContext.SaveChangesAsync();
+
             Categories.Move(index, index + 1);
             StatusMessage = "排序已更新";
         }
@@ -369,17 +528,29 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "更新排序失败";
         }
     }
-    
+
     [RelayCommand]
     private async Task ExportCategories()
     {
         try
         {
-            var json = await _categoryService.ExportCategoriesAsync();
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            var categories = await dbContext.ProgramCategories.Where(c => c.IsActive).ToListAsync();
+            var mappings = await dbContext.ProgramCategoryMappings.ToListAsync();
+
+            var export = new
+            {
+                Categories = categories,
+                Mappings = mappings,
+                ExportedAt = DateTime.Now
+            };
+
+            var json = System.Text.Json.JsonSerializer.Serialize(export);
             var exportPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PChabit", "categories_export.json");
             Directory.CreateDirectory(Path.GetDirectoryName(exportPath)!);
             await File.WriteAllTextAsync(exportPath, json);
-            
+
             StatusMessage = $"分类已导出到: {exportPath}";
             Log.Information("分类已导出到: {Path}", exportPath);
         }
@@ -389,7 +560,7 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "导出分类失败";
         }
     }
-    
+
     [RelayCommand]
     private async Task ImportCategories()
     {
@@ -401,11 +572,51 @@ public partial class SettingsViewModel : ViewModelBase
                 StatusMessage = "未找到导入文件";
                 return;
             }
-            
+
             var json = await File.ReadAllTextAsync(importPath);
-            var count = await _categoryService.ImportCategoriesAsync(json);
-            
-            LoadCategories();
+
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            int count = 0;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("Categories", out var categoriesElement))
+                {
+                    foreach (var category in categoriesElement.EnumerateArray())
+                    {
+                        var name = category.GetProperty("Name").GetString() ?? "";
+                        var existing = await dbContext.ProgramCategories
+                            .FirstOrDefaultAsync(c => c.Name == name);
+
+                        if (existing == null)
+                        {
+                            dbContext.ProgramCategories.Add(new ProgramCategory
+                            {
+                                Name = name,
+                                Description = category.TryGetProperty("Description", out var desc) ? desc.GetString() ?? "" : "",
+                                Color = category.TryGetProperty("Color", out var color) ? color.GetString() ?? "#4A90E4" : "#4A90E4",
+                                Icon = category.TryGetProperty("Icon", out var icon) ? icon.GetString() ?? "📁" : "📁",
+                                SortOrder = category.TryGetProperty("SortOrder", out var sort) ? sort.GetInt32() : 99,
+                                IsSystem = false,
+                                IsActive = true,
+                                CreatedAt = DateTime.Now
+                            });
+                            count++;
+                        }
+                    }
+                }
+
+                await dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "导入类别失败");
+            }
+
+            await LoadCategoriesAsync();
             StatusMessage = $"已导入 {count} 个分类";
         }
         catch (Exception ex)
@@ -423,7 +634,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _newCategoryName = "";
     
-    private void LoadSettings()
+    private void LoadUiFromSettings()
     {
         StartWithWindows = _settingsService.StartWithWindows;
         MinimizeToTray = _settingsService.MinimizeToTray;
@@ -436,6 +647,8 @@ public partial class SettingsViewModel : ViewModelBase
         TrackWebBrowsing = _settingsService.TrackWebBrowsing;
         AnonymizeData = _settingsService.AnonymizeData;
         WebSocketPort = _settingsService.WebSocketPort;
+        DataRetentionDays = _settingsService.DataRetentionDays;
+        AutoCleanupEnabled = _settingsService.AutoCleanupEnabled;
         SelectedThemeKey = _settingsService.CurrentTheme;
         SelectedLanguageKey = _settingsService.CurrentLanguage;
     }
@@ -479,9 +692,15 @@ public partial class SettingsViewModel : ViewModelBase
             case "SelectedLanguageKey":
                 _settingsService.CurrentLanguage = SelectedLanguageKey;
                 break;
+            case "DataRetentionDays":
+                _settingsService.DataRetentionDays = DataRetentionDays;
+                break;
+            case "AutoCleanupEnabled":
+                _settingsService.AutoCleanupEnabled = AutoCleanupEnabled;
+                break;
         }
         
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("SaveSetting: 设置 {PropertyName} 已保存", propertyName);
     }
     
@@ -505,7 +724,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnStartWithWindowsChanged: {Value}", value);
         _settingsService.StartWithWindows = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: StartWithWindows = {Value}", value);
     }
     
@@ -513,7 +732,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnMinimizeToTrayChanged: {Value}", value);
         _settingsService.MinimizeToTray = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: MinimizeToTray = {Value}", value);
     }
     
@@ -521,7 +740,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnShowNotificationsChanged: {Value}", value);
         _settingsService.ShowNotifications = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: ShowNotifications = {Value}", value);
     }
     
@@ -529,7 +748,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnAutoStartMonitoringChanged: {Value}", value);
         _settingsService.AutoStartMonitoring = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: AutoStartMonitoring = {Value}", value);
     }
     
@@ -537,7 +756,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnMonitoringIntervalChanged: {Value}", value);
         _settingsService.MonitoringInterval = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: MonitoringInterval = {Value}", value);
     }
     
@@ -545,7 +764,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnIdleThresholdChanged: {Value}", value);
         _settingsService.IdleThreshold = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: IdleThreshold = {Value}", value);
     }
     
@@ -553,34 +772,36 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnTrackKeyboardChanged: {Value}", value);
         _settingsService.TrackKeyboard = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: TrackKeyboard = {Value}", value);
-        ApplyMonitorSettings();
+        // ApplyMonitorSettings 内部调用 Win32 钩子安装（SetWindowsHookEx），
+        // 必须在 UI 线程执行（钩子需要消息循环），否则在 Task.Run 线程会卡死（陷阱 #5.5）
+        RunOnUIThread(ApplyMonitorSettings);
     }
-    
+
     partial void OnTrackMouseChanged(bool value)
     {
         Log.Information("OnTrackMouseChanged: {Value}", value);
         _settingsService.TrackMouse = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: TrackMouse = {Value}", value);
-        ApplyMonitorSettings();
+        RunOnUIThread(ApplyMonitorSettings);
     }
-    
+
     partial void OnTrackWebBrowsingChanged(bool value)
     {
         Log.Information("OnTrackWebBrowsingChanged: {Value}", value);
         _settingsService.TrackWebBrowsing = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: TrackWebBrowsing = {Value}", value);
-        ApplyMonitorSettings();
+        RunOnUIThread(ApplyMonitorSettings);
     }
     
     partial void OnAnonymizeDataChanged(bool value)
     {
         Log.Information("OnAnonymizeDataChanged: {Value}", value);
         _settingsService.AnonymizeData = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: AnonymizeData = {Value}", value);
     }
     
@@ -588,7 +809,7 @@ public partial class SettingsViewModel : ViewModelBase
     {
         Log.Information("OnWebSocketPortChanged: {Value}", value);
         _settingsService.WebSocketPort = value;
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存: WebSocketPort = {Value}", value);
     }
     
@@ -598,9 +819,10 @@ public partial class SettingsViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(value))
         {
             _settingsService.CurrentTheme = value;
-            _settingsService.Save();
+            _ = Task.Run(() => _settingsService.SaveAsync());
             Log.Information("设置已保存: CurrentTheme = {Value}", value);
-            ApplyTheme(value);
+            // ApplyTheme 访问 Window.Content（COM 对象），必须在 UI 线程调用（陷阱 #5.5 / #10）
+            RunOnUIThread(() => ApplyTheme(value));
         }
     }
     
@@ -610,9 +832,24 @@ public partial class SettingsViewModel : ViewModelBase
         if (!string.IsNullOrWhiteSpace(value))
         {
             _settingsService.CurrentLanguage = value;
-            _settingsService.Save();
+            _ = Task.Run(() => _settingsService.SaveAsync());
             Log.Information("设置已保存: CurrentLanguage = {Value}", value);
         }
+    }
+    
+    partial void OnDataRetentionDaysChanged(int value)
+    {
+        if (value < 30) value = 30;
+        if (value > 365) value = 365;
+        _dataRetentionDays = value;
+        _settingsService.DataRetentionDays = value;
+        _ = Task.Run(() => _settingsService.SaveAsync());
+    }
+    
+    partial void OnAutoCleanupEnabledChanged(bool value)
+    {
+        _settingsService.AutoCleanupEnabled = value;
+        _ = Task.Run(() => _settingsService.SaveAsync());
     }
     
     private void ApplyMonitorSettings()
@@ -656,6 +893,10 @@ public partial class SettingsViewModel : ViewModelBase
                     };
                 }
             }
+
+            // 更新软色背景画刷以适应深色/浅色主题
+            UpdateSoftColorsForTheme(themeKey);
+
             Log.Information("主题已切换: {Theme}", themeKey);
         }
         catch (Exception ex)
@@ -663,11 +904,43 @@ public partial class SettingsViewModel : ViewModelBase
             Log.Warning(ex, "切换主题失败");
         }
     }
+
+    /// <summary>
+    /// 根据主题更新软色背景画刷（深色模式下变暗以保持视觉舒适度）
+    /// </summary>
+    private static void UpdateSoftColorsForTheme(string themeKey)
+    {
+        var isDark = themeKey == "dark";
+        try
+        {
+            var resources = App.Current.Resources;
+
+            // PrimarySoft: 浅色 #DBEAFE → 深色 #1E3A5F
+            if (resources["PrimarySoftBrush"] is SolidColorBrush primarySoftBrush)
+                primarySoftBrush.Color = isDark ? Windows.UI.Color.FromArgb(0xFF, 0x1E, 0x3A, 0x5F) : Windows.UI.Color.FromArgb(0xFF, 0xDB, 0xEA, 0xFE);
+
+            // SuccessSoft: 浅色 #D1FAE5 → 深色 #064E3B
+            if (resources["SuccessSoftBrush"] is SolidColorBrush successSoftBrush)
+                successSoftBrush.Color = isDark ? Windows.UI.Color.FromArgb(0xFF, 0x06, 0x4E, 0x3B) : Windows.UI.Color.FromArgb(0xFF, 0xD1, 0xFA, 0xE5);
+
+            // WarningSoft: 浅色 #FEF3C7 → 深色 #713F12
+            if (resources["WarningSoftBrush"] is SolidColorBrush warningSoftBrush)
+                warningSoftBrush.Color = isDark ? Windows.UI.Color.FromArgb(0xFF, 0x71, 0x3F, 0x12) : Windows.UI.Color.FromArgb(0xFF, 0xFE, 0xF3, 0xC7);
+
+            // InsightSoft: 浅色 #EDE9FE → 深色 #2E1065
+            if (resources["InsightSoftBrush"] is SolidColorBrush insightSoftBrush)
+                insightSoftBrush.Color = isDark ? Windows.UI.Color.FromArgb(0xFF, 0x2E, 0x10, 0x65) : Windows.UI.Color.FromArgb(0xFF, 0xED, 0xE9, 0xFE);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "更新软色画刷失败");
+        }
+    }
     
     [RelayCommand]
     private void SaveSettings()
     {
-        _settingsService.Save();
+        _ = Task.Run(() => _settingsService.SaveAsync());
         Log.Information("设置已保存");
     }
     
@@ -675,7 +948,7 @@ public partial class SettingsViewModel : ViewModelBase
     private void ResetToDefaults()
     {
         _settingsService.ResetToDefaults();
-        LoadSettings();
+        LoadUiFromSettings();
         Log.Information("设置已重置为默认值");
     }
     
@@ -686,7 +959,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             var exportPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PChabit", "settings_export.json");
             Directory.CreateDirectory(Path.GetDirectoryName(exportPath)!);
-            _settingsService.Save();
+            _ = Task.Run(() => _settingsService.SaveAsync());
             File.Copy(
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "settings.json"),
                 exportPath,
@@ -710,7 +983,7 @@ public partial class SettingsViewModel : ViewModelBase
                 var destPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "settings.json");
                 File.Copy(importPath, destPath, true);
                 _settingsService.Load();
-                LoadSettings();
+                LoadUiFromSettings();
                 Log.Information("设置已导入");
             }
         }

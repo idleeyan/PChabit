@@ -45,7 +45,7 @@
                     Grid.Row="1"
                     Margin="0,16,0,0"
                     HorizontalAlignment="Stretch"
-                    Command="{x:Bind ViewModel.AddCategoryCommand}"
+                    Click="OnAddCategoryClick"
                     Content="添加分类"
                     Style="{StaticResource AccentButtonStyle}" />
 

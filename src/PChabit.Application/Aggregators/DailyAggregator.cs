@@ -1,4 +1,4 @@
-﻿using PChabit.Core.Entities;
+using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
 
 namespace PChabit.Application.Aggregators;
@@ -28,11 +28,61 @@ public class DailyAggregator
             s => s.StartTime >= startOfDay && s.StartTime < endOfDay);
         
         var keyboardSessions = await _keyboardSessionRepo.FindAsync(
-            s => s.Date == date.Date);
-        
+            s => s.Date >= date.Date && s.Date < date.Date.AddDays(1));
+
         var mouseSessions = await _mouseSessionRepo.FindAsync(
-            s => s.Date == date.Date);
+            s => s.Date >= date.Date && s.Date < date.Date.AddDays(1));
         
+        return BuildDailySummary(date, appSessions, keyboardSessions, mouseSessions);
+    }
+    
+    public async Task<WeeklySummary> GetWeeklySummaryAsync(DateTime weekStart)
+    {
+        var weekEnd = weekStart.AddDays(7);
+        
+        // 一次性查询整周数据，避免 N+1
+        var weekAppSessions = await _appSessionRepo.FindAsync(
+            s => s.StartTime >= weekStart && s.StartTime < weekEnd);
+        
+        var weekKeyboardSessions = await _keyboardSessionRepo.FindAsync(
+            s => s.Date >= weekStart.Date && s.Date < weekEnd.Date);
+        
+        var weekMouseSessions = await _mouseSessionRepo.FindAsync(
+            s => s.Date >= weekStart.Date && s.Date < weekEnd.Date);
+        
+        // 按日期分组
+        var appByDate = weekAppSessions.GroupBy(s => s.StartTime.Date).ToDictionary(g => g.Key, g => g.ToList());
+        var keyboardByDate = weekKeyboardSessions.GroupBy(s => s.Date).ToDictionary(g => g.Key, g => g.ToList());
+        var mouseByDate = weekMouseSessions.GroupBy(s => s.Date).ToDictionary(g => g.Key, g => g.ToList());
+        
+        var summaries = new List<DailySummary>();
+        for (var i = 0; i < 7; i++)
+        {
+            var day = weekStart.AddDays(i).Date;
+            var dayAppSessions = appByDate.GetValueOrDefault(day, []);
+            var dayKeyboardSessions = keyboardByDate.GetValueOrDefault(day, []);
+            var dayMouseSessions = mouseByDate.GetValueOrDefault(day, []);
+            
+            summaries.Add(BuildDailySummary(day, dayAppSessions, dayKeyboardSessions, dayMouseSessions));
+        }
+        
+        return new WeeklySummary
+        {
+            WeekStart = weekStart,
+            DailySummaries = summaries,
+            TotalActiveTime = TimeSpan.FromSeconds(summaries.Sum(s => s.TotalActiveTime.TotalSeconds)),
+            TotalKeyPresses = summaries.Sum(s => s.TotalKeyPresses),
+            TotalMouseClicks = summaries.Sum(s => s.TotalMouseClicks),
+            AverageDailyActiveTime = TimeSpan.FromSeconds(summaries.Average(s => s.TotalActiveTime.TotalSeconds))
+        };
+    }
+    
+    private static DailySummary BuildDailySummary(
+        DateTime date,
+        List<AppSession> appSessions,
+        List<KeyboardSession> keyboardSessions,
+        List<MouseSession> mouseSessions)
+    {
         var totalActiveTime = appSessions.Sum(s => s.Duration.TotalSeconds);
         var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
         var totalMouseClicks = mouseSessions.Sum(s => s.TotalClicks);
@@ -51,14 +101,18 @@ public class DailyAggregator
             .OrderByDescending(a => a.TotalDuration)
             .ToList();
         
+        // 优化：使用 GroupBy 替代 24 次线性扫描
+        var keyboardByHour = keyboardSessions.GroupBy(s => s.Hour).ToDictionary(g => g.Key, g => g.Sum(s => s.TotalKeyPresses));
+        var mouseByHour = mouseSessions.GroupBy(s => s.Hour).ToDictionary(g => g.Key, g => g.Sum(s => s.TotalClicks));
+        var appByHour = appSessions.GroupBy(s => s.StartTime.Hour).ToDictionary(g => g.Key, g => g.Sum(s => s.Duration.TotalSeconds));
+        
         var hourlyBreakdown = Enumerable.Range(0, 24)
             .Select(hour => new HourlyActivity
             {
                 Hour = hour,
-                KeyPresses = keyboardSessions.Where(s => s.Hour == hour).Sum(s => s.TotalKeyPresses),
-                MouseClicks = mouseSessions.Where(s => s.Hour == hour).Sum(s => s.TotalClicks),
-                ActiveTime = TimeSpan.FromSeconds(
-                    appSessions.Where(s => s.StartTime.Hour == hour).Sum(s => s.Duration.TotalSeconds))
+                KeyPresses = keyboardByHour.GetValueOrDefault(hour),
+                MouseClicks = mouseByHour.GetValueOrDefault(hour),
+                ActiveTime = TimeSpan.FromSeconds(appByHour.GetValueOrDefault(hour))
             })
             .ToList();
         
@@ -72,27 +126,6 @@ public class DailyAggregator
             AppBreakdown = appBreakdown,
             HourlyBreakdown = hourlyBreakdown,
             UniqueAppsCount = appBreakdown.Count
-        };
-    }
-    
-    public async Task<WeeklySummary> GetWeeklySummaryAsync(DateTime weekStart)
-    {
-        var summaries = new List<DailySummary>();
-        
-        for (var i = 0; i < 7; i++)
-        {
-            var day = weekStart.AddDays(i);
-            summaries.Add(await GetDailySummaryAsync(day));
-        }
-        
-        return new WeeklySummary
-        {
-            WeekStart = weekStart,
-            DailySummaries = summaries,
-            TotalActiveTime = TimeSpan.FromSeconds(summaries.Sum(s => s.TotalActiveTime.TotalSeconds)),
-            TotalKeyPresses = summaries.Sum(s => s.TotalKeyPresses),
-            TotalMouseClicks = summaries.Sum(s => s.TotalMouseClicks),
-            AverageDailyActiveTime = TimeSpan.FromSeconds(summaries.Average(s => s.TotalActiveTime.TotalSeconds))
         };
     }
 }

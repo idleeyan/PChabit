@@ -383,6 +383,26 @@ public static class DatabaseInitializer
             await createCmd.ExecuteNonQueryAsync();
             Log.Information("InsightReports 表创建成功");
         }
+
+        if (!tables.Contains("DailySummaries"))
+        {
+            Log.Information("创建 DailySummaries 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE DailySummaries (
+                    Id TEXT PRIMARY KEY,
+                    Date TEXT NOT NULL,
+                    TotalKeys INTEGER NOT NULL DEFAULT 0,
+                    TotalMouseClicks INTEGER NOT NULL DEFAULT 0,
+                    ActiveMinutes REAL NOT NULL DEFAULT 0,
+                    TopApps TEXT NOT NULL DEFAULT '[]',
+                    HourlyKeyDistribution TEXT NOT NULL DEFAULT '[]',
+                    LastUpdated TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IX_DailySummaries_Date ON DailySummaries (Date);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("DailySummaries 表创建成功");
+        }
     }
 
     private static async Task MigrateGuidTablesAsync(System.Data.Common.DbConnection connection)

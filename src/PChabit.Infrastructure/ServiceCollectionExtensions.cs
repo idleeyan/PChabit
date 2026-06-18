@@ -12,11 +12,13 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddTaiInfrastructure(this IServiceCollection services, string dbPath, int webSocketPort = 8765)
     {
+        var connectionString = $"Data Source={dbPath};Cache=Shared;Mode=ReadWriteCreate;";
+
         services.AddDbContext<PChabitDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"));
-        
+            options.UseSqlite(connectionString));
+
         services.AddDbContextFactory<PChabitDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"));
+            options.UseSqlite(connectionString));
         
         services.AddSingleton<IEventBus, EventBus>();
         

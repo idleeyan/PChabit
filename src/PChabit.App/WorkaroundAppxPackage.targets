@@ -1,0 +1,35 @@
+<Project>
+  <!-- Workaround: Disable AppxPackage targets that require Visual Studio components not present in standalone .NET SDK -->
+  
+  <PropertyGroup>
+    <AppxPackage>false</AppxPackage>
+    <AppxBundle>Never</AppxBundle>
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+  </PropertyGroup>
+
+  <!-- Override all the problematic targets with no-ops -->
+  <Target Name="AddPriPayloadFilesToCopyToOutputDirectoryItems" />
+  <Target Name="_ExpandPriFiles" />
+  <Target Name="_ExpandPriContent" />
+  <Target Name="_GenerateProjectPriFile" />
+  <Target Name="_RemoveDuplicatePriFiles" />
+  <Target Name="_GenerateAppxPackagePriFiles" />
+  <Target Name="ExpandPriContent" />
+  <Target Name="CreatePriConfigXmlForSplitting" />
+  <Target Name="CreatePriConfigXmlForMainPackageFileMap" />
+  <Target Name="CreatePriFilesForPortableLibraries" />
+  <Target Name="GenerateMainPriConfigurationFile" />
+  <Target Name="GeneratePriConfigurationFiles" />
+  <Target Name="GenerateProjectPriFile" />
+  <Target Name="RemoveDuplicatePriFiles" />
+  <Target Name="UpdateMainPackageFileMap" />
+  <Target Name="RemovePayloadDuplicates" />
+  <Target Name="_RemovePayloadDuplicates" />
+  <Target Name="GetPackagingOutputs" />
+  <Target Name="_GenerateAppxManifest" />
+  <Target Name="_ValidateAppxPackage" />
+  <Target Name="_CreateAppxBundle" />
+  <Target Name="_ComputeAppxPackagePayload" />
+  <Target Name="_ComputeAppxPackageDirectory" />
+</Project>

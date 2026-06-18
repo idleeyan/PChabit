@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
@@ -15,11 +15,14 @@ public interface IAppIconService
 
 public class AppIconService : IAppIconService
 {
+    private const int MaxCacheSize = 500;
     private readonly Dictionary<string, SoftwareBitmapSource> _iconCache = new();
     private readonly object _cacheLock = new();
     private readonly Dictionary<string, bool> _failedLookupCache = new();
     private readonly object _failedLookupLock = new();
     private readonly SemaphoreSlim _semaphore = new(8);
+    private readonly Queue<string> _cacheKeyQueue = new();
+    private readonly Queue<string> _failedKeyQueue = new();
     
     public async Task<SoftwareBitmapSource?> GetAppIconAsync(string processName, int size = 32)
     {
@@ -65,6 +68,8 @@ public class AppIconService : IAppIconService
                 lock (_cacheLock)
                 {
                     _iconCache[cacheKey] = icon;
+                    _cacheKeyQueue.Enqueue(cacheKey);
+                    TrimCacheIfNeeded();
                 }
                 return icon;
             }
@@ -73,6 +78,8 @@ public class AppIconService : IAppIconService
                 lock (_failedLookupLock)
                 {
                     _failedLookupCache[cacheKey] = true;
+                    _failedKeyQueue.Enqueue(cacheKey);
+                    TrimFailedCacheIfNeeded();
                 }
                 Log.Debug("[AppIconService] 无法获取图标: {ProcessName}", processName);
             }
@@ -87,6 +94,24 @@ public class AppIconService : IAppIconService
         }
         
         return null;
+    }
+    
+    private void TrimCacheIfNeeded()
+    {
+        while (_iconCache.Count > MaxCacheSize && _cacheKeyQueue.Count > 0)
+        {
+            var oldestKey = _cacheKeyQueue.Dequeue();
+            _iconCache.Remove(oldestKey);
+        }
+    }
+    
+    private void TrimFailedCacheIfNeeded()
+    {
+        while (_failedLookupCache.Count > MaxCacheSize && _failedKeyQueue.Count > 0)
+        {
+            var oldestKey = _failedKeyQueue.Dequeue();
+            _failedLookupCache.Remove(oldestKey);
+        }
     }
     
     public async Task<Dictionary<string, SoftwareBitmapSource?>> GetIconsBatchAsync(IEnumerable<string> processNames, int size = 20, CancellationToken cancellationToken = default)
@@ -156,26 +181,37 @@ public class AppIconService : IAppIconService
         {
             using var icon = System.Drawing.Icon.FromHandle(hIcon);
             using var bitmap = icon.ToBitmap();
-            var resizedBitmap = new System.Drawing.Bitmap(bitmap, new System.Drawing.Size(size, size));
+            using var resizedBitmap = new System.Drawing.Bitmap(bitmap, new System.Drawing.Size(size, size));
+            
+            // 使用 LockBits + Marshal.Copy 替代逐像素 GetPixel，性能提升 10-100 倍
+            var bitmapData = resizedBitmap.LockBits(
+                new System.Drawing.Rectangle(0, 0, size, size),
+                System.Drawing.Imaging.ImageLockMode.ReadOnly,
+                System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            
+            byte[] buffer;
+            try
+            {
+                var stride = bitmapData.Stride;
+                buffer = new byte[size * size * 4];
+                
+                // 逐行复制，处理可能的 stride 填充
+                for (int y = 0; y < size; y++)
+                {
+                    var sourceOffset = y * stride;
+                    var destOffset = y * size * 4;
+                    Marshal.Copy(bitmapData.Scan0 + sourceOffset, buffer, destOffset, size * 4);
+                }
+                
+                // BGRA 格式已与 BitmapEncoder.Bgra8 匹配，无需逐像素转换
+            }
+            finally
+            {
+                resizedBitmap.UnlockBits(bitmapData);
+            }
             
             using var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
-            
-            var buffer = new byte[size * size * 4];
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    var pixel = resizedBitmap.GetPixel(x, y);
-                    var idx = (y * size + x) * 4;
-                    buffer[idx] = pixel.B;
-                    buffer[idx + 1] = pixel.G;
-                    buffer[idx + 2] = pixel.R;
-                    buffer[idx + 3] = pixel.A;
-                }
-            }
-            
-            resizedBitmap.Dispose();
             
             encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, (uint)size, (uint)size, 96, 96, buffer);
             await encoder.FlushAsync();
@@ -202,18 +238,29 @@ public class AppIconService : IAppIconService
             ? processName[..^4] 
             : processName;
         
+        // 优先从注册表查找路径（比 Process.GetProcessesByName 快得多）
+        var appPaths = GetAppPathsFromRegistry(processNameWithoutExt);
+        if (appPaths.Count > 0)
+            return appPaths[0];
+        
         try
         {
             var processes = System.Diagnostics.Process.GetProcessesByName(processNameWithoutExt);
             if (processes.Length > 0)
             {
-                var path = processes[0].MainModule?.FileName;
-                foreach (var p in processes)
-                    p.Dispose();
-                if (!string.IsNullOrEmpty(path))
+                try
                 {
-                    Log.Debug("[AppIconService] 从运行进程获取路径: {ProcessName} -> {Path}", processName, path);
-                    return path;
+                    var path = processes[0].MainModule?.FileName;
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        Log.Debug("[AppIconService] 从运行进程获取路径: {ProcessName} -> {Path}", processName, path);
+                        return path;
+                    }
+                }
+                finally
+                {
+                    foreach (var p in processes)
+                        p.Dispose();
                 }
             }
         }
@@ -223,14 +270,11 @@ public class AppIconService : IAppIconService
         }
         
         var systemPath = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        var appPaths = GetAppPathsFromRegistry(processNameWithoutExt);
         
         var possiblePaths = new List<string>
         {
             Path.Combine(systemPath, $"{processNameWithoutExt}.exe"),
         };
-        
-        possiblePaths.AddRange(appPaths);
         
         possiblePaths.AddRange(new[]
         {

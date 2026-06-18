@@ -34,6 +34,14 @@ public class WebDAVFileInfo
     public long Size { get; init; }
     public DateTime? LastModified { get; init; }
     public bool IsDirectory { get; init; }
+    public string FormattedSize => Size switch
+    {
+        < 1024 => $"{Size} B",
+        < 1024 * 1024 => $"{Size / 1024.0:F1} KB",
+        < 1024L * 1024 * 1024 => $"{Size / 1024.0 / 1024.0:F1} MB",
+        _ => $"{Size / 1024.0 / 1024.0 / 1024.0:F2} GB"
+    };
+    public string FormattedModified => LastModified?.ToString("yyyy-MM-dd HH:mm") ?? "—";
 }
 
 public class WebDAVSyncService : IWebDAVSyncService
@@ -267,7 +275,7 @@ public class WebDAVSyncService : IWebDAVSyncService
                 .Where(e => e.Name.LocalName == "response" || e.Name == XName.Get("response", davNs.NamespaceName))
                 .ToList();
             
-            var basePath = listUrl.TrimEnd('/');
+            var urlPath = new Uri(listUrl).AbsolutePath.TrimEnd('/');
             
             foreach (var responseElement in responses)
             {
@@ -279,12 +287,33 @@ public class WebDAVSyncService : IWebDAVSyncService
                 var hrefValue = Uri.UnescapeDataString(hrefElement.Value);
                 var itemPath = hrefValue.TrimEnd('/');
                 
-                if (itemPath == basePath.TrimEnd('/')) continue;
+                // Normalize: if href is a full URL, extract just the path
+                var serverPath = itemPath;
+                if (serverPath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    serverPath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    serverPath = new Uri(serverPath).AbsolutePath.TrimEnd('/');
+                }
                 
-                var name = Path.GetFileName(itemPath);
+                // Skip the directory itself
+                if (serverPath.Equals(urlPath, StringComparison.OrdinalIgnoreCase)) continue;
+                
+                var name = Path.GetFileName(serverPath);
                 if (string.IsNullOrEmpty(name)) continue;
                 
                 var isDir = hrefValue.EndsWith("/");
+                
+                // Compute relative path by stripping URL's path prefix
+                var fullPath = name;
+                if (serverPath.StartsWith(urlPath + "/", StringComparison.OrdinalIgnoreCase))
+                {
+                    fullPath = serverPath[(urlPath.Length + 1)..];
+                }
+                
+                if (!string.IsNullOrEmpty(path))
+                {
+                    fullPath = path.TrimStart('/') + "/" + name;
+                }
                 
                 DateTime? lastModified = null;
                 var lastModifiedElement = responseElement.Descendants()
@@ -300,12 +329,6 @@ public class WebDAVSyncService : IWebDAVSyncService
                 if (sizeElement != null && long.TryParse(sizeElement.Value, out var s))
                 {
                     size = s;
-                }
-                
-                var fullPath = itemPath;
-                if (!string.IsNullOrEmpty(path))
-                {
-                    fullPath = path.TrimStart('/') + "/" + name;
                 }
                 
                 files.Add(new WebDAVFileInfo

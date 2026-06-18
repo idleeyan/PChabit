@@ -1,136 +1,141 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
-using PChabit.Infrastructure.Services;
 
 namespace PChabit.Infrastructure.Monitoring;
 
-public class KeyboardMonitor : IKeyboardMonitor
+public class KeyboardMonitor : IKeyboardMonitor, IDisposable
 {
     public bool IsRunning { get; private set; }
+    public DateTime LastActivityTime { get; private set; } = DateTime.MinValue;
     public event EventHandler<KeyboardEventArgs>? OnDataCollected;
-    
+
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
-    
+
     private IntPtr _hook = IntPtr.Zero;
     private LowLevelKeyboardProc? _proc;
-    
+
     private bool _isShiftPressed;
     private bool _isCtrlPressed;
     private bool _isAltPressed;
     private bool _isWinPressed;
-    
+
     private string? _currentProcess;
-    private readonly TypingBurstDetector _burstDetector;
-    private readonly ShortcutDetector _shortcutDetector;
-    private readonly System.Timers.Timer _idleCheckTimer;
-    
-    public KeyboardMonitor()
+
+    // 修饰键 VK Code 集合，单独按下时不计入按键统计
+    private static readonly HashSet<int> ModifierVkCodes = new()
     {
-        _burstDetector = new TypingBurstDetector();
-        _shortcutDetector = new ShortcutDetector();
-        
-        _burstDetector.OnBurstCompleted += (s, e) =>
-        {
-            BurstCompleted?.Invoke(this, e);
-        };
-        
-        _shortcutDetector.OnShortcutDetected += (s, e) =>
-        {
-            ShortcutDetected?.Invoke(this, e);
-        };
-        
-        _idleCheckTimer = new System.Timers.Timer(1000);
-        _idleCheckTimer.Elapsed += (s, e) =>
-        {
-            _burstDetector.CheckForCompletion(DateTime.Now);
-        };
-    }
-    
-    public event EventHandler<TypingBurstEventArgs>? BurstCompleted;
-    public event EventHandler<ShortcutDetectedEventArgs>? ShortcutDetected;
-    
+        Win32Helper.VK_SHIFT, Win32Helper.VK_LSHIFT, Win32Helper.VK_RSHIFT,
+        Win32Helper.VK_CONTROL, Win32Helper.VK_LCONTROL, Win32Helper.VK_RCONTROL,
+        Win32Helper.VK_MENU, Win32Helper.VK_LMENU, Win32Helper.VK_RMENU,
+        Win32Helper.VK_LWIN, Win32Helper.VK_RWIN
+    };
+
     public void Start()
     {
         if (IsRunning) return;
-        
+
         _proc = HookCallback;
         using var process = System.Diagnostics.Process.GetCurrentProcess();
         using var module = process.MainModule;
+        var moduleHandle = Win32Helper.GetModuleHandle(module?.ModuleName ?? string.Empty);
         _hook = Win32Helper.SetWindowsHookEx(
-            Win32Helper.WH_KEYBOARD_LL, 
-            _proc, 
-            Win32Helper.GetModuleHandle(module?.ModuleName ?? string.Empty), 
+            Win32Helper.WH_KEYBOARD_LL,
+            _proc,
+            moduleHandle,
             0);
-        
+
+        Serilog.Log.Debug("[KB-Start] ModuleName={ModuleName} ModuleHandle=0x{Handle:X} HookHandle=0x{Hook:X}",
+            module?.ModuleName ?? "null", moduleHandle.ToInt64(), _hook.ToInt64());
+
         if (_hook != IntPtr.Zero)
         {
             IsRunning = true;
-            _idleCheckTimer.Start();
         }
     }
-    
+
     public void Stop()
     {
         if (!IsRunning) return;
-        
-        _idleCheckTimer.Stop();
-        
+
         if (_hook != IntPtr.Zero)
         {
             Win32Helper.UnhookWindowsHookEx(_hook);
             _hook = IntPtr.Zero;
         }
-        
+
         IsRunning = false;
     }
-    
+
     public void SetCurrentProcess(string? processName)
     {
         _currentProcess = processName;
     }
-    
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
         {
-            var vkCode = Marshal.ReadInt32(lParam);
-            var isKeyDown = wParam == (IntPtr)Win32Helper.WM_KEYDOWN || 
-                           wParam == (IntPtr)Win32Helper.WM_SYSKEYDOWN;
-            var isKeyUp = wParam == (IntPtr)Win32Helper.WM_KEYUP || 
-                         wParam == (IntPtr)Win32Helper.WM_SYSKEYUP;
-            
-            UpdateModifierState(vkCode, isKeyDown, isKeyUp);
-            
-            if (isKeyDown)
+            try
             {
-                var keyName = GetKeyName(vkCode);
-                var shortcut = GetShortcutString(keyName);
-                
-                var args = new KeyboardEventArgs(vkCode, keyName, true, DateTime.Now)
+                LastActivityTime = DateTime.Now;
+                var vkCode = Marshal.ReadInt32(lParam);
+                var isKeyDown = wParam == (IntPtr)Win32Helper.WM_KEYDOWN ||
+                               wParam == (IntPtr)Win32Helper.WM_SYSKEYDOWN;
+                var isKeyUp = wParam == (IntPtr)Win32Helper.WM_KEYUP ||
+                             wParam == (IntPtr)Win32Helper.WM_SYSKEYUP;
+
+                UpdateModifierState(vkCode, isKeyDown, isKeyUp);
+
+                // 只在 KeyDown 时处理，且排除单独的修饰键
+                if (isKeyDown && !ModifierVkCodes.Contains(vkCode))
                 {
-                    IsShiftPressed = _isShiftPressed,
-                    IsCtrlPressed = _isCtrlPressed,
-                    IsAltPressed = _isAltPressed,
-                    ActiveProcess = _currentProcess
-                };
-                
-                OnDataCollected?.Invoke(this, args);
-                
-                if (_shortcutDetector.IsKnownShortcut(shortcut))
-                {
-                    _shortcutDetector.Detect(shortcut, _currentProcess, DateTime.Now);
-                }
-                else
-                {
-                    _burstDetector.OnKeyPress(_currentProcess, DateTime.Now);
+                    var keyName = GetKeyName(vkCode);
+
+                    // 直接从系统获取当前前台进程，避免定时器延迟导致的进程归属错误
+                    var activeProcess = ResolveForegroundProcess();
+
+                    var args = new KeyboardEventArgs(vkCode, keyName, true, DateTime.Now)
+                    {
+                        IsShiftPressed = _isShiftPressed,
+                        IsCtrlPressed = _isCtrlPressed,
+                        IsAltPressed = _isAltPressed,
+                        IsWinPressed = _isWinPressed,
+                        ActiveProcess = activeProcess
+                    };
+
+                    OnDataCollected?.Invoke(this, args);
                 }
             }
+            catch
+            {
+                // 吞掉所有异常，防止钩子被 Windows 静默卸载
+            }
         }
-        
+
         return Win32Helper.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
-    
+
+    /// <summary>
+    /// 直接从系统获取前台窗口的进程名，避免依赖定时器同步造成的延迟
+    /// </summary>
+    private static string? ResolveForegroundProcess()
+    {
+        try
+        {
+            var hwnd = Win32Helper.GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return null;
+            var pid = Win32Helper.GetProcessIdFromWindow(hwnd);
+            if (pid == 0) return null;
+            using var process = System.Diagnostics.Process.GetProcessById((int)pid);
+            return process.ProcessName;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private void UpdateModifierState(int vkCode, bool isKeyDown, bool isKeyUp)
     {
         switch (vkCode)
@@ -156,18 +161,7 @@ public class KeyboardMonitor : IKeyboardMonitor
                 break;
         }
     }
-    
-    private string GetShortcutString(string keyName)
-    {
-        var parts = new List<string>();
-        if (_isCtrlPressed) parts.Add("Ctrl");
-        if (_isShiftPressed) parts.Add("Shift");
-        if (_isAltPressed) parts.Add("Alt");
-        if (_isWinPressed) parts.Add("Win");
-        parts.Add(keyName);
-        return string.Join("+", parts);
-    }
-    
+
     private static string GetKeyName(int vkCode)
     {
         return vkCode switch
@@ -198,5 +192,11 @@ public class KeyboardMonitor : IKeyboardMonitor
             >= 0x70 and <= 0x87 => $"F{vkCode - 0x6F}",
             _ => $"Key{vkCode}"
         };
+    }
+
+    public void Dispose()
+    {
+        Stop();
+        GC.SuppressFinalize(this);
     }
 }

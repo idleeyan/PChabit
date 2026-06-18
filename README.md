@@ -86,8 +86,8 @@
 
 ### 环境要求
 - Visual Studio 2022
-- .NET 8 SDK
-- Windows App SDK 1.4
+- .NET 9 SDK
+- Windows App SDK 2.2.1
 
 ### 编译步骤
 

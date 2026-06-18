@@ -30,6 +30,9 @@
                 <x:Int32>10</x:Int32>
                 <x:Int32>15</x:Int32>
                 <x:Int32>20</x:Int32>
+                <x:Int32>30</x:Int32>
+                <x:Int32>40</x:Int32>
+                <x:Int32>50</x:Int32>
             </ComboBox>
             <Button
                 VerticalAlignment="Bottom"

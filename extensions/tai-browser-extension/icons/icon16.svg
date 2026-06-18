@@ -1,10 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-  <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#667eea"/>
-      <stop offset="100%" style="stop-color:#764ba2"/>
-    </linearGradient>
-  </defs>
-  <rect width="16" height="16" rx="3" fill="url(#grad)"/>
-  <text x="8" y="12" font-family="Arial, sans-serif" font-size="10" font-weight="bold" fill="white" text-anchor="middle">T</text>
+  <title>PChabit icon</title>
+  <rect width="16" height="16" rx="3.20" ry="3.20" fill="#1B3A6F"/>
+  <!-- 显示器 -->
+  <rect x="4.32" y="3.84" width="7.36" height="4.80" rx="0.80" ry="0.80"
+        fill="none" stroke="#FFFFFF" stroke-width="1.00" stroke-linejoin="round"/>
+  <line x1="8.00" y1="8.64" x2="8.00" y2="10.24"
+        stroke="#FFFFFF" stroke-width="1.00" stroke-linecap="round"/>
+  <line x1="6.45" y1="10.24" x2="9.55" y2="10.24"
+        stroke="#FFFFFF" stroke-width="1.00" stroke-linecap="round"/>
+  <!-- 进度环 -->
+  <circle cx="8.00" cy="11.52" r="2.56" fill="none" stroke="#FFFFFF" stroke-opacity="0.2" stroke-width="1.00"/>
+  <circle cx="8.00" cy="11.52" r="2.56" fill="none" stroke="#22C55E" stroke-width="1.00"
+          stroke-dasharray="12.06 16.08" stroke-linecap="round"
+          transform="rotate(-90 8.00 11.52)"/>
+  <!-- 状态点 -->
+  <circle cx="13.12" cy="2.88" r="0.00" fill="#1B3A6F"/>
+  <circle cx="13.12" cy="2.88" r="0.00" fill="#22C55E"/>
 </svg>

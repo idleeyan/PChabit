@@ -32,7 +32,7 @@ public class InsightService : IInsightService
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         
         var sessions = await dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date)
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
             .ToListAsync();
 
         if (!sessions.Any())

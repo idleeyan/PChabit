@@ -1,8 +1,8 @@
-﻿namespace PChabit.Infrastructure.Services;
+namespace PChabit.Infrastructure.Services;
 
 public class AppCategoryResolver
 {
-    private static readonly Dictionary<string, AppCategory> CategoryRules = new()
+    private static readonly Dictionary<string, AppCategory> CategoryRules = new(StringComparer.OrdinalIgnoreCase)
     {
         { "code", AppCategory.Development },
         { "visualstudio", AppCategory.Development },
@@ -17,21 +17,21 @@ public class AppCategoryResolver
         { "nvim", AppCategory.Development },
         { "cursor", AppCategory.Development },
         { "zed", AppCategory.Development },
-        
+
         { "chrome", AppCategory.Browser },
         { "firefox", AppCategory.Browser },
         { "msedge", AppCategory.Browser },
         { "edge", AppCategory.Browser },
         { "opera", AppCategory.Browser },
         { "brave", AppCategory.Browser },
-        
+
         { "word", AppCategory.Office },
         { "excel", AppCategory.Office },
         { "powerpnt", AppCategory.Office },
         { "outlook", AppCategory.Office },
         { "onenote", AppCategory.Office },
         { "winword", AppCategory.Office },
-        
+
         { "teams", AppCategory.Communication },
         { "zoom", AppCategory.Communication },
         { "discord", AppCategory.Communication },
@@ -40,24 +40,24 @@ public class AppCategoryResolver
         { "wechat", AppCategory.Communication },
         { "qq", AppCategory.Communication },
         { "skype", AppCategory.Communication },
-        
+
         { "spotify", AppCategory.Media },
         { "vlc", AppCategory.Media },
         { "netflix", AppCategory.Media },
         { "bilibili", AppCategory.Media },
         { "music", AppCategory.Media },
-        
+
         { "photoshop", AppCategory.Design },
         { "illustrator", AppCategory.Design },
         { "figma", AppCategory.Design },
         { "sketch", AppCategory.Design },
         { "blender", AppCategory.Design },
-        
+
         { "steam", AppCategory.Gaming },
         { "epicgameslauncher", AppCategory.Gaming },
         { "minecraft", AppCategory.Gaming },
         { "leagueoflegends", AppCategory.Gaming },
-        
+
         { "explorer", AppCategory.System },
         { "taskmgr", AppCategory.System },
         { "settings", AppCategory.System },
@@ -65,33 +65,30 @@ public class AppCategoryResolver
         { "powershell", AppCategory.System },
         { "terminal", AppCategory.System },
     };
-    
+
     public AppCategory Resolve(string processName, string? executablePath = null)
     {
         if (string.IsNullOrEmpty(processName))
             return AppCategory.Other;
-        
-        var lowerName = processName.ToLowerInvariant();
-        
+
         foreach (var rule in CategoryRules)
         {
-            if (lowerName.Contains(rule.Key))
+            if (processName.Contains(rule.Key, StringComparison.OrdinalIgnoreCase))
             {
                 return rule.Value;
             }
         }
-        
+
         if (!string.IsNullOrEmpty(executablePath))
         {
-            var lowerPath = executablePath.ToLowerInvariant();
-            
-            if (lowerPath.Contains("\\windows\\"))
+            if (executablePath.Contains("\\windows\\", StringComparison.OrdinalIgnoreCase))
                 return AppCategory.System;
-            
-            if (lowerPath.Contains("\\program files\\") || lowerPath.Contains("\\program files (x86)\\"))
+
+            if (executablePath.Contains("\\program files\\", StringComparison.OrdinalIgnoreCase) ||
+                executablePath.Contains("\\program files (x86)\\", StringComparison.OrdinalIgnoreCase))
                 return AppCategory.Productivity;
         }
-        
+
         return AppCategory.Other;
     }
     
