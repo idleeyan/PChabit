@@ -26,6 +26,9 @@ bld/
 # Trae IDE (local rules, not for public)
 .trae/
 
+# Workbuddy (local AI assistant data)
+.workbuddy/
+
 # Internal documentation (not for public)
 docs/
 
