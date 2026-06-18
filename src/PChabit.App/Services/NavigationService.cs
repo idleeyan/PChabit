@@ -26,14 +26,11 @@ public class NavigationService
         Register<TimelinePage>("Timeline");
         Register<AppStatsPage>("AppStats");
         Register<KeyboardDetailsPage>("KeyboardDetails");
-        Register<WebDetailsPage>("WebDetails");
+        Register<WebAccessPage>("WebAccess");
         Register<AnalyticsPage>("Analytics");
-        Register<ExportPage>("Export");
-        Register<CategoryManagementPage>("CategoryManagement");
-        Register<WebsiteCategoryManagementPage>("WebsiteCategoryManagement");
+        Register<DataManagementPage>("DataManagement");
         Register<SettingsPage>("Settings");
         Register<HeatmapPage>("Heatmap");
-        Register<BackupManagementPage>("BackupManagement");
         Register<InsightsPage>("Insights");
         Register<GoalsPage>("Goals");
     }

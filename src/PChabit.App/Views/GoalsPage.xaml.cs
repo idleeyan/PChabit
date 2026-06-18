@@ -16,7 +16,6 @@ public sealed partial class GoalsPage : Page
         Log.Information("GoalsPage: 构造函数开始");
         try
         {
-            Log.Information("GoalsPage: 开始解析 GoalsViewModel");
             ViewModel = App.GetService<GoalsViewModel>();
             Log.Information("GoalsPage: GoalsViewModel 解析完成");
             InitializeComponent();
@@ -24,7 +23,7 @@ public sealed partial class GoalsPage : Page
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "GoalsPage: 构造函数异常");
+            Log.Error(ex, "GoalsPage: 构造函数异常, InnerException: {Inner}", ex.InnerException?.Message);
             throw;
         }
     }
@@ -38,11 +37,19 @@ public sealed partial class GoalsPage : Page
             Log.Information("GoalsPage: 开始加载目标数据");
             await ViewModel.LoadGoalsAsync();
             Log.Information("GoalsPage: 目标数据加载完成");
+            UpdateEmptyState();
         }
         catch (Exception ex)
         {
             Log.Error(ex, "GoalsPage: OnNavigatedTo 异常");
         }
+    }
+    
+    private void UpdateEmptyState()
+    {
+        EmptyGoalsHint.Visibility = ViewModel.Goals.Count == 0 
+            ? Microsoft.UI.Xaml.Visibility.Visible 
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
     }
 
     private void AddGoalButton_Click(object sender, RoutedEventArgs e)

@@ -305,10 +305,6 @@
             <PivotItem Header="应用流向">
                 <local:SankeyView />
             </PivotItem>
-            
-            <PivotItem Header="鼠标点击详情">
-                <local:MouseDetailsPage />
-            </PivotItem>
         </Pivot>
     </Grid>
 </Page>

@@ -1,4 +1,4 @@
-﻿using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
@@ -53,13 +53,13 @@ public sealed partial class ShellPage : Page
         {
             ToggleMonitorButton.Content = "暂停监控";
             StatusText.Text = "监控中...";
-            StatusIcon.Foreground = new SolidColorBrush(Microsoft.UI.Colors.Green);
+            StatusIndicator.Fill = new SolidColorBrush(Microsoft.UI.Colors.Green);
         }
         else
         {
             ToggleMonitorButton.Content = "开始监控";
             StatusText.Text = "已暂停";
-            StatusIcon.Foreground = new SolidColorBrush(Microsoft.UI.Colors.Gray);
+            StatusIndicator.Fill = new SolidColorBrush(Microsoft.UI.Colors.Gray);
         }
     }
 }

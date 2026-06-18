@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
@@ -9,7 +9,7 @@ namespace PChabit.App.ViewModels;
 
 public partial class AnalyticsViewModel : ViewModelBase
 {
-    private readonly PChabitDbContext _dbContext;
+    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     
     [ObservableProperty]
     private string _selectedPeriod = "本周";
@@ -43,10 +43,34 @@ public partial class AnalyticsViewModel : ViewModelBase
     public ObservableCollection<PatternItem> Patterns { get; } = new();
     public ObservableCollection<InsightItem> Insights { get; } = new();
     
-    public AnalyticsViewModel(PChabitDbContext dbContext) : base()
+    public AnalyticsViewModel(IDbContextFactory<PChabitDbContext> dbContextFactory) : base()
     {
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
         Title = "数据分析";
+    }
+    
+    private sealed class WeeklyStats
+    {
+        public List<Core.Entities.AppSession> AppSessions = new();
+        public List<Core.Entities.WebSession> WebSessions = new();
+        public List<Core.Entities.KeyboardSession> KeyboardSessions = new();
+        public List<Core.Entities.MouseSession> MouseSessions = new();
+        
+        public int TotalHours;
+        public int TotalMins;
+        public int AvgHours;
+        public int AvgMins;
+        public double AvgProductivity;
+        public string MostProductiveDay = "无数据";
+        public string MostProductiveHour = "无数据";
+        public int TotalKeyPresses;
+        public int TotalClicks;
+        public int TotalWebPages;
+        
+        public List<WeeklyDataItem> WeeklyDataItems = new();
+        public List<TrendItem> TrendItems = new();
+        public List<PatternItem> PatternItems = new();
+        public List<InsightItem> InsightItems = new();
     }
     
     public async Task LoadDataAsync()
@@ -55,149 +79,39 @@ public partial class AnalyticsViewModel : ViewModelBase
         
         try
         {
-            var today = DateTime.Today;
+            var stats = await Task.Run(ComputeWeeklyStatsAsync);
+            if (stats == null) return;
             
-            // 计算本周开始（周一为一周的第一天）
-            var diff = (int)today.DayOfWeek - (int)DayOfWeek.Monday;
-            if (diff < 0) diff += 7;
-            var weekStart = today.AddDays(-diff);
-            var weekEnd = weekStart.AddDays(7);
-            
-            Log.Information("AnalyticsViewModel: 今天={Today} ({DayOfWeek}), 周开始={WeekStart}, 周结束={WeekEnd}", today, today.DayOfWeek, weekStart, weekEnd);
-            
-            try { _dbContext.ChangeTracker.Clear(); } catch { }
-            
-            List<Core.Entities.AppSession> appSessions;
-            List<Core.Entities.KeyboardSession> keyboardSessions;
-            List<Core.Entities.MouseSession> mouseSessions;
-            List<Core.Entities.WebSession> webSessions;
-            
-            try
+            await RunOnUIThreadAsync(async () =>
             {
-                appSessions = await _dbContext.AppSessions
-                    .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd)
-                    .ToListAsync();
-                Log.Information("AnalyticsViewModel: 本周 AppSessions 数量={Count}", appSessions.Count);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 AppSessions 失败");
-                appSessions = new List<Core.Entities.AppSession>();
-            }
+                TotalActiveTime = $"{stats.TotalHours}小时 {stats.TotalMins}分钟";
+                AverageDailyTime = $"{stats.AvgHours}小时 {stats.AvgMins}分钟";
+                AverageProductivity = stats.AvgProductivity;
+                MostProductiveDay = stats.MostProductiveDay;
+                MostProductiveHour = stats.MostProductiveHour;
+                TotalKeyPresses = stats.TotalKeyPresses;
+                TotalMouseClicks = stats.TotalClicks;
+                TotalWebPages = stats.TotalWebPages;
+                
+                WeeklyData.Clear();
+                foreach (var item in stats.WeeklyDataItems)
+                    WeeklyData.Add(item);
+                
+                Trends.Clear();
+                foreach (var item in stats.TrendItems)
+                    Trends.Add(item);
+                
+                Patterns.Clear();
+                foreach (var item in stats.PatternItems)
+                    Patterns.Add(item);
+                
+                Insights.Clear();
+                foreach (var item in stats.InsightItems)
+                    Insights.Add(item);
+            });
             
-            try
-            {
-                keyboardSessions = await _dbContext.KeyboardSessions
-                    .Where(s => s.Date >= weekStart && s.Date < weekEnd)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 KeyboardSessions 失败");
-                keyboardSessions = new List<Core.Entities.KeyboardSession>();
-            }
-            
-            try
-            {
-                mouseSessions = await _dbContext.MouseSessions
-                    .Where(s => s.Date >= weekStart && s.Date < weekEnd)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 MouseSessions 失败");
-                mouseSessions = new List<Core.Entities.MouseSession>();
-            }
-            
-            try
-            {
-                webSessions = await _dbContext.WebSessions
-                    .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 WebSessions 失败");
-                webSessions = new List<Core.Entities.WebSession>();
-            }
-            
-            var totalMinutes = appSessions
-                .Where(s => s.EndTime.HasValue)
-                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-            
-            var totalHours = (int)(totalMinutes / 60);
-            var totalMins = (int)(totalMinutes % 60);
-            
-            var daysWithData = appSessions
-                .Where(s => s.EndTime.HasValue)
-                .Select(s => s.StartTime.Date)
-                .Distinct()
-                .Count();
-            
-            var avgMinutes = daysWithData > 0 ? totalMinutes / daysWithData : 0;
-            var avgHours = (int)(avgMinutes / 60);
-            var avgMins = (int)(avgMinutes % 60);
-            
-            var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
-            var totalClicks = mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
-            var totalWebPages = webSessions.Count;
-            
-            var productiveMinutes = appSessions
-                .Where(s => IsProductiveCategory(s.Category))
-                .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
-            
-            var avgProductivity = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0;
-            
-            Log.Information("AnalyticsViewModel: 总时间={TotalMinutes:F1}分钟, 有数据天数={DaysWithData}, 平均时间={AvgMinutes:F1}分钟", 
-                totalMinutes, daysWithData, avgMinutes);
-            Log.Information("AnalyticsViewModel: 生产力时间={ProductiveMinutes:F1}分钟, 平均效率={AvgProductivity}%", 
-                productiveMinutes, avgProductivity);
-            
-            var categories = appSessions
-                .Where(s => s.EndTime.HasValue)
-                .GroupBy(s => s.Category)
-                .Select(g => new { Category = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
-                .ToList();
-            foreach (var cat in categories)
-            {
-                Log.Information("AnalyticsViewModel: 分类 {Category} = {Minutes:F1}分钟", cat.Category, cat.Minutes);
-            }
-            
-            var dayStats = appSessions
-                .Where(s => s.EndTime.HasValue)
-                .GroupBy(s => s.StartTime.DayOfWeek)
-                .Select(g => new { Day = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
-                .OrderByDescending(x => x.Minutes)
-                .FirstOrDefault();
-            
-            var mostProductiveDay = dayStats != null 
-                ? GetDayName(dayStats.Day) 
-                : "无数据";
-            
-            var hourStats = appSessions
-                .Where(s => s.EndTime.HasValue)
-                .GroupBy(s => s.StartTime.Hour)
-                .Select(g => new { Hour = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
-                .OrderByDescending(x => x.Minutes)
-                .FirstOrDefault();
-            
-            var mostProductiveHour = hourStats != null 
-                ? $"{hourStats.Hour}:00 - {hourStats.Hour + 1}:00" 
-                : "无数据";
-            
-            TotalActiveTime = $"{totalHours}小时 {totalMins}分钟";
-            AverageDailyTime = $"{avgHours}小时 {avgMins}分钟";
-            AverageProductivity = avgProductivity;
-            MostProductiveDay = mostProductiveDay;
-            MostProductiveHour = mostProductiveHour;
-            TotalKeyPresses = totalKeyPresses;
-            TotalMouseClicks = totalClicks;
-            TotalWebPages = totalWebPages;
-            
-            LoadWeeklyData(appSessions, weekStart);
-            await LoadTrendsAsync(appSessions, webSessions, weekStart);
-            LoadPatterns(appSessions);
-            LoadInsights(appSessions, avgProductivity);
+            Log.Information("AnalyticsViewModel: Phase 2 完成, WeeklyData={W}, Trends={T}, Patterns={P}, Insights={I}",
+                stats.WeeklyDataItems.Count, stats.TrendItems.Count, stats.PatternItems.Count, stats.InsightItems.Count);
         }
         catch (Exception ex)
         {
@@ -209,11 +123,123 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
     }
     
-    private void LoadWeeklyData(List<Core.Entities.AppSession> sessions, DateTime weekStart)
+    private async Task<WeeklyStats> ComputeWeeklyStatsAsync()
     {
-        WeeklyData.Clear();
+        var stats = new WeeklyStats();
         
-        Log.Information("LoadWeeklyData: 开始加载周数据, weekStart={WeekStart}", weekStart);
+        var today = DateTime.Today;
+        var diff = (int)today.DayOfWeek - (int)DayOfWeek.Monday;
+        if (diff < 0) diff += 7;
+        var weekStart = today.AddDays(-diff);
+        var weekEnd = weekStart.AddDays(7);
+        
+        Log.Information("AnalyticsViewModel: 今天={Today} ({DayOfWeek}), 周开始={WeekStart}, 周结束={WeekEnd}", 
+            today, today.DayOfWeek, weekStart, weekEnd);
+        
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        
+        try
+        {
+            stats.AppSessions = await dbContext.AppSessions
+                .AsNoTracking()
+                .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd)
+                .ToListAsync();
+            Log.Information("AnalyticsViewModel: 本周 AppSessions 数量={Count}", stats.AppSessions.Count);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载 AppSessions 失败");
+        }
+        
+        try
+        {
+            stats.KeyboardSessions = await dbContext.KeyboardSessions
+                .AsNoTracking()
+                .Where(s => s.Date >= weekStart && s.Date < weekEnd)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载 KeyboardSessions 失败");
+        }
+        
+        try
+        {
+            stats.MouseSessions = await dbContext.MouseSessions
+                .AsNoTracking()
+                .Where(s => s.Date >= weekStart && s.Date < weekEnd)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载 MouseSessions 失败");
+        }
+        
+        try
+        {
+            stats.WebSessions = await dbContext.WebSessions
+                .AsNoTracking()
+                .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载 WebSessions 失败");
+        }
+        
+        var sessions = stats.AppSessions;
+        
+        var totalMinutes = sessions
+            .Where(s => s.EndTime.HasValue)
+            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+        
+        stats.TotalHours = (int)(totalMinutes / 60);
+        stats.TotalMins = (int)(totalMinutes % 60);
+        
+        var daysWithData = sessions
+            .Where(s => s.EndTime.HasValue)
+            .Select(s => s.StartTime.Date)
+            .Distinct()
+            .Count();
+        
+        var avgMinutes = daysWithData > 0 ? totalMinutes / daysWithData : 0;
+        stats.AvgHours = (int)(avgMinutes / 60);
+        stats.AvgMins = (int)(avgMinutes % 60);
+        
+        stats.TotalKeyPresses = stats.KeyboardSessions.Sum(s => s.TotalKeyPresses);
+        stats.TotalClicks = stats.MouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
+        stats.TotalWebPages = stats.WebSessions.Count;
+        
+        var productiveMinutes = sessions
+            .Where(s => IsProductiveCategory(s.Category))
+            .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
+        
+        stats.AvgProductivity = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0;
+        
+        Log.Information("AnalyticsViewModel: 总时间={TotalMinutes:F1}分钟, 有数据天数={DaysWithData}, 平均时间={AvgMinutes:F1}分钟", 
+            totalMinutes, daysWithData, avgMinutes);
+        Log.Information("AnalyticsViewModel: 生产力时间={ProductiveMinutes:F1}分钟, 平均效率={AvgProductivity}%", 
+            productiveMinutes, stats.AvgProductivity);
+        
+        var dayStats = sessions
+            .Where(s => s.EndTime.HasValue)
+            .GroupBy(s => s.StartTime.DayOfWeek)
+            .Select(g => new { Day = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
+            .OrderByDescending(x => x.Minutes)
+            .FirstOrDefault();
+        
+        stats.MostProductiveDay = dayStats != null ? GetDayName(dayStats.Day) : "无数据";
+        
+        var topHourStats = sessions
+            .Where(s => s.EndTime.HasValue)
+            .GroupBy(s => s.StartTime.Hour)
+            .Select(g => new { Hour = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
+            .OrderByDescending(x => x.Minutes)
+            .FirstOrDefault();
+        
+        stats.MostProductiveHour = topHourStats != null 
+            ? $"{topHourStats.Hour}:00 - {topHourStats.Hour + 1}:00" 
+            : "无数据";
         
         for (int i = 0; i < 7; i++)
         {
@@ -225,28 +251,18 @@ public partial class AnalyticsViewModel : ViewModelBase
                 .ToList();
             
             var dayMinutes = daySessions.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-            
-            var productiveMinutes = daySessions
+            var dayProductiveMinutes = daySessions
                 .Where(s => IsProductiveCategory(s.Category))
                 .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+            var productivity = dayMinutes > 0 ? (int)(dayProductiveMinutes / dayMinutes * 100) : 0;
             
-            var productivity = dayMinutes > 0 ? (int)(productiveMinutes / dayMinutes * 100) : 0;
-            
-            Log.Information("LoadWeeklyData: {Day} ({Date}), 会话数={Count}, 分钟={Minutes:F1}, 生产力={Productivity}%", 
-                GetDayName(dayStart.DayOfWeek), dayStart.ToString("yyyy-MM-dd"), daySessions.Count, dayMinutes, productivity);
-            
-            WeeklyData.Add(new WeeklyDataItem
+            stats.WeeklyDataItems.Add(new WeeklyDataItem
             {
                 Day = GetDayName(dayStart.DayOfWeek),
                 Hours = (int)(dayMinutes / 60),
                 Productivity = productivity
             });
         }
-    }
-    
-    private async Task LoadTrendsAsync(List<Core.Entities.AppSession> sessions, List<Core.Entities.WebSession> webSessions, DateTime weekStart)
-    {
-        Trends.Clear();
         
         var currentWeekDevMinutes = sessions
             .Where(s => s.StartTime >= weekStart && IsProductiveCategory(s.Category) && s.EndTime.HasValue)
@@ -254,23 +270,23 @@ public partial class AnalyticsViewModel : ViewModelBase
         
         var previousWeekStart = weekStart.AddDays(-7);
         var previousWeekEnd = weekStart;
+        var previousWeekDevMinutes = 0.0;
         
-        List<Core.Entities.AppSession> previousWeekSessions;
         try
         {
-            previousWeekSessions = await _dbContext.AppSessions
+            var prevSessions = await dbContext.AppSessions
+                .AsNoTracking()
                 .Where(s => s.StartTime >= previousWeekStart && s.StartTime < previousWeekEnd)
                 .ToListAsync();
+            
+            previousWeekDevMinutes = prevSessions
+                .Where(s => IsProductiveCategory(s.Category) && s.EndTime.HasValue)
+                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
         }
         catch (Exception ex)
         {
             Log.Warning(ex, "加载上周 AppSessions 失败");
-            previousWeekSessions = new List<Core.Entities.AppSession>();
         }
-        
-        var previousWeekDevMinutes = previousWeekSessions
-            .Where(s => IsProductiveCategory(s.Category) && s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
         
         Log.Information("LoadTrends: 本周开发时间={CurrentWeek:F1}分钟, 上周开发时间={PreviousWeek:F1}分钟", 
             currentWeekDevMinutes, previousWeekDevMinutes);
@@ -278,7 +294,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         if (previousWeekDevMinutes > 0)
         {
             var change = (int)((currentWeekDevMinutes - previousWeekDevMinutes) / previousWeekDevMinutes * 100);
-            Trends.Add(new TrendItem
+            stats.TrendItems.Add(new TrendItem
             {
                 Name = "开发时间",
                 Change = $"{(change >= 0 ? "+" : "")}{change}%",
@@ -288,7 +304,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
         else
         {
-            Trends.Add(new TrendItem
+            stats.TrendItems.Add(new TrendItem
             {
                 Name = "开发时间",
                 Change = "新增",
@@ -301,7 +317,7 @@ public partial class AnalyticsViewModel : ViewModelBase
             .Where(s => s.StartTime >= weekStart && s.Category == "社交" && s.EndTime.HasValue)
             .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
         
-        Trends.Add(new TrendItem
+        stats.TrendItems.Add(new TrendItem
         {
             Name = "社交媒体",
             Change = socialMinutes > 0 ? $"{(int)(socialMinutes / 60)}h" : "0h",
@@ -313,18 +329,13 @@ public partial class AnalyticsViewModel : ViewModelBase
             .Where(s => s.EndTime.HasValue && (s.EndTime!.Value - s.StartTime).TotalMinutes >= 25)
             .Count();
         
-        Trends.Add(new TrendItem
+        stats.TrendItems.Add(new TrendItem
         {
             Name = "专注时长",
             Change = $"{focusSessions} 次",
             Direction = focusSessions > 10 ? "up" : "down",
             Description = focusSessions > 10 ? "深度工作状态良好" : "尝试增加专注时间"
         });
-    }
-    
-    private void LoadPatterns(List<Core.Entities.AppSession> sessions)
-    {
-        Patterns.Clear();
         
         var hourStats = sessions
             .Where(s => s.EndTime.HasValue)
@@ -336,7 +347,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         if (hourStats.Any())
         {
             var topHour = hourStats.First();
-            Patterns.Add(new PatternItem
+            stats.PatternItems.Add(new PatternItem
             {
                 Title = "高效时段",
                 Description = $"{topHour.Hour}:00 - {topHour.Hour + 1}:00 是你最专注的时段",
@@ -345,7 +356,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
         else
         {
-            Patterns.Add(new PatternItem
+            stats.PatternItems.Add(new PatternItem
             {
                 Title = "高效时段",
                 Description = "暂无足够数据",
@@ -354,10 +365,10 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
         
         var appSwitches = sessions.Count;
-        var daysWithData = sessions.Select(s => s.StartTime.Date).Distinct().Count();
-        var avgSwitchesPerHour = daysWithData > 0 ? (double)appSwitches / (daysWithData * 8) : 0;
+        var patternDaysWithData = sessions.Select(s => s.StartTime.Date).Distinct().Count();
+        var avgSwitchesPerHour = patternDaysWithData > 0 ? (double)appSwitches / (patternDaysWithData * 8) : 0;
         
-        Patterns.Add(new PatternItem
+        stats.PatternItems.Add(new PatternItem
         {
             Title = "应用切换",
             Description = $"平均每小时切换 {avgSwitchesPerHour:F1} 次应用",
@@ -374,7 +385,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         
         if (breakHours.Any())
         {
-            Patterns.Add(new PatternItem
+            stats.PatternItems.Add(new PatternItem
             {
                 Title = "休息模式",
                 Description = $"通常在 {string.Join(", ", breakHours.Take(2).Select(h => $"{h}:00"))} 休息",
@@ -383,44 +394,39 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
         else
         {
-            Patterns.Add(new PatternItem
+            stats.PatternItems.Add(new PatternItem
             {
                 Title = "休息模式",
                 Description = "暂无足够数据分析休息模式",
                 Icon = "\uE708"
             });
         }
-    }
-    
-    private void LoadInsights(List<Core.Entities.AppSession> sessions, double avgProductivity)
-    {
-        Insights.Clear();
         
-        if (avgProductivity >= 70)
+        if (stats.AvgProductivity >= 70)
         {
-            Insights.Add(new InsightItem
+            stats.InsightItems.Add(new InsightItem
             {
                 Type = "success",
                 Title = "效率良好",
-                Message = $"本周你的平均生产力为 {avgProductivity:F1}%，继续保持！"
+                Message = $"本周你的平均生产力为 {stats.AvgProductivity:F1}%，继续保持！"
             });
         }
-        else if (avgProductivity >= 50)
+        else if (stats.AvgProductivity >= 50)
         {
-            Insights.Add(new InsightItem
+            stats.InsightItems.Add(new InsightItem
             {
                 Type = "info",
                 Title = "效率一般",
-                Message = $"本周你的平均生产力为 {avgProductivity:F1}%，可以尝试减少干扰。"
+                Message = $"本周你的平均生产力为 {stats.AvgProductivity:F1}%，可以尝试减少干扰。"
             });
         }
         else
         {
-            Insights.Add(new InsightItem
+            stats.InsightItems.Add(new InsightItem
             {
                 Type = "warning",
                 Title = "效率较低",
-                Message = $"本周你的平均生产力为 {avgProductivity:F1}%，建议专注时间管理。"
+                Message = $"本周你的平均生产力为 {stats.AvgProductivity:F1}%，建议专注时间管理。"
             });
         }
         
@@ -430,7 +436,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         
         if (longSessions > 0)
         {
-            Insights.Add(new InsightItem
+            stats.InsightItems.Add(new InsightItem
             {
                 Type = "warning",
                 Title = "注意休息",
@@ -445,13 +451,15 @@ public partial class AnalyticsViewModel : ViewModelBase
         
         if (topApp != null)
         {
-            Insights.Add(new InsightItem
+            stats.InsightItems.Add(new InsightItem
             {
                 Type = "info",
                 Title = "最常用应用",
                 Message = $"你本周使用 {topApp.Key} 的时间最多"
             });
         }
+        
+        return stats;
     }
     
     private static bool IsProductiveCategory(string? category)

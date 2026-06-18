@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Application
     x:Class="PChabit.App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -10,10 +10,14 @@
     mc:Ignorable="d">
     <Application.Resources>
         <ResourceDictionary>
+            <!-- WinUI 3 控件主题（自动支持深色模式切换） -->
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
-            
+
+            <!-- ======================================== -->
+            <!-- 转换器                                     -->
+            <!-- ======================================== -->
             <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
             <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
@@ -39,55 +43,143 @@
             <converters:ActivityToColorConverter x:Key="ActivityToColorConverter" />
             <converters:ActivityToForegroundConverter x:Key="ActivityToForegroundConverter" />
             <converters:DateToDetailConverter x:Key="DateToDetailConverter" />
-            
-            <Color x:Key="PrimaryColor">#512BD4</Color>
-            <Color x:Key="SecondaryColor">#0078D4</Color>
-            <Color x:Key="SuccessColor">#107C10</Color>
-            <Color x:Key="WarningColor">#FF8C00</Color>
-            <Color x:Key="DangerColor">#D13438</Color>
-            
+
+            <!-- ======================================== -->
+            <!-- PChabit 设计系统 - 深色模式就绪        -->
+            <!-- ======================================== -->
+
+            <!-- 品牌色（深浅主题不变） -->
+            <Color x:Key="PrimaryColor">#1E40AF</Color>
+            <Color x:Key="PrimaryLightColor">#3B82F6</Color>
+            <Color x:Key="PrimaryAccentColor">#60A5FA</Color>
+            <Color x:Key="PrimarySoftColor">#DBEAFE</Color>
+
+            <!-- 语义色 -->
+            <Color x:Key="SuccessColor">#10B981</Color>
+            <Color x:Key="WarningColor">#F59E0B</Color>
+            <Color x:Key="DangerColor">#EF4444</Color>
+            <Color x:Key="InsightColor">#8B5CF6</Color>
+
+            <!-- 统计卡片图标色 -->
+            <Color x:Key="StatTimeColor">#3B82F6</Color>
+            <Color x:Key="StatKeyboardColor">#10B981</Color>
+            <Color x:Key="StatMouseColor">#F59E0B</Color>
+            <Color x:Key="StatWebColor">#8B5CF6</Color>
+
+            <!-- 软色（浅色主题下使用；深色主题下代码通过 App 层覆盖） -->
+            <Color x:Key="SuccessSoftColor">#D1FAE5</Color>
+            <Color x:Key="WarningSoftColor">#FEF3C7</Color>
+            <Color x:Key="InsightSoftColor">#EDE9FE</Color>
+
+            <!-- 品牌画刷 -->
             <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}" />
-            <SolidColorBrush x:Key="SecondaryBrush" Color="{StaticResource SecondaryColor}" />
+            <SolidColorBrush x:Key="PrimaryLightBrush" Color="{StaticResource PrimaryLightColor}" />
+            <SolidColorBrush x:Key="PrimaryAccentBrush" Color="{StaticResource PrimaryAccentColor}" />
+            <SolidColorBrush x:Key="PrimarySoftBrush" Color="{StaticResource PrimarySoftColor}" />
+
+            <!-- 语义画刷 -->
             <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
             <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
             <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
-            
-            <x:Double x:Key="FontSizeSmall">12</x:Double>
+            <SolidColorBrush x:Key="InsightBrush" Color="{StaticResource InsightColor}" />
+
+            <!-- 软色画刷 -->
+            <SolidColorBrush x:Key="SuccessSoftBrush" Color="{StaticResource SuccessSoftColor}" />
+            <SolidColorBrush x:Key="WarningSoftBrush" Color="{StaticResource WarningSoftColor}" />
+            <SolidColorBrush x:Key="InsightSoftBrush" Color="{StaticResource InsightSoftColor}" />
+
+            <!-- 统计图标画刷 -->
+            <SolidColorBrush x:Key="StatTimeBrush" Color="{StaticResource StatTimeColor}" />
+            <SolidColorBrush x:Key="StatKeyboardBrush" Color="{StaticResource StatKeyboardColor}" />
+            <SolidColorBrush x:Key="StatMouseBrush" Color="{StaticResource StatMouseColor}" />
+            <SolidColorBrush x:Key="StatWebBrush" Color="{StaticResource StatWebColor}" />
+
+            <!-- ======================================== -->
+            <!-- 字体大小                                   -->
+            <!-- ======================================== -->
+            <x:Double x:Key="FontSizeCaption">12</x:Double>
+            <x:Double x:Key="FontSizeBody">13</x:Double>
             <x:Double x:Key="FontSizeNormal">14</x:Double>
-            <x:Double x:Key="FontSizeMedium">16</x:Double>
-            <x:Double x:Key="FontSizeLarge">20</x:Double>
-            <x:Double x:Key="FontSizeXLarge">24</x:Double>
-            
-            <CornerRadius x:Key="ControlCornerRadius">8</CornerRadius>
-            <CornerRadius x:Key="OverlayCornerRadius">12</CornerRadius>
-            
+            <x:Double x:Key="FontSizeTitle">16</x:Double>
+            <x:Double x:Key="FontSizeSubtitle">18</x:Double>
+            <x:Double x:Key="FontSizeHeadline">24</x:Double>
+            <x:Double x:Key="FontSizePageTitle">28</x:Double>
+
+            <!-- ======================================== -->
+            <!-- 圆角                                       -->
+            <!-- ======================================== -->
+            <CornerRadius x:Key="CornerRadiusSmall">4</CornerRadius>
+            <CornerRadius x:Key="CornerRadiusMedium">8</CornerRadius>
+            <CornerRadius x:Key="CornerRadiusCard">12</CornerRadius>
+            <CornerRadius x:Key="CornerRadiusPill">20</CornerRadius>
+
+            <!-- ======================================== -->
+            <!-- 统一 UI 样式（主题感知）                      -->
+            <!-- ======================================== -->
+
+            <!-- 页面标题 -->
             <Style x:Key="PageTitleStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="{StaticResource FontSizeXLarge}" />
+                <Setter Property="FontSize" Value="{StaticResource FontSizePageTitle}" />
                 <Setter Property="FontWeight" Value="SemiBold" />
-                <Setter Property="Margin" Value="0,0,0,16" />
+                <Setter Property="Margin" Value="0,0,0,24" />
+                <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}" />
             </Style>
-            
+
+            <!-- 分区标题 -->
+            <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="{StaticResource FontSizeTitle}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Margin" Value="0,0,0,12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Style>
+
+            <!-- 卡片基础样式（使用 WinUI ThemeResource 自动适配深浅主题） -->
             <Style x:Key="CardStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
                 <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="CornerRadius" Value="{StaticResource OverlayCornerRadius}" />
-                <Setter Property="Padding" Value="16" />
+                <Setter Property="CornerRadius" Value="{StaticResource CornerRadiusCard}" />
+                <Setter Property="Padding" Value="20" />
             </Style>
-            
+
+            <!-- 统计卡片样式 -->
             <Style x:Key="StatCardStyle" TargetType="Border" BasedOn="{StaticResource CardStyle}">
-                <Setter Property="MinWidth" Value="150" />
+                <Setter Property="MinWidth" Value="180" />
             </Style>
-            
+
+            <!-- 数值文本 -->
+            <Style x:Key="ValueTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="28" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Style>
+
+            <!-- 副标题文本 -->
             <Style x:Key="SubtitleTextStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+                <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="FontWeight" Value="Normal" />
+            </Style>
+
+            <!-- 空状态样式 -->
+            <Style x:Key="EmptyStateTitleStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="{StaticResource FontSizeTitle}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Style>
+            <Style x:Key="EmptyStateDescriptionStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
             </Style>
-            
-            <Style x:Key="ValueTextStyle" TargetType="TextBlock">
-                <Setter Property="FontSize" Value="{StaticResource FontSizeLarge}" />
-                <Setter Property="FontWeight" Value="SemiBold" />
+
+            <!-- 排行列表项 -->
+            <Style x:Key="RankingItemStyle" TargetType="Grid">
+                <Setter Property="Margin" Value="0,6" />
+                <Setter Property="Padding" Value="12" />
+                <Setter Property="CornerRadius" Value="{StaticResource CornerRadiusMedium}" />
+                <Setter Property="Background" Value="{ThemeResource LayerFillColorDefaultBrush}" />
             </Style>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>

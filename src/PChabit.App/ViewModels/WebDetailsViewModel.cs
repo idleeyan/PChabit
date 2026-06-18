@@ -2,50 +2,52 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.UI.Xaml.Media;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
-using PChabit.Infrastructure.Services;
 
 namespace PChabit.App.ViewModels;
 
-public partial class WebDetailsViewModel : ViewModelBase
+public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.WebStatsData>
 {
-    private readonly PChabitDbContext _dbContext;
-    private readonly IWebsiteCategoryService? _websiteCategoryService;
-    private List<WebsiteCategory>? _websiteCategories;
-    private List<WebsiteDomainMapping>? _websiteDomainMappings;
-    
-    public WebDetailsViewModel(PChabitDbContext dbContext, IWebsiteCategoryService? websiteCategoryService = null) : base()
+    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private bool _isCategoriesInitialized;
+
+    public WebDetailsViewModel(IDbContextFactory<PChabitDbContext> dbFactory) : base()
     {
-        _dbContext = dbContext;
-        _websiteCategoryService = websiteCategoryService;
+        _dbFactory = dbFactory;
         Title = "网页访问详情";
         _startDateOffset = new DateTimeOffset(DateTime.Today);
         _endDateOffset = new DateTimeOffset(DateTime.Today);
         _startDate = DateTime.Today;
         _endDate = DateTime.Today;
-        
-        _ = InitializeWebsiteCategoriesAsync();
     }
 
-    private async Task InitializeWebsiteCategoriesAsync()
+    private async Task EnsureCategoriesInitializedAsync()
     {
-        if (_websiteCategoryService != null)
+        if (_isCategoriesInitialized) return;
+        _isCategoriesInitialized = true;
+    }
+
+    private async Task LoadCategoryOptionsAsync()
+    {
+        await using var dbContext = await _dbFactory.CreateDbContextAsync();
+        var categoryNames = await dbContext.WebsiteCategories
+            .AsNoTracking()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.SortOrder)
+            .Select(c => c.Name)
+            .ToListAsync();
+
+        var options = new List<string> { "全部分类" };
+        options.AddRange(categoryNames);
+
+        await RunOnUIThreadAsync(() =>
         {
-            try
-            {
-                await _websiteCategoryService.InitializeDefaultCategoriesAsync();
-                _websiteCategories = _websiteCategoryService.GetAllCategoriesSync();
-                _websiteDomainMappings = _websiteCategoryService.GetAllMappingsSync();
-                Log.Information("WebDetailsViewModel: 网站分类初始化完成");
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "WebDetailsViewModel: 网站分类初始化失败，使用后备分类");
-            }
-        }
+            CategoryOptions.Clear();
+            CategoryOptions.AddRange(options);
+            return Task.CompletedTask;
+        });
     }
     
     private DateTimeOffset _startDateOffset;
@@ -107,54 +109,138 @@ public partial class WebDetailsViewModel : ViewModelBase
     public ObservableCollection<WebHourlyActivityItem> HourlyActivity { get; } = new();
     public ObservableCollection<DailyTrendItem> DailyTrend { get; } = new();
     public ObservableCollection<BrowsingPatternItem> BrowsingPatterns { get; } = new();
+    public ObservableCollection<WebSessionDetailItem> AllVisits { get; } = new();
     public ObservableCollection<WebSessionDetailItem> RecentVisits { get; } = new();
     
-    public List<string> CategoryOptions { get; } = new() { "全部分类", "搜索", "开发", "视频", "社交", "购物", "邮件", "办公", "新闻", "浏览" };
+    private const int PageSize = 50;
+    private int _currentPage = 0;
+    private bool _hasMoreData = false;
+    private List<Core.Entities.WebSession> _allSessions = new();
+    private Dictionary<string, string> _domainCategoryMap = new();
+    
+    [ObservableProperty]
+    private bool _hasMoreVisits = false;
+    
+    [ObservableProperty]
+    private bool _isLoadingMore = false;
+    
+    public List<string> CategoryOptions { get; private set; } = new() { "全部分类" };
     
     [ObservableProperty]
     private string _selectedCategory = "全部分类";
     
+    // === Phase 1 中间数据类（纯 POCO） ===
+
+    public sealed class WebStatsData
+    {
+        public required SummaryStatsResult Summary;
+        public required List<DomainStatItem> DomainStats;
+        public required List<WebHourlyActivityItem> HourlyActivity;
+        public required List<DailyTrendItem> DailyTrend;
+        public required List<BrowsingPatternItem> BrowsingPatterns;
+        public required List<WebSessionDetailItem> RecentVisits;
+        public required bool HasMore;
+        public required List<Core.Entities.WebSession> AllSessions;
+    }
+
+    public record SummaryStatsResult(
+        string TotalVisits, string TotalDuration, string UniqueDomains,
+        string AvgDuration, string PeakHour, string TopDomain);
+
+    // === New LoadDataAsync 入口（调用基类 DbSafeViewModel.LoadDataAsync） ===
+
     public async Task LoadDataAsync()
     {
         Log.Information("WebDetails: 开始加载数据");
-        IsLoading = true;
+        _currentPage = 0;
+        _hasMoreData = true;
+        _allSessions.Clear();
         
         try
         {
-            Log.Information("WebDetails: 开始查询数据库, StartDate={StartDate}, EndDate={EndDate}", StartDate, EndDate);
-            
-            var sessions = await LoadSessionsAsync();
-            Log.Information("WebDetails: 查询完成, 共 {Count} 条记录", sessions.Count);
-            
-            Log.Information("WebDetails: 开始处理数据");
-            UpdateSummaryStats(sessions);
-            LoadDomainStats(sessions);
-            LoadHourlyActivity(sessions);
-            LoadDailyTrend(sessions);
-            LoadBrowsingPatterns(sessions);
-            LoadRecentVisits(sessions);
+            await EnsureCategoriesInitializedAsync();
+            await LoadCategoryOptionsAsync();
+            await base.LoadDataAsync();
             Log.Information("WebDetails: 数据处理完成");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "加载网页访问详情失败");
         }
-        finally
+    }
+
+    // === DbSafeViewModel 抽象方法实现 ===
+
+    protected override async Task<WebStatsData> LoadStatsOnBackgroundAsync()
+    {
+        Log.Information("WebDetails: 开始查询数据库, StartDate={StartDate}, EndDate={EndDate}", StartDate, EndDate);
+        var sessions = await LoadSessionsAsync();
+        _domainCategoryMap = await LoadDomainCategoryMapAsync();
+
+        Log.Information("WebDetails: 查询完成, 共 {Count} 条记录", sessions.Count);
+        var summary = ComputeSummaryStats(sessions);
+        var domains = ComputeDomainStats(sessions);
+        var hourly = ComputeHourlyActivity(sessions);
+        var daily = ComputeDailyTrend(sessions);
+        var patterns = ComputeBrowsingPatterns(sessions);
+        var recent = ComputeRecentVisits(sessions);
+        var more = sessions.Count > PageSize;
+
+        return new WebStatsData
         {
-            IsLoading = false;
-            Log.Information("WebDetails: 加载完成");
+            Summary = summary,
+            DomainStats = domains,
+            HourlyActivity = hourly,
+            DailyTrend = daily,
+            BrowsingPatterns = patterns,
+            RecentVisits = recent,
+            HasMore = more,
+            AllSessions = sessions
+        };
+    }
+
+    protected override async Task ApplyStatsOnUIAsync(WebStatsData s)
+    {
+        TotalVisits = s.Summary.TotalVisits;
+        TotalDuration = s.Summary.TotalDuration;
+        UniqueDomains = s.Summary.UniqueDomains;
+        AvgDuration = s.Summary.AvgDuration;
+        PeakHour = s.Summary.PeakHour;
+        TopDomain = s.Summary.TopDomain;
+
+        _allSessions = s.AllSessions;
+
+        DomainStats.Clear();
+        foreach (var item in s.DomainStats) DomainStats.Add(item);
+
+        HourlyActivity.Clear();
+        foreach (var item in s.HourlyActivity) HourlyActivity.Add(item);
+
+        DailyTrend.Clear();
+        foreach (var item in s.DailyTrend) DailyTrend.Add(item);
+
+        BrowsingPatterns.Clear();
+        foreach (var item in s.BrowsingPatterns) BrowsingPatterns.Add(item);
+
+        RecentVisits.Clear();
+        AllVisits.Clear();
+        foreach (var item in s.RecentVisits)
+        {
+            RecentVisits.Add(item);
+            AllVisits.Add(item);
         }
+
+        HasMoreVisits = s.HasMore;
     }
     
     private async Task<List<Core.Entities.WebSession>> LoadSessionsAsync()
     {
         try
         {
-            Log.Debug("WebDetails: 清除 ChangeTracker");
-            try { _dbContext.ChangeTracker.Clear(); } catch { }
-            
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
             Log.Debug("WebDetails: 构建查询");
-            var query = _dbContext.WebSessions
+            var query = dbContext.WebSessions
                 .AsNoTracking()
                 .Where(s => s.StartTime >= StartDate && s.StartTime <= EndDate.AddDays(1));
             
@@ -169,7 +255,25 @@ public partial class WebDetailsViewModel : ViewModelBase
             
             if (SelectedCategory != "全部分类")
             {
-                query = query.Where(s => s.Domain.Contains(SelectedCategory) || s.Url.Contains(SelectedCategory));
+                // 通过 WebsiteDomainMappings 查询该分类的域名模式
+                var domainPatterns = await dbContext.WebsiteDomainMappings
+                    .AsNoTracking()
+                    .Include(m => m.Category)
+                    .Where(m => m.Category != null && m.Category.Name == SelectedCategory)
+                    .Select(m => m.DomainPattern)
+                    .Distinct()
+                    .ToListAsync();
+
+                if (domainPatterns.Any())
+                {
+                    var lowerPatterns = domainPatterns.Select(p => p.ToLower()).ToList();
+                    query = query.Where(s => lowerPatterns.Any(p => s.Domain.ToLower().Contains(p)));
+                }
+                else
+                {
+                    // 没有匹配的域名模式则返回空，避免错误的中文关键词硬匹配
+                    return new List<Core.Entities.WebSession>();
+                }
             }
             
             Log.Debug("WebDetails: 执行查询");
@@ -184,17 +288,40 @@ public partial class WebDetailsViewModel : ViewModelBase
         }
     }
     
-    private void UpdateSummaryStats(List<Core.Entities.WebSession> sessions)
+    private static bool DomainMatches(string domain, string pattern)
+    {
+        var lowerPattern = pattern.ToLower();
+        if (lowerPattern.StartsWith("*."))
+        {
+            var suffix = lowerPattern[2..];
+            return domain.EndsWith("." + suffix) || domain == suffix;
+        }
+        return domain == lowerPattern || domain.EndsWith("." + lowerPattern);
+    }
+
+    private async Task<Dictionary<string, string>> LoadDomainCategoryMapAsync()
+    {
+        await using var dbContext = await _dbFactory.CreateDbContextAsync();
+        var mappings = await dbContext.WebsiteDomainMappings
+            .AsNoTracking()
+            .Include(m => m.Category)
+            .Where(m => m.Category != null && m.Category.IsActive)
+            .ToListAsync();
+
+        var map = new Dictionary<string, string>();
+        foreach (var m in mappings.Where(m => m.Category != null))
+        {
+            map[m.DomainPattern] = m.Category!.Name;
+        }
+        return map;
+    }
+
+    private SummaryStatsResult ComputeSummaryStats(List<Core.Entities.WebSession> sessions)
     {
         var totalVisits = sessions.Count;
         var totalMinutes = sessions.Sum(s => s.Duration.TotalMinutes);
         var uniqueDomains = sessions.Select(s => s.Domain).Distinct().Count();
         var avgSeconds = totalVisits > 0 ? sessions.Average(s => s.Duration.TotalSeconds) : 0;
-        
-        TotalVisits = totalVisits.ToString("N0");
-        TotalDuration = $"{(int)totalMinutes}分钟";
-        UniqueDomains = uniqueDomains.ToString("N0");
-        AvgDuration = $"{(int)avgSeconds}秒";
         
         var hourlyGroups = sessions
             .GroupBy(s => s.StartTime.Hour)
@@ -202,22 +329,25 @@ public partial class WebDetailsViewModel : ViewModelBase
             .OrderByDescending(x => x.Count)
             .FirstOrDefault();
         
-        PeakHour = hourlyGroups != null ? $"{hourlyGroups.Hour}:00" : "-";
-        
         var topDomain = sessions
             .GroupBy(s => s.Domain)
             .Select(g => new { Domain = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .FirstOrDefault();
         
-        TopDomain = topDomain?.Domain ?? "-";
+        return new SummaryStatsResult(
+            totalVisits.ToString("N0"),
+            $"{(int)totalMinutes}分钟",
+            uniqueDomains.ToString("N0"),
+            $"{(int)avgSeconds}秒",
+            hourlyGroups != null ? $"{hourlyGroups.Hour}:00" : "-",
+            topDomain?.Domain ?? "-"
+        );
     }
     
-    private void LoadDomainStats(List<Core.Entities.WebSession> sessions)
+    private List<DomainStatItem> ComputeDomainStats(List<Core.Entities.WebSession> sessions)
     {
-        DomainStats.Clear();
-        
-        var domainGroups = sessions
+        return sessions
             .GroupBy(s => s.Domain)
             .Select(g => new DomainStatItem
             {
@@ -231,24 +361,18 @@ public partial class WebDetailsViewModel : ViewModelBase
             .OrderByDescending(x => x.TotalDuration)
             .Take(20)
             .ToList();
-        
-        foreach (var item in domainGroups)
-        {
-            DomainStats.Add(item);
-        }
     }
     
-    private void LoadHourlyActivity(List<Core.Entities.WebSession> sessions)
+    private List<WebHourlyActivityItem> ComputeHourlyActivity(List<Core.Entities.WebSession> sessions)
     {
-        HourlyActivity.Clear();
-        
+        var result = new List<WebHourlyActivityItem>();
         for (int hour = 0; hour < 24; hour++)
         {
             var hourSessions = sessions.Where(s => s.StartTime.Hour == hour).ToList();
             var visitCount = hourSessions.Count;
             var duration = hourSessions.Sum(s => s.Duration.TotalMinutes);
             
-            HourlyActivity.Add(new WebHourlyActivityItem
+            result.Add(new WebHourlyActivityItem
             {
                 Hour = hour,
                 HourLabel = $"{hour}:00",
@@ -257,13 +381,12 @@ public partial class WebDetailsViewModel : ViewModelBase
                 BarHeight = Math.Max(10, Math.Min(100, visitCount))
             });
         }
+        return result;
     }
     
-    private void LoadDailyTrend(List<Core.Entities.WebSession> sessions)
+    private List<DailyTrendItem> ComputeDailyTrend(List<Core.Entities.WebSession> sessions)
     {
-        DailyTrend.Clear();
-        
-        var dailyGroups = sessions
+        return sessions
             .GroupBy(s => s.StartTime.Date)
             .Select(g => new DailyTrendItem
             {
@@ -275,16 +398,11 @@ public partial class WebDetailsViewModel : ViewModelBase
             })
             .OrderBy(x => x.Date)
             .ToList();
-        
-        foreach (var item in dailyGroups)
-        {
-            DailyTrend.Add(item);
-        }
     }
     
-    private void LoadBrowsingPatterns(List<Core.Entities.WebSession> sessions)
+    private List<BrowsingPatternItem> ComputeBrowsingPatterns(List<Core.Entities.WebSession> sessions)
     {
-        BrowsingPatterns.Clear();
+        var result = new List<BrowsingPatternItem>();
         
         var peakHours = sessions
             .GroupBy(s => s.StartTime.Hour)
@@ -295,11 +413,11 @@ public partial class WebDetailsViewModel : ViewModelBase
         
         if (peakHours.Any())
         {
-            BrowsingPatterns.Add(new BrowsingPatternItem
+            result.Add(new BrowsingPatternItem
             {
                 Pattern = "活跃时段",
                 Description = string.Join(", ", peakHours.Select(h => $"{h.Hour}:00")),
-                Icon = "&#xE823;",
+                Icon = "\uE823",
                 Color = "#0078D4"
             });
         }
@@ -313,11 +431,11 @@ public partial class WebDetailsViewModel : ViewModelBase
         
         if (topDomains.Any())
         {
-            BrowsingPatterns.Add(new BrowsingPatternItem
+            result.Add(new BrowsingPatternItem
             {
                 Pattern = "高频访问",
                 Description = string.Join(", ", topDomains.Select(d => d.Domain)),
-                Icon = "&#xE774;",
+                Icon = "\uE774",
                 Color = "#107C10"
             });
         }
@@ -325,11 +443,11 @@ public partial class WebDetailsViewModel : ViewModelBase
         var shortVisits = sessions.Count(s => s.Duration.TotalSeconds < 30);
         var longVisits = sessions.Count(s => s.Duration.TotalMinutes >= 5);
         
-        BrowsingPatterns.Add(new BrowsingPatternItem
+        result.Add(new BrowsingPatternItem
         {
             Pattern = "访问时长分布",
             Description = $"快速浏览 {shortVisits}次 / 深度访问 {longVisits}次",
-            Icon = "&#xE9D9;",
+            Icon = "\uE9D9",
             Color = "#FF8C00"
         });
         
@@ -341,23 +459,24 @@ public partial class WebDetailsViewModel : ViewModelBase
         
         if (categoryGroups != null)
         {
-            BrowsingPatterns.Add(new BrowsingPatternItem
+            result.Add(new BrowsingPatternItem
             {
                 Pattern = "主要活动类型",
                 Description = categoryGroups.Category,
-                Icon = "&#xE8FD;",
+                Icon = "\uE8FD",
                 Color = "#8764B8"
             });
         }
+        
+        return result;
     }
     
-    private void LoadRecentVisits(List<Core.Entities.WebSession> sessions)
+    private List<WebSessionDetailItem> ComputeRecentVisits(List<Core.Entities.WebSession> sessions)
     {
-        RecentVisits.Clear();
-        
-        foreach (var session in sessions.Take(50))
-        {
-            RecentVisits.Add(new WebSessionDetailItem
+        return sessions
+            .Skip(_currentPage * PageSize)
+            .Take(PageSize)
+            .Select(session => new WebSessionDetailItem
             {
                 Domain = session.Domain,
                 Title = session.Title,
@@ -371,58 +490,77 @@ public partial class WebDetailsViewModel : ViewModelBase
                 ScrollDepth = session.ScrollDepth,
                 ClickCount = session.ClickCount,
                 HasInteraction = session.HasFormInteraction || session.ClickCount > 0
+            })
+            .ToList();
+    }
+    
+    [RelayCommand]
+    private async Task LoadMoreVisitsAsync()
+    {
+        if (!_hasMoreData || IsLoadingMore) return;
+
+        IsLoadingMore = true;
+
+        try
+        {
+            _currentPage++;
+            var newItems = new List<WebSessionDetailItem>();
+
+            await Task.Run(() =>
+            {
+                var pagedSessions = _allSessions.Skip(_currentPage * PageSize).Take(PageSize).ToList();
+                foreach (var session in pagedSessions)
+                {
+                    var item = new WebSessionDetailItem
+                    {
+                        Domain = session.Domain,
+                        Title = session.Title,
+                        Url = session.Url,
+                        VisitTime = session.StartTime.ToString("HH:mm:ss"),
+                        Duration = session.Duration.TotalSeconds > 0
+                            ? $"{(int)session.Duration.TotalMinutes}分{(int)session.Duration.Seconds}秒"
+                            : "-",
+                        Category = GetCategory(session.Domain),
+                        CategoryColor = GetCategoryColor(GetCategory(session.Domain)),
+                        ScrollDepth = session.ScrollDepth,
+                        ClickCount = session.ClickCount,
+                        HasInteraction = session.HasFormInteraction || session.ClickCount > 0
+                    };
+                    newItems.Add(item);
+                }
+
+                _hasMoreData = pagedSessions.Count == PageSize;
             });
+
+            foreach (var item in newItems)
+            {
+                RecentVisits.Add(item);
+                AllVisits.Add(item);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载更多访问记录失败");
+            _currentPage--;
+        }
+        finally
+        {
+            IsLoadingMore = false;
+            HasMoreVisits = _hasMoreData;
         }
     }
     
     private string GetCategory(string domain)
     {
         if (string.IsNullOrEmpty(domain)) return "浏览";
-
-        if (_websiteDomainMappings != null && _websiteCategories != null)
-        {
-            var category = GetCategoryFromNewSystem(domain);
-            if (category != null)
-            {
-                return category;
-            }
-        }
-
-        return GetCategoryFallback(domain);
-    }
-
-    private string? GetCategoryFromNewSystem(string domain)
-    {
-        if (string.IsNullOrEmpty(domain) || _websiteDomainMappings == null) return null;
-
+        
         var lowerDomain = domain.ToLower();
-
-        foreach (var mapping in _websiteDomainMappings.OrderByDescending(m => m.DomainPattern.Length))
+        foreach (var kvp in _domainCategoryMap)
         {
-            if (DomainMatches(lowerDomain, mapping.DomainPattern))
-            {
-                var category = _websiteCategories?.FirstOrDefault(c => c.Id == mapping.CategoryId);
-                if (category != null)
-                {
-                    return category.Name;
-                }
-            }
+            if (DomainMatches(lowerDomain, kvp.Key))
+                return kvp.Value;
         }
-
-        return null;
-    }
-
-    private static bool DomainMatches(string domain, string pattern)
-    {
-        var lowerPattern = pattern.ToLower();
-
-        if (lowerPattern.StartsWith("*."))
-        {
-            var suffix = lowerPattern.Substring(2);
-            return domain.EndsWith("." + suffix) || domain == suffix;
-        }
-
-        return domain == lowerPattern || domain.EndsWith("." + lowerPattern);
+        return GetCategoryFallback(domain);
     }
 
     private static string GetCategoryFallback(string domain)
@@ -459,7 +597,7 @@ public partial class WebDetailsViewModel : ViewModelBase
             return "购物";
         
         if (lowerDomain.Contains("mail") || lowerDomain.Contains("outlook") ||
-            lowerDomain.Contains("gmail") || lowerDomain.Contains("qq") && lowerDomain.Contains("mail"))
+            lowerDomain.Contains("gmail") || (lowerDomain.Contains("qq") && lowerDomain.Contains("mail")))
             return "邮件";
         
         if (lowerDomain.Contains("notion") || lowerDomain.Contains("docs.qq") ||
@@ -475,23 +613,14 @@ public partial class WebDetailsViewModel : ViewModelBase
         return "浏览";
     }
     
-    private SolidColorBrush GetCategoryColor(string category)
+    private string GetCategoryColor(string category)
     {
-        if (_websiteCategories != null)
-        {
-            var categoryObj = _websiteCategories.FirstOrDefault(c => c.Name == category);
-            if (categoryObj != null)
-            {
-                return CreateBrush(categoryObj.Color);
-            }
-        }
-
-        return GetCategoryColorFallback(category);
+        return GetCategoryColorHex(category);
     }
 
-    private static SolidColorBrush GetCategoryColorFallback(string category)
+    private static string GetCategoryColorHex(string category)
     {
-        var hexColor = category switch
+        return category switch
         {
             "搜索" => "#0078D4",
             "开发" => "#512BD4",
@@ -503,19 +632,6 @@ public partial class WebDetailsViewModel : ViewModelBase
             "新闻" => "#8764B8",
             _ => "#9CA3AF"
         };
-        return CreateBrush(hexColor);
-    }
-    
-    private static SolidColorBrush CreateBrush(string hexColor)
-    {
-        if (hexColor.StartsWith("#") && hexColor.Length == 7)
-        {
-            var r = Convert.ToByte(hexColor.Substring(1, 2), 16);
-            var g = Convert.ToByte(hexColor.Substring(3, 2), 16);
-            var b = Convert.ToByte(hexColor.Substring(5, 2), 16);
-            return new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, r, g, b));
-        }
-        return new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
     
     [RelayCommand]
@@ -647,7 +763,7 @@ public class WebSessionDetailItem
     public string VisitTime { get; init; } = string.Empty;
     public string Duration { get; init; } = string.Empty;
     public string Category { get; init; } = string.Empty;
-    public SolidColorBrush CategoryColor { get; init; } = new SolidColorBrush();
+    public string CategoryColor { get; init; } = "#9CA3AF";
     public int ScrollDepth { get; init; }
     public int ClickCount { get; init; }
     public bool HasInteraction { get; init; }

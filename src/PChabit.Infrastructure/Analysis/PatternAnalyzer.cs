@@ -20,18 +20,18 @@ public class PatternAnalyzer : IPatternAnalyzer
     public async Task<WorkPattern?> AnalyzeDayAsync(DateTime date)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         var sessions = await dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date)
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
             .OrderBy(s => s.StartTime)
             .ToListAsync();
 
         if (!sessions.Any())
             return null;
 
-        var workSession = await IdentifyWorkSessionAsync(date);
-        var focusBlocks = await IdentifyFocusBlocksAsync(date);
-        var peakHours = await IdentifyPeakHoursAsync(date);
+        var workSession = IdentifyWorkSession(sessions);
+        var focusBlocks = IdentifyFocusBlocks(sessions);
+        var peakHours = IdentifyPeakHours(sessions);
 
         var breakCount = CalculateBreakCount(sessions);
         var totalBreakMinutes = CalculateTotalBreakMinutes(sessions);
@@ -54,12 +54,17 @@ public class PatternAnalyzer : IPatternAnalyzer
     public async Task<List<FocusBlockInfo>> IdentifyFocusBlocksAsync(DateTime date, int minDurationMinutes = 25)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         var sessions = await dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date)
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
             .OrderBy(s => s.StartTime)
             .ToListAsync();
 
+        return IdentifyFocusBlocks(sessions, minDurationMinutes);
+    }
+
+    private static List<FocusBlockInfo> IdentifyFocusBlocks(List<AppSession> sessions, int minDurationMinutes = 25)
+    {
         if (!sessions.Any())
             return new List<FocusBlockInfo>();
 
@@ -74,12 +79,12 @@ public class PatternAnalyzer : IPatternAnalyzer
         foreach (var session in sessions.Skip(1))
         {
             var gap = (session.StartTime - currentBlock.StartTime).TotalMinutes;
-            
+
             if (gap <= 5 && session.Duration.TotalMinutes >= 1)
             {
                 currentBlock.EndTime = session.StartTime + session.Duration;
                 currentBlock.SwitchCount++;
-                
+
                 if (session.Duration.TotalMinutes > 5)
                 {
                     currentBlock.PrimaryApplication = session.ProcessName;
@@ -92,7 +97,7 @@ public class PatternAnalyzer : IPatternAnalyzer
                 {
                     focusBlocks.Add(currentBlock);
                 }
-                
+
                 currentBlock = new FocusBlockInfo
                 {
                     StartTime = session.StartTime,
@@ -113,9 +118,40 @@ public class PatternAnalyzer : IPatternAnalyzer
 
     public async Task<List<TimeSlot>> IdentifyPeakHoursAsync(DateTime date)
     {
-        var hourlyDistribution = await GetHourlyActivityDistributionAsync(date);
-        
-        var peakHours = hourlyDistribution
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        var sessions = await dbContext.AppSessions
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
+            .ToListAsync();
+
+        return IdentifyPeakHours(sessions);
+    }
+
+    private static List<TimeSlot> IdentifyPeakHours(List<AppSession> sessions)
+    {
+        var hourlyDistribution = new Dictionary<int, double>();
+
+        for (int hour = 0; hour < 24; hour++)
+        {
+            hourlyDistribution[hour] = 0;
+        }
+
+        foreach (var session in sessions)
+        {
+            var hour = session.StartTime.Hour;
+            hourlyDistribution[hour] += session.Duration.TotalMinutes;
+        }
+
+        var maxMinutes = hourlyDistribution.Max(kvp => kvp.Value);
+        if (maxMinutes > 0)
+        {
+            foreach (var key in hourlyDistribution.Keys.ToList())
+            {
+                hourlyDistribution[key] = hourlyDistribution[key] / maxMinutes * 100;
+            }
+        }
+
+        return hourlyDistribution
             .Where(kvp => kvp.Value > 0)
             .OrderByDescending(kvp => kvp.Value)
             .Take(3)
@@ -127,19 +163,22 @@ public class PatternAnalyzer : IPatternAnalyzer
                 SessionCount = 0
             })
             .ToList();
-
-        return peakHours;
     }
 
     public async Task<WorkSession> IdentifyWorkSessionAsync(DateTime date)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         var sessions = await dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date)
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
             .OrderBy(s => s.StartTime)
             .ToListAsync();
 
+        return IdentifyWorkSession(sessions);
+    }
+
+    private static WorkSession IdentifyWorkSession(List<AppSession> sessions)
+    {
         if (!sessions.Any())
             return new WorkSession();
 
@@ -147,10 +186,10 @@ public class PatternAnalyzer : IPatternAnalyzer
         var lastSession = sessions.Last();
 
         var productiveCategories = new[] { "开发工具", "办公软件", "生产力", "工作" };
-        
+
         var workSessions = sessions
-            .Where(s => !string.IsNullOrEmpty(s.Category) && 
-                        productiveCategories.Any(c => 
+            .Where(s => !string.IsNullOrEmpty(s.Category) &&
+                        productiveCategories.Any(c =>
                             s.Category!.Contains(c, StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
@@ -179,13 +218,13 @@ public class PatternAnalyzer : IPatternAnalyzer
     public async Task<Dictionary<int, double>> GetHourlyActivityDistributionAsync(DateTime date)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
+
         var sessions = await dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date)
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
             .ToListAsync();
 
         var hourlyDistribution = new Dictionary<int, double>();
-        
+
         for (int hour = 0; hour < 24; hour++)
         {
             hourlyDistribution[hour] = 0;
@@ -209,7 +248,7 @@ public class PatternAnalyzer : IPatternAnalyzer
         return hourlyDistribution;
     }
 
-    private int CalculateBreakCount(List<AppSession> sessions)
+    private static int CalculateBreakCount(List<AppSession> sessions)
     {
         if (sessions.Count < 2)
             return 0;
@@ -227,7 +266,7 @@ public class PatternAnalyzer : IPatternAnalyzer
         return breakCount;
     }
 
-    private int CalculateTotalBreakMinutes(List<AppSession> sessions)
+    private static int CalculateTotalBreakMinutes(List<AppSession> sessions)
     {
         if (sessions.Count < 2)
             return 0;

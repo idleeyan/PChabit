@@ -123,7 +123,7 @@ public class GoalService : IGoalService
     private static async Task<double> GetGoalMinutesAsync(PChabitDbContext dbContext, UserGoal goal, DateTime date)
     {
         var sessions = dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date);
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
 
         if (goal.TargetType == nameof(GoalTargetType.Application))
         {

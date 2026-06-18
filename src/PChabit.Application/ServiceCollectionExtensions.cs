@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using PChabit.Application.Aggregators;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
@@ -9,11 +9,11 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddTaiApplication(this IServiceCollection services)
     {
-        services.AddScoped<DailyAggregator>();
-        services.AddScoped<SessionAggregator>();
-        services.AddScoped<PatternDetector>();
-        services.AddScoped<HeatmapAggregator>();
-        services.AddScoped<SankeyAggregator>();
+        services.AddSingleton<DailyAggregator>();
+        services.AddSingleton<SessionAggregator>();
+        services.AddSingleton<PatternDetector>();
+        services.AddSingleton<HeatmapAggregator>();
+        services.AddSingleton<SankeyAggregator>();
         
         return services;
     }

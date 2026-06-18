@@ -9,7 +9,6 @@ param(
     [string]$Platform = "x64",
     
     [switch]$SkipTests,
-    [switch]$IncrementVersion,
     [switch]$Help
 )
 
@@ -30,30 +29,9 @@ function Write-Step {
     Write-Host "[$Step] $Message" -ForegroundColor Yellow
 }
 
-function Get-ProjectVersion {
-    $versionFile = Join-Path $ProjectRoot "version.txt"
-    if (Test-Path $versionFile) {
-        return Get-Content $versionFile -Raw
-    }
-    return "1.0.0"
-}
-
-function Set-ProjectVersion {
-    param([string]$Version)
-    $versionFile = Join-Path $ProjectRoot "version.txt"
-    $Version | Out-File $versionFile -NoNewline
-}
-
-function Increment-PatchVersion {
-    param([string]$Version)
-    $parts = $Version.Split(".")
-    $patch = [int]$parts[2] + 1
-    return "$($parts[0]).$($parts[1]).$patch"
-}
-
 if ($Help) {
     Write-Host @"
-Tai-AI 发布脚本
+PChabit 发布脚本
 
 用法: ./publish.ps1 [选项]
 
@@ -61,41 +39,39 @@ Tai-AI 发布脚本
     -Configuration <Debug|Release>  构建配置 (默认: Release)
     -Platform <x64|x86|arm64>       目标平台 (默认: x64)
     -SkipTests                      跳过测试
-    -IncrementVersion               自动增加版本号
     -Help                           显示帮助信息
 
 示例:
     ./publish.ps1
     ./publish.ps1 -Configuration Debug -SkipTests
-    ./publish.ps1 -IncrementVersion
 "@
     exit 0
 }
 
-Write-Header "Tai-AI 发布脚本"
-
-$version = Get-ProjectVersion
-Write-Host "当前版本: $version" -ForegroundColor Green
+Write-Header "PChabit 发布脚本"
 
 Push-Location $ProjectRoot
 
 try {
-    Write-Step "1/5" "清理旧的发布文件..."
+    Write-Step "1/6" "清理 obj/bin 和旧的发布文件..."
     $publishDir = Join-Path $ProjectRoot "publish"
     if (Test-Path $publishDir) {
         Remove-Item $publishDir -Recurse -Force
     }
     New-Item -ItemType Directory -Path $publishDir | Out-Null
+    
+    Get-ChildItem -Path $ProjectRoot -Recurse -Directory -Filter "obj" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $ProjectRoot -Recurse -Directory -Filter "bin" | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
-    Write-Step "2/5" "还原 NuGet 包..."
+    Write-Step "2/6" "还原 NuGet 包..."
     dotnet restore
     if ($LASTEXITCODE -ne 0) {
         throw "NuGet 包还原失败"
     }
 
     if (-not $SkipTests) {
-        Write-Step "3/5" "运行测试..."
-        dotnet test src/Tai.Tests/Tai.Tests.csproj -c $Configuration --no-restore
+        Write-Step "3/6" "运行测试..."
+        dotnet test src/PChabit.Tests/PChabit.Tests.csproj -c $Configuration --no-restore
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "测试失败，是否继续发布? (Y/N)"
             $continue = Read-Host
@@ -105,38 +81,44 @@ try {
         }
     }
 
-    Write-Step "4/5" "构建项目..."
-    dotnet build src/Tai.App/Tai.App.csproj -c $Configuration -p:Platform=$Platform --no-restore
+    Write-Step "4/6" "构建项目 (Release, x64)..."
+    dotnet build src/PChabit.App/PChabit.App.csproj -c $Configuration -p:Platform=$Platform --no-restore
     if ($LASTEXITCODE -ne 0) {
         throw "构建失败"
     }
 
-    Write-Step "5/5" "发布应用..."
-    dotnet publish src/Tai.App/Tai.App.csproj `
+    Write-Step "5/6" "发布应用..."
+    dotnet publish src/PChabit.App/PChabit.App.csproj `
         -c $Configuration `
         -p:Platform=$Platform `
         --no-build `
-        -p:PublishProfile=win-$Platform
+        -o $publishDir
     
     if ($LASTEXITCODE -ne 0) {
         throw "发布失败"
     }
 
-    if ($IncrementVersion) {
-        $newVersion = Increment-PatchVersion -Version $version
-        Set-ProjectVersion -Version $newVersion
-        Write-Host "版本已更新: $version -> $newVersion" -ForegroundColor Green
+    Write-Step "6/6" "验证产出..."
+    $dllPath = Join-Path $publishDir "PChabit.dll"
+    $exePath = Join-Path $publishDir "PChabit.exe"
+
+    if (Test-Path $dllPath) {
+        $dllInfo = Get-Item $dllPath
+        Write-Host "PChabit.dll  大小: $([math]::Round($dllInfo.Length / 1MB, 2)) MB  时间: $($dllInfo.LastWriteTime)" -ForegroundColor Green
+    }
+    else {
+        throw "PChabit.dll 未生成!"
     }
 
-    $outputPath = "publish"
-    Write-Header "发布完成!"
-    Write-Host "输出目录: $ProjectRoot\$outputPath" -ForegroundColor Green
-    
-    $exePath = Join-Path $outputPath "PChabit.exe"
     if (Test-Path $exePath) {
-        $fileInfo = Get-Item $exePath
-        Write-Host "文件大小: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Gray
+        $exeInfo = Get-Item $exePath
+        Write-Host "PChabit.exe  大小: $([math]::Round($exeInfo.Length / 1MB, 2)) MB  时间: $($exeInfo.LastWriteTime)" -ForegroundColor Green
     }
+
+    $totalSize = (Get-ChildItem -Path $publishDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
+    Write-Header "发布完成!"
+    Write-Host "输出目录: $publishDir" -ForegroundColor Green
+    Write-Host "总大小: $([math]::Round($totalSize / 1MB, 2)) MB" -ForegroundColor Gray
 
 } catch {
     Write-Error "发布失败: $_"

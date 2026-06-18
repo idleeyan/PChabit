@@ -87,7 +87,7 @@ public partial class CategoryEditDialogViewModel : ObservableObject
         ClearErrors();
     }
     
-    public bool Validate()
+    public bool ValidateBasic()
     {
         ClearErrors();
         
@@ -105,26 +105,62 @@ public partial class CategoryEditDialogViewModel : ObservableObject
             return false;
         }
         
-        if (_isEditMode && _originalCategory != null)
-        {
-            if (_categoryService.CategoryExists(Name) && Name != _originalCategory.Name)
-            {
-                NameError = "分类名称已存在";
-                HasNameError = true;
-                return false;
-            }
-        }
-        else
-        {
-            if (_categoryService.CategoryExists(Name))
-            {
-                NameError = "分类名称已存在";
-                HasNameError = true;
-                return false;
-            }
-        }
-        
         return true;
+    }
+    
+    /// <summary>
+    /// 异步检查分类名称是否已存在（数据库查询，不应在 UI 线程同步调用）
+    /// </summary>
+    public async Task<bool> ValidateExistsAsync()
+    {
+        try
+        {
+            if (_isEditMode && _originalCategory != null)
+            {
+                if (await _categoryService.CategoryExistsAsync(Name) && Name != _originalCategory.Name)
+                {
+                    NameError = "分类名称已存在";
+                    HasNameError = true;
+                    return false;
+                }
+            }
+            else
+            {
+                if (await _categoryService.CategoryExistsAsync(Name))
+                {
+                    NameError = "分类名称已存在";
+                    HasNameError = true;
+                    return false;
+                }
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "检查分类名称是否存在失败: {Name}", Name);
+            // DB 查询失败时不阻止用户操作，由后端 SaveChanges 时的 UNIQUE 约束兜底
+            return true;
+        }
+    }
+    
+    /// <summary>
+    /// 同步验证（仅基本检查，不涉及数据库）。
+    /// 保留用于向后兼容；新代码应使用 ValidateBasic() + ValidateExistsAsync()。
+    /// </summary>
+    public bool Validate()
+    {
+        if (!ValidateBasic())
+            return false;
+        
+        try
+        {
+            return _categoryService.CategoryExists(Name);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "Validate 同步检查分类名称失败: {Name}", Name);
+            return true;
+        }
     }
     
     public ProgramCategory GetCategory()

@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Runtime;
+using System.Diagnostics;
 using Serilog;
 
 namespace PChabit.Infrastructure.Services;
@@ -143,39 +142,5 @@ public class PerformanceMetricsEventArgs : EventArgs
     public PerformanceMetricsEventArgs(PerformanceMetrics metrics)
     {
         Metrics = metrics;
-    }
-}
-
-public static class PerformanceOptimizer
-{
-    public static void OptimizeForProduction()
-    {
-        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
-        
-        ThreadPool.SetMinThreads(Environment.ProcessorCount * 2, Environment.ProcessorCount * 2);
-        ThreadPool.SetMaxThreads(Environment.ProcessorCount * 4, Environment.ProcessorCount * 4);
-        
-        Log.Information("已应用生产环境性能优化设置");
-    }
-    
-    public static void OptimizeForDevelopment()
-    {
-        GCSettings.LatencyMode = GCLatencyMode.Interactive;
-        
-        Log.Information("已应用开发环境性能优化设置");
-    }
-    
-    public static void ForceGarbageCollection()
-    {
-        var beforeMemory = GC.GetTotalMemory(false) / (1024.0 * 1024.0);
-        
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-        GC.WaitForPendingFinalizers();
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
-        
-        var afterMemory = GC.GetTotalMemory(true) / (1024.0 * 1024.0);
-        
-        Log.Information("GC 完成: {Before:F2}MB -> {After:F2}MB (释放 {Freed:F2}MB)", 
-            beforeMemory, afterMemory, beforeMemory - afterMemory);
     }
 }

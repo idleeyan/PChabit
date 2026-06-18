@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Serilog;
 
 namespace PChabit.Infrastructure.Services;
@@ -136,23 +136,5 @@ public class TaskScheduler : ITaskScheduler, IDisposable
         }
         
         _tasks.Clear();
-    }
-}
-
-public static class TaskSchedulerExtensions
-{
-    public static Task ScheduleDailyStatsAggregation(this ITaskScheduler scheduler, Func<Task> aggregateTask)
-    {
-        return scheduler.ScheduleRecurringAsync("daily_stats_aggregation", aggregateTask, TimeSpan.FromHours(1));
-    }
-    
-    public static Task SchedulePatternDetection(this ITaskScheduler scheduler, Func<Task> detectTask)
-    {
-        return scheduler.ScheduleRecurringAsync("pattern_detection", detectTask, TimeSpan.FromMinutes(30));
-    }
-    
-    public static Task ScheduleCacheRefresh(this ITaskScheduler scheduler, Func<Task> refreshTask)
-    {
-        return scheduler.ScheduleRecurringAsync("cache_refresh", refreshTask, TimeSpan.FromMinutes(15));
     }
 }

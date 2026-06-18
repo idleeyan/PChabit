@@ -62,7 +62,7 @@ public class MouseSessionRepository : IMouseSessionRepository
     public async Task<MouseSession?> GetByDateAndHourAsync(DateTime date, int hour)
     {
         return await _context.MouseSessions
-            .FirstOrDefaultAsync(s => s.Date == date.Date && s.Hour == hour);
+            .FirstOrDefaultAsync(s => s.Date >= date.Date && s.Date < date.Date.AddDays(1) && s.Hour == hour);
     }
     
     public async Task<IEnumerable<MouseSession>> GetByDateRangeAsync(DateTime start, DateTime end)

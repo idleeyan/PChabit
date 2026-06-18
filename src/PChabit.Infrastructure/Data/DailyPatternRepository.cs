@@ -62,6 +62,6 @@ public class DailyPatternRepository : IDailyPatternRepository
     public async Task<DailyPattern?> GetByDateAsync(DateTime date)
     {
         return await _context.DailyPatterns
-            .FirstOrDefaultAsync(s => s.Date == date.Date);
+            .FirstOrDefaultAsync(s => s.Date >= date.Date && s.Date < date.Date.AddDays(1));
     }
 }

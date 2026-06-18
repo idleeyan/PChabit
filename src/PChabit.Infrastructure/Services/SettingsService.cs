@@ -321,6 +321,19 @@ public class SettingsService : ISettingsService
         }
     }
     
+    public bool AutoCleanupEnabled 
+    { 
+        get => _settings.AutoCleanupEnabled; 
+        set 
+        {
+            if (_settings.AutoCleanupEnabled != value)
+            {
+                _settings.AutoCleanupEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AutoCleanupEnabled) });
+            }
+        }
+    }
+    
     public bool ArchiveBeforeCleanup 
     { 
         get => _settings.ArchiveBeforeCleanup; 
@@ -330,6 +343,19 @@ public class SettingsService : ISettingsService
             {
                 _settings.ArchiveBeforeCleanup = value;
                 SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(ArchiveBeforeCleanup) });
+            }
+        }
+    }
+    
+    public int MaxCloudBackupCount
+    {
+        get => _settings.MaxCloudBackupCount;
+        set
+        {
+            if (_settings.MaxCloudBackupCount != value)
+            {
+                _settings.MaxCloudBackupCount = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(MaxCloudBackupCount) });
             }
         }
     }
@@ -536,6 +562,8 @@ internal class AppSettings
     public bool AutoBackupEnabled { get; set; } = true;
     public int AutoBackupIntervalHours { get; set; } = 4;
     public int MaxBackupCount { get; set; } = 7;
-    public int DataRetentionDays { get; set; } = 180;
+    public int DataRetentionDays { get; set; } = 90;
+    public bool AutoCleanupEnabled { get; set; } = true;
     public bool ArchiveBeforeCleanup { get; set; } = true;
+    public int MaxCloudBackupCount { get; set; } = 5;
 }

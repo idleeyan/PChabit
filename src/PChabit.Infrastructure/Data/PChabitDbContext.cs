@@ -10,7 +10,7 @@ public class PChabitDbContext : DbContext
     public DbSet<KeyboardSession> KeyboardSessions { get; set; }
     public DbSet<MouseSession> MouseSessions { get; set; }
     public DbSet<WebSession> WebSessions { get; set; }
-    public DbSet<WorkflowSession> WorkflowSessions { get; set; }
+
     public DbSet<DailyPattern> DailyPatterns { get; set; }
     public DbSet<ProgramCategory> ProgramCategories { get; set; }
     public DbSet<ProgramCategoryMapping> ProgramCategoryMappings { get; set; }
@@ -22,54 +22,28 @@ public class PChabitDbContext : DbContext
     public DbSet<EfficiencyScore> EfficiencyScores { get; set; }
     public DbSet<WorkPattern> WorkPatterns { get; set; }
     public DbSet<InsightReport> InsightReports { get; set; }
+    public DbSet<DailySummary> DailySummaries { get; set; }
     
     public PChabitDbContext(DbContextOptions<PChabitDbContext> options) : base(options)
     {
     }
-    
+
     public override int SaveChanges()
     {
-        LogKeyboardChanges();
         return base.SaveChanges();
     }
-    
+
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        LogKeyboardChanges();
         return await base.SaveChangesAsync(cancellationToken);
     }
-    
-    private void LogKeyboardChanges()
-    {
-        var keyboardEntries = ChangeTracker.Entries<KeyboardSession>()
-            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified)
-            .ToList();
-        
-        foreach (var entry in keyboardEntries)
-        {
-            if (entry.State == EntityState.Modified)
-            {
-                entry.Property(e => e.KeyFrequency).IsModified = true;
-                entry.Property(e => e.KeyCategoryFrequency).IsModified = true;
-                entry.Property(e => e.Shortcuts).IsModified = true;
-                entry.Property(e => e.TypingBursts).IsModified = true;
-            }
-            
-            var session = entry.Entity;
-            Log.Information("DbContext: 保存 KeyboardSession Date={Date}, Hour={Hour}, TotalKeyPresses={Total}, KeyFrequency={KeyFrequency}, State={State}",
-                session.Date, session.Hour, session.TotalKeyPresses,
-                System.Text.Json.JsonSerializer.Serialize(session.KeyFrequency),
-                entry.State);
-        }
-    }
-    
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureAppSession(modelBuilder);
         ConfigureKeyboardSession(modelBuilder);
         ConfigureMouseSession(modelBuilder);
         ConfigureWebSession(modelBuilder);
-        ConfigureWorkflowSession(modelBuilder);
         ConfigureDailyPattern(modelBuilder);
         ConfigureProgramCategory(modelBuilder);
         ConfigureWebsiteCategory(modelBuilder);
@@ -79,6 +53,7 @@ public class PChabitDbContext : DbContext
         ConfigureEfficiencyScore(modelBuilder);
         ConfigureWorkPattern(modelBuilder);
         ConfigureInsightReport(modelBuilder);
+        ConfigureDailySummary(modelBuilder);
     }
     
     private static void ConfigureAppSession(ModelBuilder modelBuilder)
@@ -118,7 +93,13 @@ public class PChabitDbContext : DbContext
                 v => v.ToString(),
                 v => Guid.Parse(v));
             entity.HasIndex(e => new { e.Date, e.Hour }).IsUnique();
-            
+
+            // Date 值转换器：确保存储和查询参数使用一致格式 (yyyy-MM-dd HH:mm:ss)
+            // 防止 DateTimeKind.Local 导致参数带 +08:00 后缀，与数据库中的无时区格式不匹配
+            entity.Property(e => e.Date).HasConversion(
+                v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
+
             entity.Property(e => e.KeyFrequency).HasConversion(
                 v => v == null || !v.Any() ? "{}" : System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
                 v => string.IsNullOrEmpty(v) ? new Dictionary<int, int>() : System.Text.Json.JsonSerializer.Deserialize<Dictionary<int, int>>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new Dictionary<int, int>());
@@ -146,7 +127,12 @@ public class PChabitDbContext : DbContext
                 v => v.ToString(),
                 v => Guid.Parse(v));
             entity.HasIndex(e => new { e.Date, e.Hour }).IsUnique();
-            
+
+            // Date 值转换器：确保存储和查询参数使用一致格式 (yyyy-MM-dd HH:mm:ss)
+            entity.Property(e => e.Date).HasConversion(
+                v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
+
             entity.Ignore(e => e.ClickByArea);
             entity.Ignore(e => e.ScrollByDirection);
             entity.Ignore(e => e.Trails);
@@ -166,6 +152,7 @@ public class PChabitDbContext : DbContext
                 v => Guid.Parse(v));
             entity.HasIndex(e => e.StartTime);
             entity.HasIndex(e => e.Domain);
+            entity.HasIndex(e => new { e.StartTime, e.Domain });
             
             entity.Property(e => e.Duration)
                 .HasConversion(
@@ -187,23 +174,6 @@ public class PChabitDbContext : DbContext
         });
     }
     
-    private static void ConfigureWorkflowSession(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<WorkflowSession>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasConversion(
-                v => v.ToString(),
-                v => Guid.Parse(v));
-            entity.HasIndex(e => e.StartTime);
-            
-            entity.Ignore(e => e.ActiveApplications);
-            entity.Ignore(e => e.AppTimeDistribution);
-            entity.Ignore(e => e.AverageFocusDuration);
-            entity.Ignore(e => e.EditedFilePaths);
-            entity.Ignore(e => e.ContextSwitches);
-        });
-    }
     
     private static void ConfigureDailyPattern(ModelBuilder modelBuilder)
     {
@@ -214,7 +184,11 @@ public class PChabitDbContext : DbContext
                 v => v.ToString(),
                 v => Guid.Parse(v));
             entity.HasIndex(e => e.Date).IsUnique();
-            
+
+            entity.Property(e => e.Date).HasConversion(
+                v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
+
             entity.Ignore(e => e.FocusBlocks);
             entity.Ignore(e => e.Breaks);
             entity.Ignore(e => e.HourlyActivity);
@@ -313,6 +287,10 @@ public class PChabitDbContext : DbContext
                 v => v.ToString(),
                 v => Guid.Parse(v));
             entity.HasIndex(e => e.Date).IsUnique();
+
+            entity.Property(e => e.Date).HasConversion(
+                v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
         });
     }
 
@@ -325,6 +303,10 @@ public class PChabitDbContext : DbContext
                 v => v.ToString(),
                 v => Guid.Parse(v));
             entity.HasIndex(e => e.Date).IsUnique();
+
+            entity.Property(e => e.Date).HasConversion(
+                v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
         });
     }
 
@@ -338,6 +320,23 @@ public class PChabitDbContext : DbContext
                 v => Guid.Parse(v));
             entity.HasIndex(e => e.ReportType);
             entity.HasIndex(e => e.StartDate);
+        });
+    }
+
+    private static void ConfigureDailySummary(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<DailySummary>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.Date).IsUnique();
+
+            entity.Property(e => e.LastUpdated)
+                .HasConversion(
+                    v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                    v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
         });
     }
 }

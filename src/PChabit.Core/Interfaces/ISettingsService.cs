@@ -28,7 +28,9 @@ public interface ISettingsService
     int AutoBackupIntervalHours { get; set; }
     int MaxBackupCount { get; set; }
     int DataRetentionDays { get; set; }
+    bool AutoCleanupEnabled { get; set; }
     bool ArchiveBeforeCleanup { get; set; }
+    int MaxCloudBackupCount { get; set; }
     
     event EventHandler<SettingsChangedEventArgs>? SettingsChanged;
     

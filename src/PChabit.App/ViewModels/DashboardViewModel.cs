@@ -1,23 +1,24 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 using PChabit.App.Services;
+using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
-public partial class DashboardViewModel : ViewModelBase
+public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.DashboardStats>
 {
-    private readonly PChabitDbContext _dbContext;
+    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     private readonly IAppIconService _iconService;
     
-    public DashboardViewModel(PChabitDbContext dbContext, IAppIconService iconService) : base()
+    public DashboardViewModel(IDbContextFactory<PChabitDbContext> dbContextFactory, IAppIconService iconService) : base()
     {
-        _dbContext = dbContext;
+        _dbContextFactory = dbContextFactory;
         _iconService = iconService;
         Title = "仪表盘";
     }
@@ -51,199 +52,333 @@ public partial class DashboardViewModel : ViewModelBase
     public ObservableCollection<CategoryDistributionItem> CategoryDistribution { get; } = new();
     public ObservableCollection<WebsiteUsageItem> TopWebsites { get; } = new();
     
-    public async Task LoadDataAsync()
+    [ObservableProperty]
+    private bool _hasAppData = false;
+    
+    [ObservableProperty]
+    private bool _hasWebsiteData = false;
+
+    // === Phase 1 中间数据类（纯 POCO，无 WinRT 类型） ===
+
+    public sealed class DashboardStats
     {
-        IsLoading = true;
+        public string TodayActiveTime = "0小时 0分钟";
+        public string TodayKeyPresses = "0";
+        public string TodayMouseClicks = "0";
+        public string TodayWebPages = "0";
+        public double ProductivityScore;
+        public string MostUsedApp = "无数据";
+        public string MostVisitedSite = "无数据";
         
+        public List<(string ProcessName, double Duration)> TopAppsRaw = new();
+        public List<HourlyActivityData> HourlyActivity = new();
+        public List<(string Name, double Duration)> CategoryRaw = new();
+        public List<WebsiteUsageData> TopWebsites = new();
+    }
+    
+    public sealed class HourlyActivityData
+    {
+        public string Hour = string.Empty;
+        public int Activity;
+        public string Category = string.Empty;
+    }
+    
+    public sealed class WebsiteUsageData
+    {
+        public string Domain = string.Empty;
+        public int Visits;
+        public long TotalDurationTicks;
+    }
+
+    // === DbSafeViewModel 抽象方法实现 ===
+
+    protected override async Task<DashboardStats> LoadStatsOnBackgroundAsync()
+    {
+        var today = DateTime.Today;
+        var dateKey = today.ToString("yyyy-MM-dd");
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        // 1. 优先从 DailySummary 预聚合表查询
         try
         {
-            var today = DateTime.Today;
-            var tomorrow = today.AddDays(1);
-            
-            try { _dbContext.ChangeTracker.Clear(); } catch { }
-            
-            List<Core.Entities.AppSession> appSessions;
-            List<Core.Entities.KeyboardSession> keyboardSessions;
-            List<Core.Entities.MouseSession> mouseSessions;
-            List<Core.Entities.WebSession> webSessions;
-            
-            try
+            var summary = await dbContext.DailySummaries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Date == dateKey);
+
+            if (summary != null)
             {
-                appSessions = await _dbContext.AppSessions
-                    .Where(s => s.StartTime >= today && s.StartTime < tomorrow)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 AppSessions 失败");
-                appSessions = new List<Core.Entities.AppSession>();
-            }
-            
-            try
-            {
-                keyboardSessions = await _dbContext.KeyboardSessions
-                    .Where(s => s.Date == today)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 KeyboardSessions 失败");
-                keyboardSessions = new List<Core.Entities.KeyboardSession>();
-            }
-            
-            try
-            {
-                mouseSessions = await _dbContext.MouseSessions
-                    .Where(s => s.Date == today)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 MouseSessions 失败");
-                mouseSessions = new List<Core.Entities.MouseSession>();
-            }
-            
-            try
-            {
-                webSessions = await _dbContext.WebSessions
-                    .Where(s => s.StartTime >= today && s.StartTime < tomorrow)
-                    .ToListAsync();
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载 WebSessions 失败");
-                webSessions = new List<Core.Entities.WebSession>();
-            }
-            
-            var totalMinutes = appSessions
-                .Where(s => s.EndTime.HasValue)
-                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-            
-            var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
-            var totalClicks = mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
-            var totalWebPages = webSessions.Count;
-            
-            var hours = (int)(totalMinutes / 60);
-            var minutes = (int)(totalMinutes % 60);
-            
-            TodayActiveTime = $"{hours}小时 {minutes}分钟";
-            TodayKeyPresses = totalKeyPresses.ToString("N0");
-            TodayMouseClicks = totalClicks.ToString("N0");
-            TodayWebPages = totalWebPages.ToString();
-            
-            var topApps = appSessions
-                .GroupBy(s => s.ProcessName)
-                .Select(g => new { ProcessName = g.Key, Duration = g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
-                .OrderByDescending(x => x.Duration)
-                .Take(5)
-                .ToList();
-            
-            if (topApps.Any())
-            {
-                MostUsedApp = topApps.First().ProcessName;
-                _ = LoadMostUsedAppIconAsync(topApps.First().ProcessName);
-                
-                var totalDuration = topApps.Sum(x => x.Duration);
-                TopApps.Clear();
-                foreach (var app in topApps)
+                Log.Information("仪表盘数据从 DailySummary 预聚合表加载: {Date}, Keys={Keys}, Clicks={Clicks}",
+                    dateKey, summary.TotalKeys, summary.TotalMouseClicks);
+                var stats = BuildStatsFromSummary(summary);
+
+                // 补充网页访问数量（DailySummary 不存储此字段）
+                try
                 {
-                    var appHours = (int)(app.Duration / 60);
-                    var appMins = (int)(app.Duration % 60);
-                    var item = new AppUsageItem
-                    {
-                        Name = app.ProcessName,
-                        ProcessName = app.ProcessName,
-                        Duration = $"{appHours}h {appMins}m",
-                        Percentage = totalDuration > 0 ? $"{(int)(app.Duration / totalDuration * 100)}%" : "0%",
-                        Category = GetAppCategory(app.ProcessName)
-                    };
-                    TopApps.Add(item);
-                    _ = LoadAppIconAsync(item);
+                    var webCount = await dbContext.WebSessions
+                        .AsNoTracking()
+                        .CountAsync(s => s.StartTime >= today && s.StartTime < today.AddDays(1));
+                    stats.TodayWebPages = webCount.ToString();
+                }
+                catch { /* WebSessions 查询失败不影响主流程 */ }
+
+                return stats;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "DailySummary 查询失败，回退到实时查询");
+        }
+
+        // 2. 今天尚未结束，fallback 实时查询
+        Log.Information("DailySummary 未找到 {Date}，仪表盘使用实时查询", dateKey);
+        return await BuildStatsFromRawDataAsync(dbContext, today);
+    }
+
+    private static DashboardStats BuildStatsFromSummary(DailySummary summary)
+    {
+        var hours = (int)(summary.ActiveMinutes / 60);
+        var minutes = (int)(summary.ActiveMinutes % 60);
+
+        var stats = new DashboardStats
+        {
+            TodayActiveTime = $"{hours}小时 {minutes}分钟",
+            TodayKeyPresses = summary.TotalKeys.ToString("N0"),
+            TodayMouseClicks = summary.TotalMouseClicks.ToString("N0"),
+            TodayWebPages = "0", // DailySummary 不存储网页数
+            ProductivityScore = 0 // DailySummary 不存储生产力分数
+        };
+
+        // 解析 TopApps JSON
+        try
+        {
+            if (!string.IsNullOrEmpty(summary.TopApps) && summary.TopApps != "[]")
+            {
+                var topApps = System.Text.Json.JsonSerializer.Deserialize<List<TopAppEntry>>(summary.TopApps);
+                if (topApps != null && topApps.Count > 0)
+                {
+                    stats.MostUsedApp = topApps[0].Name;
+                    stats.TopAppsRaw = topApps.Select(x => (x.Name, x.Minutes)).ToList();
                 }
             }
-            
-            var topSites = webSessions
-                .GroupBy(s => s.Domain)
-                .Select(g => new { Domain = g.Key, Count = g.Count(), TotalDurationTicks = g.Sum(s => s.Duration.Ticks) })
-                .OrderByDescending(x => x.Count)
-                .ToList();
-            
-            if (topSites.Any())
+        }
+        catch { /* JSON 解析失败，忽略 */ }
+
+        // 解析 HourlyKeyDistribution JSON
+        try
+        {
+            if (!string.IsNullOrEmpty(summary.HourlyKeyDistribution) && summary.HourlyKeyDistribution != "[]")
             {
-                MostVisitedSite = topSites.First().Domain ?? "无数据";
-                
-                TopWebsites.Clear();
-                foreach (var site in topSites.Take(5))
+                var hourlyKeys = System.Text.Json.JsonSerializer.Deserialize<List<int>>(summary.HourlyKeyDistribution);
+                if (hourlyKeys != null)
                 {
-                    if (!string.IsNullOrEmpty(site.Domain))
+                    for (int i = 0; i < Math.Min(hourlyKeys.Count, 24); i++)
                     {
-                        TopWebsites.Add(new WebsiteUsageItem
+                        var activity = Math.Min(100, hourlyKeys[i] / 10);
+                        stats.HourlyActivity.Add(new HourlyActivityData
                         {
-                            Domain = site.Domain,
-                            Visits = site.Count,
-                            Duration = FormatDuration(TimeSpan.FromTicks(site.TotalDurationTicks)),
-                            FaviconUrl = $"https://www.google.com/s2/favicons?domain={site.Domain}&sz=32"
+                            Hour = $"{i}:00",
+                            Activity = activity,
+                            Category = activity > 40 ? "高效" : activity > 20 ? "中等" : "低效"
                         });
                     }
                 }
             }
-            
-            HourlyActivity.Clear();
-            for (int i = 0; i < 24; i++)
-            {
-                var hourStart = today.AddHours(i);
-                var hourEnd = hourStart.AddHours(1);
-                
-                var hourMinutes = appSessions
-                    .Where(s => s.StartTime < hourEnd && (s.EndTime == null || s.EndTime > hourStart))
-                    .Sum(s => 
-                    {
-                        var start = s.StartTime < hourStart ? hourStart : s.StartTime;
-                        var end = s.EndTime == null || s.EndTime > hourEnd ? hourEnd : s.EndTime.Value;
-                        return (end - start).TotalMinutes;
-                    });
-                
-                HourlyActivity.Add(new HourlyActivityItem
+        }
+        catch { /* JSON 解析失败，忽略 */ }
+
+        return stats;
+    }
+
+    private sealed class TopAppEntry
+    {
+        public string Name { get; set; } = string.Empty;
+        public double Minutes { get; set; }
+    }
+
+    private static async Task<DashboardStats> BuildStatsFromRawDataAsync(PChabitDbContext dbContext, DateTime today)
+    {
+        var tomorrow = today.AddDays(1);
+
+        var appSessions = await dbContext.AppSessions
+            .AsNoTracking()
+            .Where(s => s.StartTime >= today && s.StartTime < tomorrow)
+            .ToListAsync();
+
+        var keyboardSessions = await dbContext.KeyboardSessions
+            .AsNoTracking()
+            .Where(s => s.Date >= today && s.Date < tomorrow)
+            .ToListAsync();
+
+        var mouseSessions = await dbContext.MouseSessions
+            .AsNoTracking()
+            .Where(s => s.Date >= today && s.Date < tomorrow)
+            .ToListAsync();
+
+        var webSessions = await dbContext.WebSessions
+            .AsNoTracking()
+            .Where(s => s.StartTime >= today && s.StartTime < tomorrow)
+            .ToListAsync();
+
+        Log.Information("仪表盘数据加载: AppSessions={AppCnt}, KeyboardSessions={KbCnt}({KbKeys}次按键), MouseSessions={MsCnt}({MsClicks}次点击), WebSessions={WebCnt}",
+            appSessions.Count, keyboardSessions.Count, keyboardSessions.Sum(s => s.TotalKeyPresses),
+            mouseSessions.Count, mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount),
+            webSessions.Count);
+        
+        var totalMinutes = appSessions
+            .Where(s => s.EndTime.HasValue)
+            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+        
+        var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
+        var totalClicks = mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
+        var totalWebPages = webSessions.Count;
+        
+        var hours = (int)(totalMinutes / 60);
+        var minutes = (int)(totalMinutes % 60);
+
+        var productiveMinutes = appSessions
+            .Where(s => IsProductiveCategory(s.Category))
+            .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
+        
+        var stats = new DashboardStats
+        {
+            TodayActiveTime = $"{hours}小时 {minutes}分钟",
+            TodayKeyPresses = totalKeyPresses.ToString("N0"),
+            TodayMouseClicks = totalClicks.ToString("N0"),
+            TodayWebPages = totalWebPages.ToString(),
+            ProductivityScore = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0
+        };
+
+        // 计算 TopApps
+        var topApps = appSessions
+            .GroupBy(s => s.ProcessName)
+            .Select(g => new { ProcessName = g.Key, Duration = g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
+            .OrderByDescending(x => x.Duration)
+            .Take(5)
+            .ToList();
+        
+        if (topApps.Any())
+        {
+            stats.MostUsedApp = topApps.First().ProcessName;
+            stats.TopAppsRaw = topApps.Select(x => (x.ProcessName, x.Duration)).ToList();
+        }
+
+        // 计算 HourlyActivity
+        for (int i = 0; i < 24; i++)
+        {
+            var hourStart = today.AddHours(i);
+            var hourEnd = hourStart.AddHours(1);
+            var hourMinutes = appSessions
+                .Where(s => s.StartTime < hourEnd && (s.EndTime == null || s.EndTime > hourStart))
+                .Sum(s =>
                 {
-                    Hour = $"{i}:00",
-                    Activity = Math.Min(100, (int)(hourMinutes / 60 * 100)),
-                    Category = hourMinutes > 40 ? "高效" : hourMinutes > 20 ? "中等" : "低效"
+                    var start = s.StartTime < hourStart ? hourStart : s.StartTime;
+                    var end = s.EndTime == null || s.EndTime > hourEnd ? hourEnd : s.EndTime.Value;
+                    return (end - start).TotalMinutes;
                 });
-            }
-            
-            var categories = appSessions
-                .GroupBy(s => s.Category ?? "其他")
-                .Select(g => new { Category = g.Key, Duration = g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
-                .OrderByDescending(x => x.Duration)
+            stats.HourlyActivity.Add(new HourlyActivityData
+            {
+                Hour = $"{i}:00",
+                Activity = Math.Min(100, (int)(hourMinutes / 60 * 100)),
+                Category = hourMinutes > 40 ? "高效" : hourMinutes > 20 ? "中等" : "低效"
+            });
+        }
+
+        // 计算 CategoryDistribution
+        var categories = appSessions
+            .GroupBy(s => s.Category ?? "其他")
+            .Select(g => new { Name = g.Key, Duration = g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
+            .OrderByDescending(x => x.Duration)
+            .Take(5)
+            .ToList();
+        stats.CategoryRaw = categories.Select(x => (x.Name, x.Duration)).ToList();
+
+        // 计算 TopWebsites
+        var topSites = webSessions
+            .GroupBy(s => s.Domain)
+            .Select(g => new { Domain = g.Key, Count = g.Count(), TotalDurationTicks = g.Sum(s => s.Duration.Ticks) })
+            .OrderByDescending(x => x.Count)
+            .Take(5)
+            .ToList();
+        
+        if (topSites.Any())
+        {
+            stats.MostVisitedSite = topSites.First().Domain ?? "无数据";
+            stats.TopWebsites = topSites
+                .Where(s => !string.IsNullOrEmpty(s.Domain))
+                .Select(s => new WebsiteUsageData { Domain = s.Domain!, Visits = s.Count, TotalDurationTicks = s.TotalDurationTicks })
                 .ToList();
-            
-            var totalCategoryDuration = categories.Sum(x => x.Duration);
-            CategoryDistribution.Clear();
-            var colorStrings = new[] { "#512BD4", "#0078D4", "#107C10", "#FF8C00", "#6B7280" };
-            for (int i = 0; i < categories.Count && i < 5; i++)
+        }
+
+        return stats;
+    }
+
+    protected override async Task ApplyStatsOnUIAsync(DashboardStats stats)
+    {
+        TodayActiveTime = stats.TodayActiveTime;
+        TodayKeyPresses = stats.TodayKeyPresses;
+        TodayMouseClicks = stats.TodayMouseClicks;
+        TodayWebPages = stats.TodayWebPages;
+        ProductivityScore = stats.ProductivityScore;
+        MostUsedApp = stats.MostUsedApp;
+        MostVisitedSite = stats.MostVisitedSite;
+
+        if (stats.TopAppsRaw.Any())
+        {
+            _ = LoadMostUsedAppIconAsync(stats.TopAppsRaw.First().ProcessName);
+
+            var totalDuration = stats.TopAppsRaw.Sum(x => x.Duration);
+            TopApps.Clear();
+            foreach (var (processName, duration) in stats.TopAppsRaw)
             {
-                CategoryDistribution.Add(new CategoryDistributionItem
+                var appHours = (int)(duration / 60);
+                var appMins = (int)(duration % 60);
+                var item = new AppUsageItem
                 {
-                    Name = categories[i].Category,
-                    Percentage = totalCategoryDuration > 0 ? $"{(int)(categories[i].Duration / totalCategoryDuration * 100)}%" : "0%",
-                    Color = CreateBrush(colorStrings[i])
+                    Name = processName,
+                    ProcessName = processName,
+                    Duration = $"{appHours}h {appMins}m",
+                    Percentage = totalDuration > 0 ? $"{(int)(duration / totalDuration * 100)}%" : "0%",
+                    Category = GetAppCategory(processName)
+                };
+                TopApps.Add(item);
+                _ = LoadAppIconAsync(item);
+            }
+        }
+
+        if (stats.TopWebsites.Any())
+        {
+            TopWebsites.Clear();
+            foreach (var site in stats.TopWebsites)
+            {
+                TopWebsites.Add(new WebsiteUsageItem
+                {
+                    Domain = site.Domain,
+                    Visits = site.Visits,
+                    Duration = FormatDuration(TimeSpan.FromTicks(site.TotalDurationTicks)),
+                    FaviconUrl = $"https://www.google.com/s2/favicons?domain={site.Domain}&sz=32"
                 });
             }
-            
-            var productiveMinutes = appSessions
-                .Where(s => IsProductiveCategory(s.Category))
-                .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
-            
-            ProductivityScore = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0;
         }
-        catch (Exception ex)
+
+        HourlyActivity.Clear();
+        foreach (var item in stats.HourlyActivity)
+            HourlyActivity.Add(new HourlyActivityItem { Hour = item.Hour, Activity = item.Activity, Category = item.Category });
+
+        var totalCategoryDuration = stats.CategoryRaw.Sum(x => x.Duration);
+        CategoryDistribution.Clear();
+        var colorStrings = new[] { "#512BD4", "#0078D4", "#107C10", "#FF8C00", "#6B7280" };
+        for (int i = 0; i < stats.CategoryRaw.Count && i < 5; i++)
         {
-            Log.Error(ex, "加载仪表盘数据失败");
+            CategoryDistribution.Add(new CategoryDistributionItem
+            {
+                Name = stats.CategoryRaw[i].Name,
+                Percentage = totalCategoryDuration > 0 ? $"{(int)(stats.CategoryRaw[i].Duration / totalCategoryDuration * 100)}%" : "0%",
+                Color = CreateBrush(colorStrings[i])
+            });
         }
-        finally
-        {
-            IsLoading = false;
-        }
+
+        HasAppData = TopApps.Count > 0;
+        HasWebsiteData = TopWebsites.Count > 0;
     }
     
     private async Task LoadMostUsedAppIconAsync(string processName)

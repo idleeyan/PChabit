@@ -7,7 +7,7 @@ using Serilog;
 
 namespace PChabit.App.ViewModels;
 
-public partial class InsightsViewModel : ViewModelBase
+public partial class InsightsViewModel : DbSafeViewModel<InsightsViewModel.InsightsStats>
 {
     private readonly IInsightService _insightService;
     private readonly IEfficiencyCalculator _efficiencyCalculator;
@@ -28,9 +28,6 @@ public partial class InsightsViewModel : ViewModelBase
     [ObservableProperty]
     private string _weeklyReport = string.Empty;
 
-    [ObservableProperty]
-    private bool _isLoading;
-
     public ObservableCollection<PatternInsight> Insights { get; } = new();
     public ObservableCollection<DailyScoreItem> WeeklyScores { get; } = new();
 
@@ -45,80 +42,77 @@ public partial class InsightsViewModel : ViewModelBase
         Title = "智能洞察";
     }
 
-    public async Task LoadDataAsync()
+    // === Phase 1 中间数据 ===
+
+    public sealed class InsightsStats
     {
-        IsLoading = true;
-        try
-        {
-            await LoadTodayInsightsAsync();
-            await LoadWeeklyScoresAsync();
-            await LoadWeeklyReportAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "加载洞察数据失败");
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+        public EfficiencyBreakdown ScoreBreakdown = new();
+        public List<PatternInsight> Insights = new();
+        public List<(DateTime Date, double Score, string DayName)> WeeklyScores = new();
+        public string WeeklyReport = string.Empty;
     }
 
-    private async Task LoadTodayInsightsAsync()
+    // === DbSafeViewModel 抽象方法 ===
+
+    protected override async Task<InsightsStats> LoadStatsOnBackgroundAsync()
     {
-        var breakdown = await _efficiencyCalculator.CalculateDetailedScoreAsync(SelectedDate);
-        ScoreBreakdown = breakdown;
-        TodayScore = breakdown.TotalScore;
-        TodayScoreLabel = breakdown.TotalScore.ToString("F0");
+        var selectedDate = SelectedDate;
+        var weekStart = GetWeekStart(selectedDate);
 
-        Insights.Clear();
-        var insights = await _insightService.GenerateDailyInsightsAsync(SelectedDate);
-        foreach (var insight in insights)
-        {
-            Insights.Add(insight);
-        }
-    }
+        var breakdownTask = _efficiencyCalculator.CalculateDetailedScoreAsync(selectedDate);
+        var insightsTask = _insightService.GenerateDailyInsightsAsync(selectedDate);
+        var scoresTask = _efficiencyCalculator.GetWeeklyScoresAsync(weekStart);
+        var reportTask = _insightService.GenerateWeeklyReportAsync(weekStart);
 
-    private async Task LoadWeeklyScoresAsync()
-    {
-        var weekStart = SelectedDate.AddDays(-(int)SelectedDate.DayOfWeek);
-        if (weekStart.DayOfWeek != DayOfWeek.Monday)
-        {
-            weekStart = weekStart.AddDays(-7);
-        }
-        weekStart = weekStart.AddDays((int)DayOfWeek.Monday - (int)weekStart.DayOfWeek);
+        await Task.WhenAll(breakdownTask, insightsTask, scoresTask, reportTask);
 
-        WeeklyScores.Clear();
-        var scores = await _efficiencyCalculator.GetWeeklyScoresAsync(weekStart);
-        
+        var breakdown = await breakdownTask;
+        var insights = await insightsTask;
+        var scores = await scoresTask;
+        var report = await reportTask;
+
+        var weeklyScores = new List<(DateTime, double, string)>();
         for (int i = 0; i < scores.Count; i++)
         {
-            WeeklyScores.Add(new DailyScoreItem
-            {
-                Date = weekStart.AddDays(i),
-                Score = scores[i].TotalScore,
-                DayName = weekStart.AddDays(i).ToString("ddd")
-            });
+            weeklyScores.Add((weekStart.AddDays(i), scores[i].TotalScore, weekStart.AddDays(i).ToString("ddd")));
         }
+
+        return new InsightsStats
+        {
+            ScoreBreakdown = breakdown,
+            Insights = insights,
+            WeeklyScores = weeklyScores,
+            WeeklyReport = report
+        };
     }
 
-    private async Task LoadWeeklyReportAsync()
+    protected override async Task ApplyStatsOnUIAsync(InsightsStats stats)
     {
-        var weekStart = SelectedDate.AddDays(-(int)SelectedDate.DayOfWeek);
-        if (weekStart.DayOfWeek != DayOfWeek.Monday)
-        {
-            weekStart = weekStart.AddDays(-7);
-        }
-        weekStart = weekStart.AddDays((int)DayOfWeek.Monday - (int)weekStart.DayOfWeek);
+        ScoreBreakdown = stats.ScoreBreakdown;
+        TodayScore = stats.ScoreBreakdown.TotalScore;
+        TodayScoreLabel = stats.ScoreBreakdown.TotalScore.ToString("F0");
 
-        WeeklyReport = await _insightService.GenerateWeeklyReportAsync(weekStart);
+        Insights.Clear();
+        foreach (var insight in stats.Insights)
+            Insights.Add(insight);
+
+        WeeklyScores.Clear();
+        foreach (var (date, score, dayName) in stats.WeeklyScores)
+            WeeklyScores.Add(new DailyScoreItem { Date = date, Score = score, DayName = dayName });
+
+        WeeklyReport = stats.WeeklyReport;
+    }
+
+    private static DateTime GetWeekStart(DateTime date)
+    {
+        var weekStart = date.AddDays(-(int)date.DayOfWeek);
+        if (weekStart.DayOfWeek != DayOfWeek.Monday)
+            weekStart = weekStart.AddDays(-7);
+        return weekStart.AddDays((int)DayOfWeek.Monday - (int)weekStart.DayOfWeek);
     }
 
     [RelayCommand]
-    private async Task RefreshAsync()
-    {
-        await LoadDataAsync();
-    }
+    private async Task RefreshAsync() => await LoadDataAsync();
 
     [RelayCommand]
     private async Task PreviousDayAsync()

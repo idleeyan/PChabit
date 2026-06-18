@@ -3,6 +3,7 @@
 public interface IMonitor
 {
     bool IsRunning { get; }
+    DateTime LastActivityTime { get; }
     void Start();
     void Stop();
 }

@@ -15,9 +15,6 @@ public partial class GoalsViewModel : ViewModelBase
     public IGoalService GoalService => _goalService;
 
     [ObservableProperty]
-    private bool _isLoading;
-
-    [ObservableProperty]
     private bool _isAddingGoal;
 
     [ObservableProperty]
@@ -50,14 +47,39 @@ public partial class GoalsViewModel : ViewModelBase
         IsLoading = true;
         try
         {
-            Goals.Clear();
-            var goals = await _goalService.GetActiveGoalsAsync();
-            foreach (var goal in goals)
+            // Phase 1: 线程池 — DB 查询
+            var (goals, progress) = await Task.Run(async () =>
             {
-                Goals.Add(goal);
-            }
+                var g = await _goalService.GetActiveGoalsAsync();
+                var p = await _goalService.GetGoalProgressAsync(DateTime.Today);
+                return (g, p);
+            });
 
-            await LoadGoalProgressAsync();
+            // Phase 2: UI 线程 — ObservableCollection 更新
+            await RunOnUIThreadAsync(() =>
+            {
+                Goals.Clear();
+                foreach (var goal in goals)
+                {
+                    Goals.Add(goal);
+                }
+
+                GoalProgress.Clear();
+                foreach (var goal in goals)
+                {
+                    if (progress.TryGetValue(goal.Id, out var progressValue))
+                    {
+                        GoalProgress.Add(new GoalProgressItem
+                        {
+                            GoalId = goal.Id,
+                            Progress = progressValue,
+                            IsOverLimit = goal.DailyLimitMinutes.HasValue && progressValue >= 100
+                        });
+                    }
+                }
+
+                return Task.CompletedTask;
+            });
         }
         catch (Exception ex)
         {
@@ -66,25 +88,6 @@ public partial class GoalsViewModel : ViewModelBase
         finally
         {
             IsLoading = false;
-        }
-    }
-
-    private async Task LoadGoalProgressAsync()
-    {
-        GoalProgress.Clear();
-        var progress = await _goalService.GetGoalProgressAsync(DateTime.Today);
-        
-        foreach (var goal in Goals)
-        {
-            if (progress.TryGetValue(goal.Id, out var progressValue))
-            {
-                GoalProgress.Add(new GoalProgressItem
-                {
-                    GoalId = goal.Id,
-                    Progress = progressValue,
-                    IsOverLimit = goal.DailyLimitMinutes.HasValue && progressValue >= 100
-                });
-            }
         }
     }
 

@@ -22,6 +22,13 @@ public class MonitorManager : IDisposable
     private const int MaxConsecutiveFailures = 3;
     private static readonly TimeSpan HookInactivityThreshold = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// UI 线程调度器。System.Timers.Timer 回调运行在线程池，而 WH_KEYBOARD_LL / WH_MOUSE_LL
+    /// 低级钩子必须安装在有消息泵的线程上。重启钩子时必须通过此调度器派发到 UI 线程。
+    /// 由 App.xaml.cs 在 UI 线程上设置: action => DispatcherQueue.TryEnqueue(() => action())
+    /// </summary>
+    public Action<Action>? UIDispatcher { get; set; }
+
     public MonitorManager(
         IAppMonitor appMonitor,
         IKeyboardMonitor keyboardMonitor,
@@ -49,8 +56,9 @@ public class MonitorManager : IDisposable
         {
             if (!IsRunning) return;
 
+            // 键盘钩子已在回调中直接获取前台进程，无需定时器同步
+            // 仅同步鼠标钩子的进程归属
             var currentProcess = _appMonitor.GetCurrentProcess();
-            _keyboardMonitor.SetCurrentProcess(currentProcess);
             _mouseMonitor.SetCurrentProcess(currentProcess);
         }
         catch
@@ -132,6 +140,18 @@ public class MonitorManager : IDisposable
 
     private void RestartKeyboardMonitor()
     {
+        if (UIDispatcher != null)
+        {
+            UIDispatcher(DoRestartKeyboard);
+        }
+        else
+        {
+            DoRestartKeyboard();
+        }
+    }
+
+    private void DoRestartKeyboard()
+    {
         try
         {
             _keyboardMonitor.Stop();
@@ -145,6 +165,18 @@ public class MonitorManager : IDisposable
     }
 
     private void RestartMouseMonitor()
+    {
+        if (UIDispatcher != null)
+        {
+            UIDispatcher(DoRestartMouse);
+        }
+        else
+        {
+            DoRestartMouse();
+        }
+    }
+
+    private void DoRestartMouse()
     {
         try
         {

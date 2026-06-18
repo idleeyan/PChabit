@@ -29,7 +29,10 @@ public sealed partial class CategoryManagementPage : Page
         
         try
         {
-            await ViewModel.InitializeAsync();
+            await ViewModel.LoadInBackgroundAsync(async () =>
+            {
+                await ViewModel.InitializeAsync();
+            });
             Log.Information("CategoryManagementPage: 初始化完成");
         }
         catch (Exception ex)
@@ -53,6 +56,28 @@ public sealed partial class CategoryManagementPage : Page
         }
     }
 
+    private async void OnAddCategoryClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dialog = App.GetService<CategoryEditDialog>();
+            dialog.ViewModel.InitializeForAdd();
+            dialog.XamlRoot = XamlRoot;
+
+            var result = await dialog.ShowAsync();
+
+            if (result == ContentDialogResult.Primary)
+            {
+                var category = dialog.ViewModel.GetCategory();
+                await ViewModel.AddCategoryAsync(category);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "添加分类失败");
+        }
+    }
+
     private async void OnEditCategoryClick(object sender, RoutedEventArgs e)
     {
         if (ViewModel.SelectedCategory == null) return;
@@ -61,6 +86,7 @@ public sealed partial class CategoryManagementPage : Page
 
         var dialog = App.GetService<CategoryEditDialog>();
         dialog.ViewModel.InitializeForEdit(ViewModel.SelectedCategory);
+        dialog.XamlRoot = XamlRoot;
         
         var result = await dialog.ShowAsync();
         

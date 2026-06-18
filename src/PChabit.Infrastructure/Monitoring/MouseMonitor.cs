@@ -84,7 +84,6 @@ public class MouseMonitor : IMouseMonitor
                 switch (wParamInt)
                 {
                     case Win32Helper.WM_LBUTTONDOWN:
-                        Serilog.Log.Debug("[MS-Hook] 左键点击 ({X},{Y})", hookStruct.pt.X, hookStruct.pt.Y);
                         OnMouseClick?.Invoke(this, new MouseClickEventArgs(
                             MouseButtonType.Left, hookStruct.pt.X, hookStruct.pt.Y, now));
                         break;

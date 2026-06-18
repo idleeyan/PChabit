@@ -25,6 +25,17 @@ public sealed partial class WebsiteCategoryEditDialog : ContentDialog
         Log.Information("WebsiteCategoryEditDialog: 构造函数完成");
     }
 
+    public WebsiteCategoryEditDialog(WebsiteCategoryEditDialogViewModel viewModel)
+    {
+        Log.Information("WebsiteCategoryEditDialog: 构造函数开始（带 ViewModel）");
+        
+        ViewModel = viewModel;
+        
+        InitializeComponent();
+        
+        Log.Information("WebsiteCategoryEditDialog: 构造函数完成");
+    }
+
     private void OnColorTapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is Border border && border.Tag is string color)

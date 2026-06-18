@@ -8,8 +8,8 @@ public class PChabitDbContextFactory : IDesignTimeDbContextFactory<PChabitDbCont
     public PChabitDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<PChabitDbContext>();
-        optionsBuilder.UseSqlite("Data Source=pchabit.db");
-        
+        optionsBuilder.UseSqlite("Data Source=pchabit.db;Journal Mode=WAL;");
+
         return new PChabitDbContext(optionsBuilder.Options);
     }
 }

@@ -62,7 +62,7 @@ public class KeyboardSessionRepository : IKeyboardSessionRepository
     public async Task<KeyboardSession?> GetByDateAndHourAsync(DateTime date, int hour)
     {
         return await _context.KeyboardSessions
-            .FirstOrDefaultAsync(s => s.Date == date.Date && s.Hour == hour);
+            .FirstOrDefaultAsync(s => s.Date >= date.Date && s.Date < date.Date.AddDays(1) && s.Hour == hour);
     }
     
     public async Task<IEnumerable<KeyboardSession>> GetByDateRangeAsync(DateTime start, DateTime end)

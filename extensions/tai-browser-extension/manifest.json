@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Tai Activity Tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Track browser activity for Tai-AI personal habit data collection",
   "permissions": [
     "tabs",
