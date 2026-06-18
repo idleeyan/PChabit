@@ -15,9 +15,15 @@ public class TrayService : IDisposable
     private WndProcDelegate? _wndProcDelegate;
     private IntPtr _oldWndProc;
     private IntPtr _customIcon;
-    
+
+    // 动态进度环：缓存最近一次状态，避免无意义重绘
+    private TrayStatus _lastStatus = (TrayStatus)(-1);
+    private double _lastProgress = -1;
+    private DateTime _lastUpdateUtc = DateTime.MinValue;
+    private const int MinUpdateIntervalMs = 30_000; // 30s 节流（防止密集更新）
+
     public event EventHandler? ExitRequested;
-    
+
     public bool IsMinimizedToTray { get; private set; }
     
     private const int WM_USER = 0x0400;
@@ -28,6 +34,7 @@ public class TrayService : IDisposable
     private const int GWL_WNDPROC = -4;
     
     private const int NIM_ADD = 0x00000000;
+    private const int NIM_MODIFY = 0x00000001;
     private const int NIM_DELETE = 0x00000002;
     
     private const int NIF_MESSAGE = 0x00000001;
@@ -233,6 +240,83 @@ public class TrayService : IDisposable
         }
     }
     
+    /// <summary>
+    /// 刷新托盘图标的进度环与提示文本。
+    /// 调用频率由 App.xaml.cs 的 DispatcherTimer 控制（默认 60s）。
+    /// 节流策略：进度变化 < 1% 且状态未变 → 跳过；30s 内重复调用 → 跳过。
+    /// </summary>
+    /// <param name="progress">今日已用时长 / 每日总目标，0.0~1.0；null=不画进度环</param>
+    /// <param name="status">运行/暂停/禁用</param>
+    public void UpdateProgress(double? progress, TrayStatus status)
+    {
+        if (_disposed || !_isCreated) return;
+
+        var now = DateTime.UtcNow;
+        var p = progress.HasValue ? Math.Clamp(progress.Value, 0.0, 1.0) : (double?)null;
+        var progressChanged = !_lastProgress.Equals(p);
+        var statusChanged   = _lastStatus != status;
+        var throttled       = (now - _lastUpdateUtc).TotalMilliseconds < MinUpdateIntervalMs;
+
+        if (!progressChanged && !statusChanged) return;
+        if (throttled && !statusChanged) return;
+
+        _lastProgress = p ?? -1;
+        _lastStatus   = status;
+        _lastUpdateUtc = now;
+
+        try
+        {
+            var hIcon = IconRenderer.CreateTrayIcon(p, status, 16);
+            if (hIcon == IntPtr.Zero) return;
+
+            // 构建 tooltip：保留核心标语 + 进度百分比
+            var tip = status switch
+            {
+                TrayStatus.Paused   => "PChabit - 已暂停",
+                TrayStatus.Disabled => "PChabit - 未配置目标",
+                _ => p.HasValue
+                    ? $"PChabit - 今日 {(int)(p.Value * 100)}%"
+                    : "PChabit - 电脑使用习惯追踪"
+            };
+
+            UpdateNotifyIcon(hIcon, tip);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "UpdateProgress 失败: progress={Progress}, status={Status}", p, status);
+        }
+    }
+
+    /// <summary>
+    /// 主动重置节流器（暂停→恢复时立即生效）
+    /// </summary>
+    public void ForceRefresh()
+    {
+        _lastUpdateUtc = DateTime.MinValue;
+    }
+
+    private void UpdateNotifyIcon(IntPtr hIcon, string tip)
+    {
+        // 释放上一个由 GetHicon() 创建的 HICON，避免 GDI 句柄泄漏
+        if (_customIcon != IntPtr.Zero)
+        {
+            DestroyIcon(_customIcon);
+            _customIcon = IntPtr.Zero;
+        }
+        _customIcon = hIcon;
+
+        _notifyIconData.hIcon = hIcon;
+        _notifyIconData.szTip = tip;
+
+        var result = Shell_NotifyIcon(NIM_MODIFY, ref _notifyIconData);
+        if (!result)
+        {
+            // 极少发生：托盘条目被回收 → 重新注册
+            Log.Warning("Shell_NotifyIcon(NIM_MODIFY) 失败，尝试 NIM_ADD 重建");
+            Shell_NotifyIcon(NIM_ADD, ref _notifyIconData);
+        }
+    }
+
     public void MinimizeToTray()
     {
         if (_window == null) return;

@@ -83,8 +83,8 @@ public class BehaviorAnalyzer : IBehaviorAnalyzer
     public async Task<ProductivityReport> GetProductivityReportAsync(DateTime date)
     {
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         var orderedSessions = sessions.OrderBy(s => s.StartTime).ToList();
         var focusSessions = await IdentifyFocusSessionsAsync(date);
         
@@ -118,8 +118,8 @@ public class BehaviorAnalyzer : IBehaviorAnalyzer
     public async Task<List<FocusSession>> IdentifyFocusSessionsAsync(DateTime date)
     {
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         var orderedSessions = sessions.OrderBy(s => s.StartTime).ToList();
         var focusSessions = new List<FocusSession>();
         
@@ -184,8 +184,8 @@ public class BehaviorAnalyzer : IBehaviorAnalyzer
     public async Task<Dictionary<string, double>> GetAppProductivityScoresAsync(DateTime date)
     {
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         var scores = new Dictionary<string, double>();
         
         var appGroups = sessions.GroupBy(s => s.ProcessName);

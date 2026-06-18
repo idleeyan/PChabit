@@ -18,12 +18,17 @@ public class PatternDetector
     
     public async Task<List<UsagePattern>> DetectPatternsAsync(DateTime date)
     {
-        var patterns = new List<UsagePattern>();
-        
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         var orderedSessions = sessions.OrderBy(s => s.StartTime).ToList();
+
+        return DetectPatternsFromSessions(orderedSessions);
+    }
+    
+    private List<UsagePattern> DetectPatternsFromSessions(List<AppSession> orderedSessions)
+    {
+        var patterns = new List<UsagePattern>();
         
         patterns.AddRange(DetectFrequentApps(orderedSessions));
         patterns.AddRange(DetectPeakHours(orderedSessions));
@@ -265,6 +270,7 @@ public class PatternDetector
     {
         var patterns = new List<UsagePattern>();
         
+        // 使用 HashSet 精确匹配，避免 O(N*M) 子串搜索
         var productiveApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "code", "devenv", "idea64", "pycharm64", "visualstudio", "vscode",
@@ -272,7 +278,7 @@ public class PatternDetector
         };
         
         var productiveTime = sessions
-            .Where(s => productiveApps.Any(p => s.ProcessName.ToLowerInvariant().Contains(p)))
+            .Where(s => productiveApps.Contains(s.ProcessName))
             .Sum(s => s.Duration.TotalMinutes);
         
         var totalTime = sessions.Sum(s => s.Duration.TotalMinutes);
@@ -314,12 +320,13 @@ public class PatternDetector
     
     public async Task SaveDailyPatternAsync(DateTime date)
     {
-        var patterns = await DetectPatternsAsync(date);
-        
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         var orderedSessions = sessions.OrderBy(s => s.StartTime).ToList();
+
+        // 复用同一份数据，避免重复查询
+        var patterns = DetectPatternsFromSessions(orderedSessions);
         
         var dailyPattern = new DailyPattern
         {
@@ -335,7 +342,7 @@ public class PatternDetector
             HourlyActivity = CalculateHourlyActivity(orderedSessions)
         };
         
-        var existingPattern = await _patternRepo.FindAsync(p => p.Date == date.Date);
+        var existingPattern = await _patternRepo.FindAsync(p => p.Date >= date.Date && p.Date < date.Date.AddDays(1));
         var existing = existingPattern.FirstOrDefault();
         
         if (existing == null)
@@ -503,6 +510,16 @@ public class PatternDetector
     
     public async Task<WeeklyPatternSummary> GetWeeklySummaryAsync(DateTime weekStart)
     {
+        var weekEnd = weekStart.AddDays(7);
+        
+        // 一次性查询整周数据，避免 7 次 N+1 查询
+        var allSessions = await _appSessionRepo.FindAsync(
+            s => s.StartTime >= weekStart && s.StartTime < weekEnd);
+        
+        var sessionsByDate = allSessions
+            .GroupBy(s => s.StartTime.Date)
+            .ToDictionary(g => g.Key, g => g.OrderBy(s => s.StartTime).ToList());
+        
         var summary = new WeeklyPatternSummary
         {
             WeekStart = weekStart
@@ -511,7 +528,8 @@ public class PatternDetector
         for (var i = 0; i < 7; i++)
         {
             var date = weekStart.AddDays(i);
-            var patterns = await DetectPatternsAsync(date);
+            var daySessions = sessionsByDate.GetValueOrDefault(date, []);
+            var patterns = DetectPatternsFromSessions(daySessions);
             
             summary.DailyPatterns[date] = patterns;
             

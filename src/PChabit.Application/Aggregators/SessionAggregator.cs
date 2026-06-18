@@ -57,8 +57,8 @@ public class SessionAggregator
     public async Task<Dictionary<string, TimeSpan>> GetAppTimeDistributionAsync(DateTime date)
     {
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         return sessions
             .GroupBy(s => s.ProcessName)
             .ToDictionary(
@@ -69,8 +69,8 @@ public class SessionAggregator
     public async Task<List<SessionTransition>> GetSessionTransitionsAsync(DateTime date)
     {
         var sessions = await _appSessionRepo.FindAsync(
-            s => s.StartTime.Date == date.Date);
-        
+            s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1));
+
         var orderedSessions = sessions.OrderBy(s => s.StartTime).ToList();
         var transitions = new List<SessionTransition>();
         

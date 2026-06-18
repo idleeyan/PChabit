@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Caching.Memory;
 
 namespace PChabit.Infrastructure.Services;
@@ -18,25 +18,25 @@ public class MemoryCacheService : ICacheService
 {
     private readonly IMemoryCache _cache;
     private readonly ConcurrentDictionary<string, byte> _keys;
-    
+
     private static readonly TimeSpan DefaultExpiration = TimeSpan.FromMinutes(30);
-    
+
     public MemoryCacheService(IMemoryCache cache)
     {
         _cache = cache;
         _keys = new ConcurrentDictionary<string, byte>();
     }
-    
+
     public T? Get<T>(string key)
     {
         return _cache.TryGetValue(key, out T? value) ? value : default;
     }
-    
+
     public Task<T?> GetAsync<T>(string key)
     {
         return Task.FromResult(Get<T>(key));
     }
-    
+
     public void Set<T>(string key, T value, TimeSpan? expiration = null)
     {
         var options = new MemoryCacheEntryOptions
@@ -44,40 +44,38 @@ public class MemoryCacheService : ICacheService
             AbsoluteExpirationRelativeToNow = expiration ?? DefaultExpiration,
             SlidingExpiration = TimeSpan.FromMinutes(10)
         };
-        
+
         _cache.Set(key, value, options);
         _keys.TryAdd(key, 0);
     }
-    
+
     public Task SetAsync<T>(string key, T value, TimeSpan? expiration = null)
     {
         Set(key, value, expiration);
         return Task.CompletedTask;
     }
-    
+
     public void Remove(string key)
     {
         _cache.Remove(key);
         _keys.TryRemove(key, out _);
     }
-    
+
     public void RemoveByPrefix(string prefix)
     {
-        var keysToRemove = _keys.Keys.Where(k => k.StartsWith(prefix)).ToList();
-        
-        foreach (var key in keysToRemove)
+        foreach (var key in _keys.Keys.Where(k => k.StartsWith(prefix)).ToList())
         {
             Remove(key);
         }
     }
-    
+
     public void Clear()
     {
         foreach (var key in _keys.Keys)
         {
             _cache.Remove(key);
         }
-        
+
         _keys.Clear();
     }
 }

@@ -21,6 +21,7 @@ public class WebMonitor : IWebMonitor, IDisposable
     };
     
     public bool IsRunning => _isRunning;
+    public DateTime LastActivityTime { get; private set; } = DateTime.MinValue;
     
     public event EventHandler<WebActivityEventArgs>? WebActivityReceived;
     public event EventHandler<MonitorStatusEventArgs>? StatusChanged;

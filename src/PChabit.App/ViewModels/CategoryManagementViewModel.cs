@@ -2,10 +2,10 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.UI.Dispatching;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
-using PChabit.Infrastructure.Services;
+using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
@@ -16,13 +16,9 @@ public class RunningProcessItem
     public string? ProcessPath { get; set; }
 }
 
-public partial class CategoryManagementViewModel : ObservableObject
+public partial class CategoryManagementViewModel : ViewModelBase
 {
-    private readonly ICategoryService _categoryService;
-    private readonly DispatcherQueue _dispatcherQueue;
-
-    [ObservableProperty]
-    private bool _isLoading;
+    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
 
     [ObservableProperty]
     private string _searchText = string.Empty;
@@ -44,10 +40,9 @@ public partial class CategoryManagementViewModel : ObservableObject
     public ObservableCollection<ProgramCategoryMapping> FilteredMappings { get; } = new();
     public ObservableCollection<RunningProcessItem> RunningProcesses { get; } = new();
 
-    public CategoryManagementViewModel(ICategoryService categoryService)
+    public CategoryManagementViewModel(IDbContextFactory<PChabitDbContext> dbFactory) : base()
     {
-        _categoryService = categoryService;
-        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+        _dbFactory = dbFactory;
     }
     
     public List<RunningProcessItem> GetRunningProcesses()
@@ -105,8 +100,43 @@ public partial class CategoryManagementViewModel : ObservableObject
 
         try
         {
-            await LoadCategoriesAsync();
-            await LoadMappingsAsync();
+            // Phase 1: 线程池 — DB 查询 + 纯数据获取
+            var categories = await Task.Run(async () =>
+            {
+                await using var dbContext = await _dbFactory.CreateDbContextAsync();
+                return await dbContext.ProgramCategories
+                    .Include(c => c.ProgramMappings)
+                    .Where(c => c.IsActive)
+                    .OrderBy(c => c.SortOrder)
+                    .ThenBy(c => c.Name)
+                    .ToListAsync();
+            });
+
+            var mappings = await Task.Run(async () =>
+            {
+                await using var dbContext = await _dbFactory.CreateDbContextAsync();
+                return await dbContext.ProgramCategoryMappings.ToListAsync();
+            });
+
+            // Phase 2: UI 线程 — ObservableCollection 更新
+            await RunOnUIThreadAsync(() =>
+            {
+                Categories.Clear();
+                foreach (var category in categories)
+                {
+                    Categories.Add(category);
+                }
+                TotalCategories = Categories.Count;
+
+                CategoryMappings.Clear();
+                foreach (var mapping in mappings)
+                {
+                    CategoryMappings.Add(mapping);
+                }
+                TotalMappings = CategoryMappings.Count;
+                return Task.CompletedTask;
+            });
+
             Log.Information("CategoryManagementViewModel: 初始化完成");
         }
         catch (Exception ex)
@@ -117,36 +147,6 @@ public partial class CategoryManagementViewModel : ObservableObject
         {
             IsLoading = false;
         }
-    }
-
-    private async Task LoadCategoriesAsync()
-    {
-        var categories = await _categoryService.GetAllCategoriesAsync();
-        
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            Categories.Clear();
-            foreach (var category in categories)
-            {
-                Categories.Add(category);
-            }
-            TotalCategories = Categories.Count;
-        });
-    }
-
-    private async Task LoadMappingsAsync()
-    {
-        var mappings = await _categoryService.GetAllMappingsAsync();
-        
-        _dispatcherQueue.TryEnqueue(() =>
-        {
-            CategoryMappings.Clear();
-            foreach (var mapping in mappings)
-            {
-                CategoryMappings.Add(mapping);
-            }
-            TotalMappings = CategoryMappings.Count;
-        });
     }
 
     [RelayCommand]
@@ -205,8 +205,12 @@ public partial class CategoryManagementViewModel : ObservableObject
     {
         try
         {
-            await _categoryService.CreateCategoryAsync(category);
-            await LoadCategoriesAsync();
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+            category.IsActive = true;
+            category.CreatedAt = DateTime.Now;
+            dbContext.ProgramCategories.Add(category);
+            await dbContext.SaveChangesAsync();
+            await InitializeAsync();
             Log.Information("添加分类成功: {CategoryName}", category.Name);
         }
         catch (Exception ex)
@@ -219,8 +223,19 @@ public partial class CategoryManagementViewModel : ObservableObject
     {
         try
         {
-            await _categoryService.UpdateCategoryAsync(category);
-            await LoadCategoriesAsync();
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+            var existing = await dbContext.ProgramCategories.FindAsync(category.Id);
+            if (existing != null)
+            {
+                existing.Name = category.Name;
+                existing.Description = category.Description;
+                existing.Color = category.Color;
+                existing.Icon = category.Icon;
+                existing.SortOrder = category.SortOrder;
+                existing.UpdatedAt = DateTime.Now;
+                await dbContext.SaveChangesAsync();
+            }
+            await InitializeAsync();
             Log.Information("更新分类成功: {CategoryName}", category.Name);
         }
         catch (Exception ex)
@@ -233,8 +248,14 @@ public partial class CategoryManagementViewModel : ObservableObject
     {
         try
         {
-            await _categoryService.DeleteCategoryAsync(categoryId);
-            await LoadCategoriesAsync();
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+            var category = await dbContext.ProgramCategories.FindAsync(categoryId);
+            if (category != null)
+            {
+                category.IsActive = false;
+                await dbContext.SaveChangesAsync();
+            }
+            await InitializeAsync();
             
             if (SelectedCategory?.Id == categoryId)
             {
@@ -253,13 +274,12 @@ public partial class CategoryManagementViewModel : ObservableObject
     {
         try
         {
-            await _categoryService.CreateMappingAsync(mapping);
-            await LoadMappingsAsync();
-            
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                FilterMappings();
-            });
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+            mapping.CreatedAt = DateTime.Now;
+            dbContext.ProgramCategoryMappings.Add(mapping);
+            await dbContext.SaveChangesAsync();
+            await InitializeAsync();
+            FilterMappings();
             
             Log.Information("添加映射成功: {ProcessName} -> {CategoryId}", mapping.ProcessName, mapping.CategoryId);
         }
@@ -273,13 +293,15 @@ public partial class CategoryManagementViewModel : ObservableObject
     {
         try
         {
-            await _categoryService.DeleteMappingAsync(mappingId);
-            await LoadMappingsAsync();
-            
-            _dispatcherQueue.TryEnqueue(() =>
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+            var mapping = await dbContext.ProgramCategoryMappings.FindAsync(mappingId);
+            if (mapping != null)
             {
-                FilterMappings();
-            });
+                dbContext.ProgramCategoryMappings.Remove(mapping);
+                await dbContext.SaveChangesAsync();
+            }
+            await InitializeAsync();
+            FilterMappings();
             
             Log.Information("删除映射成功: {MappingId}", mappingId);
         }

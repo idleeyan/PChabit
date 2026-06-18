@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Page
     x:Class="PChabit.App.Views.KeyboardDetailsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -10,11 +10,12 @@
     
     <ScrollViewer Padding="24">
         <StackPanel Spacing="24">
+            <!-- 标题 + 日期切换 -->
             <Grid>
                 <TextBlock
                     FontSize="24"
                     FontWeight="SemiBold"
-                    Text="按键详情" />
+                    Text="键鼠详情" />
                 
                 <StackPanel
                     HorizontalAlignment="Right"
@@ -38,7 +39,14 @@
                 </StackPanel>
             </Grid>
             
-            <Grid ColumnSpacing="16" RowSpacing="16">
+            <!-- ===== 键盘统计区域 ===== -->
+            <TextBlock
+                FontSize="16"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="&#xE92E; 键盘统计" />
+            
+            <Grid ColumnSpacing="12" RowSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -46,83 +54,31 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 
-                <Border
-                    Grid.Column="0"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="4">
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="总按键次数"
-                            ToolTipService.ToolTip="当日累计按下的所有按键总数，包括字母、数字、符号等" />
-                        <TextBlock
-                            FontSize="20"
-                            FontWeight="SemiBold"
-                            Text="{x:Bind ViewModel.TotalKeyPresses, Mode=OneWay}" />
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="总按键次数" ToolTipService.ToolTip="当日累计按下的所有按键总数" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Text="{x:Bind ViewModel.TotalKeyPresses, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
                 
-                <Border
-                    Grid.Column="1"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="4">
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="平均速度"
-                            ToolTipService.ToolTip="平均打字速度：每分钟按键次数（KPM）" />
-                        <TextBlock
-                            FontSize="20"
-                            FontWeight="SemiBold"
-                            Text="{x:Bind ViewModel.AverageSpeed, Mode=OneWay}" />
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="平均速度" ToolTipService.ToolTip="平均打字速度（KPM）" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Text="{x:Bind ViewModel.AverageSpeed, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
                 
-                <Border
-                    Grid.Column="2"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <Border Grid.Column="2" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="4">
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="峰值速度"
-                            ToolTipService.ToolTip="当日最高打字速度：每分钟按键次数（KPM）" />
-                        <TextBlock
-                            FontSize="20"
-                            FontWeight="SemiBold"
-                            Text="{x:Bind ViewModel.PeakSpeed, Mode=OneWay}" />
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="峰值速度" ToolTipService.ToolTip="当日最高打字速度（KPM）" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Text="{x:Bind ViewModel.PeakSpeed, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
                 
-                <Border
-                    Grid.Column="3"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <Border Grid.Column="3" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="4">
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="快捷键使用"
-                            ToolTipService.ToolTip="当日使用的键盘快捷键组合总次数（如 Ctrl+C、Ctrl+V 等）" />
-                        <TextBlock
-                            FontSize="20"
-                            FontWeight="SemiBold"
-                            Text="{x:Bind ViewModel.ShortcutsUsed, Mode=OneWay}" />
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="快捷键使用" ToolTipService.ToolTip="快捷键组合总次数" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Text="{x:Bind ViewModel.ShortcutsUsed, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -133,23 +89,11 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 
-                <Border
-                    Grid.Column="0"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <!-- 按键使用排行 -->
+                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="16">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="按键使用排行"
-                            ToolTipService.ToolTip="显示使用频率最高的20个按键，按使用次数降序排列" />
-                        
-                        <ListView
-                            ItemsSource="{x:Bind ViewModel.KeyUsageList, Mode=OneWay}"
-                            SelectionMode="None">
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="按键使用排行" ToolTipService.ToolTip="使用频率最高的20个按键" />
+                        <ListView ItemsSource="{x:Bind ViewModel.KeyUsageList, Mode=OneWay}" SelectionMode="None">
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="viewModel:KeyUsageItem">
                                     <Grid Margin="0,4">
@@ -159,34 +103,12 @@
                                             <ColumnDefinition Width="80" />
                                             <ColumnDefinition Width="60" />
                                         </Grid.ColumnDefinitions>
-                                        
-                                        <Border
-                                            Padding="8,4"
-                                            Background="{x:Bind Color}"
-                                            CornerRadius="4">
-                                            <TextBlock
-                                                HorizontalAlignment="Center"
-                                                FontWeight="Medium"
-                                                Text="{x:Bind KeyName}" />
+                                        <Border Padding="8,4" Background="{x:Bind Color}" CornerRadius="4">
+                                            <TextBlock HorizontalAlignment="Center" FontWeight="Medium" Text="{x:Bind KeyName}" />
                                         </Border>
-                                        
-                                        <ProgressBar
-                                            Grid.Column="1"
-                                            Margin="8,0"
-                                            VerticalAlignment="Center"
-                                            Maximum="100"
-                                            Value="{x:Bind Percentage}" />
-                                        
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            VerticalAlignment="Center"
-                                            Text="{x:Bind Count}" />
-                                        
-                                        <TextBlock
-                                            Grid.Column="3"
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{x:Bind Percentage, Converter={StaticResource PercentageConverter}}" />
+                                        <ProgressBar Grid.Column="1" Margin="8,0" VerticalAlignment="Center" Maximum="100" Value="{x:Bind Percentage}" />
+                                        <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{x:Bind Count}" />
+                                        <TextBlock Grid.Column="3" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Percentage, Converter={StaticResource PercentageConverter}}" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -194,54 +116,27 @@
                     </StackPanel>
                 </Border>
                 
-                <Border
-                    Grid.Column="1"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <!-- 编辑统计 + 常用快捷键 -->
+                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="16">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="编辑统计"
-                            ToolTipService.ToolTip="编辑类按键的使用统计，反映文本编辑活动的频繁程度" />
-                        
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="编辑统计" ToolTipService.ToolTip="编辑类按键统计" />
                         <StackPanel Spacing="12">
                             <Grid>
                                 <TextBlock Text="退格键" />
-                                <TextBlock
-                                    HorizontalAlignment="Right"
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind ViewModel.BackspaceCount, Mode=OneWay}" />
+                                <TextBlock HorizontalAlignment="Right" FontWeight="SemiBold" Text="{x:Bind ViewModel.BackspaceCount, Mode=OneWay}" />
                             </Grid>
                             <Grid>
                                 <TextBlock Text="删除键" />
-                                <TextBlock
-                                    HorizontalAlignment="Right"
-                                    FontWeight="SemiBold"
-                                    Text="{x:Bind ViewModel.DeleteCount, Mode=OneWay}" />
+                                <TextBlock HorizontalAlignment="Right" FontWeight="SemiBold" Text="{x:Bind ViewModel.DeleteCount, Mode=OneWay}" />
                             </Grid>
                         </StackPanel>
-                        
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="常用快捷键"
-                            ToolTipService.ToolTip="当日使用最频繁的快捷键组合及其使用次数" />
-                        
-                        <ListView
-                            ItemsSource="{x:Bind ViewModel.TopShortcuts, Mode=OneWay}"
-                            SelectionMode="None">
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="常用快捷键" ToolTipService.ToolTip="使用最频繁的快捷键组合" />
+                        <ListView ItemsSource="{x:Bind ViewModel.TopShortcuts, Mode=OneWay}" SelectionMode="None">
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="viewModel:ShortcutItem">
                                     <Grid Margin="0,4">
                                         <TextBlock Text="{x:Bind Shortcut}" />
-                                        <TextBlock
-                                            HorizontalAlignment="Right"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{x:Bind Count}" />
+                                        <TextBlock HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Count}" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -256,29 +151,16 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 
-                <Border
-                    Grid.Column="0"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <!-- 每小时按键分布 -->
+                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="16">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="每小时按键分布"
-                            ToolTipService.ToolTip="每小时内的按键次数分布，数值表示该小时内的总按键数" />
-                        
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时按键分布" ToolTipService.ToolTip="每小时的按键次数分布" />
                         <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyData, Mode=OneWay}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="viewModel:HourlyKeyItem">
                                     <Grid Margin="0,4">
                                         <TextBlock Width="50" Text="{x:Bind Hour}" />
-                                        <ProgressBar
-                                            Margin="60,0,80,0"
-                                            Maximum="1000"
-                                            Value="{x:Bind Presses}" />
+                                        <ProgressBar Margin="60,0,80,0" Maximum="1000" Value="{x:Bind Presses}" />
                                         <TextBlock HorizontalAlignment="Right" Text="{x:Bind Presses}" />
                                     </Grid>
                                 </DataTemplate>
@@ -287,67 +169,24 @@
                     </StackPanel>
                 </Border>
                 
-                <Border
-                    Grid.Column="1"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
+                <!-- 应用按键统计 -->
+                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="16">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="应用按键统计"
-                            ToolTipService.ToolTip="各应用程序的按键使用统计，包括按键次数和平均打字速度" />
-                        
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="应用按键统计" ToolTipService.ToolTip="各应用的按键使用统计" />
                         <Grid Margin="0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="80" />
-                                <ColumnDefinition Width="80" />
-                            </Grid.ColumnDefinitions>
-                            
-                            <TextBlock
-                                FontSize="11"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="应用名称" />
-                            <TextBlock
-                                Grid.Column="1"
-                                FontSize="11"
-                                HorizontalAlignment="Right"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="按键次数" />
-                            <TextBlock
-                                Grid.Column="2"
-                                FontSize="11"
-                                HorizontalAlignment="Right"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="KPM" />
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="80" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
+                            <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="应用名称" />
+                            <TextBlock Grid.Column="1" FontSize="11" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="按键次数" />
+                            <TextBlock Grid.Column="2" FontSize="11" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="KPM" />
                         </Grid>
-                        
-                        <ListView
-                            ItemsSource="{x:Bind ViewModel.AppKeyUsage, Mode=OneWay}"
-                            SelectionMode="None">
+                        <ListView ItemsSource="{x:Bind ViewModel.AppKeyUsage, Mode=OneWay}" SelectionMode="None">
                             <ListView.ItemTemplate>
                                 <DataTemplate x:DataType="viewModel:AppKeyItem">
                                     <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="80" />
-                                            <ColumnDefinition Width="80" />
-                                        </Grid.ColumnDefinitions>
-                                        
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="80" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
                                         <TextBlock Text="{x:Bind ProcessName}" />
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            HorizontalAlignment="Right"
-                                            Text="{x:Bind KeyPresses}" />
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            HorizontalAlignment="Right"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{x:Bind AvgSpeed}" />
+                                        <TextBlock Grid.Column="1" HorizontalAlignment="Right" Text="{x:Bind KeyPresses}" />
+                                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind AvgSpeed}" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -355,6 +194,172 @@
                     </StackPanel>
                 </Border>
             </Grid>
+            
+            <!-- ===== 鼠标统计区域 ===== -->
+            <TextBlock
+                FontSize="16"
+                FontWeight="SemiBold"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="&#xE962; 鼠标统计" />
+            
+            <Grid ColumnSpacing="12" RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                
+                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="总点击次数" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="#0078D4" Text="{x:Bind ViewModel.TotalClicks, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="左键点击" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="#107C10" Text="{x:Bind ViewModel.LeftClicks, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border Grid.Column="2" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="右键点击" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="#E81123" Text="{x:Bind ViewModel.RightClicks, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border Grid.Column="3" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="中键点击" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="#FF8C00" Text="{x:Bind ViewModel.MiddleClicks, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border Grid.Column="4" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="移动距离" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="#8764B8" Text="{x:Bind ViewModel.TotalMoveDistance, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                
+                <Border Grid.Column="5" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="滚动次数" />
+                        <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="#00B7C3" Text="{x:Bind ViewModel.TotalScrolls, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 平均点击间隔 -->
+                <Border Grid.Row="1" Grid.ColumnSpan="6" Padding="12,8" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                    <TextBlock FontSize="13" VerticalAlignment="Center">
+                        <Run Text="平均点击间隔: " Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <Run Text="{x:Bind ViewModel.AverageClickInterval, Mode=OneWay}" FontWeight="SemiBold" Foreground="#0078D4" />
+                    </TextBlock>
+                </Border>
+            </Grid>
+            
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                
+                <!-- 每小时鼠标统计 -->
+                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="16">
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时鼠标统计" ToolTipService.ToolTip="每小时的鼠标点击、移动和滚动统计" />
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyMouseStats, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="viewModel:HourlyMouseStat">
+                                    <Grid Margin="0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="50" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{x:Bind Label}" />
+                                        <ProgressBar Grid.Column="1" Margin="8,0" Maximum="1000" Value="{x:Bind ClickCount}" />
+                                        <TextBlock Grid.Column="2" MinWidth="120" TextAlignment="Right">
+                                            <Run Text="点击:" /><Run Text="{x:Bind ClickCount}" />
+                                            <Run Text=" | " /><Run Text="{x:Bind MoveDistance}" /><Run Text="px" />
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+                
+                <!-- 按程序鼠标统计 -->
+                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="16">
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="按程序鼠标统计" ToolTipService.ToolTip="各应用的鼠标使用统计" />
+                        <ListView ItemsSource="{x:Bind ViewModel.ProgramMouseStats, Mode=OneWay}" SelectionMode="None" MaxHeight="300">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="viewModel:ProgramMouseStat">
+                                    <Grid Padding="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock FontWeight="Medium" Text="{x:Bind ProcessName}" />
+                                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Category}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="4">
+                                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="点击:" /><Run Text="{x:Bind ClickCount}" /></TextBlock>
+                                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="移动:" /><Run Text="{x:Bind MoveDistance}" /><Run Text="px" /></TextBlock>
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"><Run Text="滚动:" /><Run Text="{x:Bind ScrollCount}" /></TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </Border>
+            </Grid>
+            
+            <!-- 鼠标详细记录 -->
+            <Border Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                <StackPanel Spacing="16">
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="鼠标详细记录" />
+                    <ListView ItemsSource="{x:Bind ViewModel.MouseClickDetails, Mode=OneWay}" SelectionMode="None" MaxHeight="300">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="viewModel:MouseClickDetail">
+                                <Grid Padding="8" ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock VerticalAlignment="Center">
+                                        <Run Text="{x:Bind Date, Converter={StaticResource DateToStringConverter}}" />
+                                        <Run Text=" " /><Run Text="{x:Bind Hour}" /><Run Text=":00" />
+                                    </TextBlock>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Foreground="#107C10"><Run Text="左:" /><Run Text="{x:Bind LeftClicks}" /></TextBlock>
+                                        <TextBlock Foreground="#E81123"><Run Text="右:" /><Run Text="{x:Bind RightClicks}" /></TextBlock>
+                                        <TextBlock Foreground="#FF8C00"><Run Text="中:" /><Run Text="{x:Bind MiddleClicks}" /></TextBlock>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="移动:" /><Run Text="{x:Bind MoveDistance}" /><Run Text="px" /></TextBlock>
+                                    <TextBlock Grid.Column="3" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="滚动:" /><Run Text="{x:Bind Scrolls}" /></TextBlock>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </Border>
         </StackPanel>
     </ScrollViewer>
 </Page>

@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
@@ -10,15 +11,17 @@ namespace PChabit.Infrastructure.Services;
 public class BackupService : IBackupService, IDisposable
 {
     private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
+    private readonly ISettingsService _settingsService;
     private readonly string _defaultBackupPath;
     private System.Timers.Timer? _periodicBackupTimer;
     private bool _disposed;
 
     public event EventHandler<BackupProgressEventArgs>? ProgressChanged;
 
-    public BackupService(IDbContextFactory<PChabitDbContext> dbContextFactory)
+    public BackupService(IDbContextFactory<PChabitDbContext> dbContextFactory, ISettingsService settingsService)
     {
         _dbContextFactory = dbContextFactory;
+        _settingsService = settingsService;
         _defaultBackupPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PChabit", "Backups");
@@ -45,8 +48,15 @@ public class BackupService : IBackupService, IDisposable
 
             ProgressChanged?.Invoke(this, new BackupProgressEventArgs { Progress = 30, Status = "正在压缩数据库..." });
 
+            // VACUUM INTO：自动 checkpoint WAL 并生成一致性快照，解决 File.Copy 遗漏 WAL 数据的问题
             var tempDbPath = Path.Combine(Path.GetTempPath(), $"pchabit_temp_{timestamp}.db");
-            File.Copy(dbPath, tempDbPath, true);
+            using (var connection = new SqliteConnection($"Data Source={dbPath}"))
+            {
+                await connection.OpenAsync(cancellationToken);
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = $"VACUUM INTO '{tempDbPath.Replace("'", "''")}';";
+                await cmd.ExecuteNonQueryAsync(cancellationToken);
+            }
 
             using (var zip = ZipFile.Open(backupFilePath, ZipArchiveMode.Create))
             {
@@ -92,13 +102,13 @@ public class BackupService : IBackupService, IDisposable
         }
     }
 
-    public Task<RestoreResult> RestoreFromBackupAsync(string backupPath, CancellationToken cancellationToken = default)
+    public async Task<RestoreResult> RestoreFromBackupAsync(string backupPath, CancellationToken cancellationToken = default)
     {
         try
         {
             if (!File.Exists(backupPath))
             {
-                return Task.FromResult(new RestoreResult { Success = false, ErrorMessage = "备份文件不存在" });
+                return new RestoreResult { Success = false, ErrorMessage = "备份文件不存在" };
             }
 
             var dbPath = GetDatabasePath();
@@ -106,35 +116,53 @@ public class BackupService : IBackupService, IDisposable
                 Path.GetDirectoryName(backupPath)!,
                 $"pre_restore_{DateTime.Now:yyyyMMdd_HHmmss}.zip");
 
+            // 修复：File.OpenRead(dbPath) + CreateEntryFromFile(dbPath) 会导致文件锁定冲突
+            // 先从备份 ZIP 读取数据库条目到临时文件，再用临时文件替换
             using (var zip = ZipFile.OpenRead(backupPath))
             {
                 var entry = zip.GetEntry("pchabit.db");
                 if (entry == null)
                 {
-                    return Task.FromResult(new RestoreResult { Success = false, ErrorMessage = "备份文件格式无效" });
+                    return new RestoreResult { Success = false, ErrorMessage = "备份文件格式无效" };
                 }
 
-                using (var currentDb = File.OpenRead(dbPath))
-                using (var currentZip = ZipFile.Open(currentBackupPath, ZipArchiveMode.Create))
+                var tempRestorePath = Path.Combine(Path.GetTempPath(), $"pchabit_restore_{DateTime.Now:yyyyMMdd_HHmmss}.db");
+
+                // 1. 把当前数据库备份到 pre_restore ZIP（先复制再压缩，避免文件锁）
+                if (File.Exists(dbPath))
                 {
-                    currentZip.CreateEntryFromFile(dbPath, "pchabit.db");
+                    var tempCurrentDb = Path.Combine(Path.GetTempPath(), $"pchabit_current_{DateTime.Now:yyyyMMdd_HHmmss}.db");
+                    File.Copy(dbPath, tempCurrentDb, true);
+                    using (var currentZip = ZipFile.Open(currentBackupPath, ZipArchiveMode.Create))
+                    {
+                        currentZip.CreateEntryFromFile(tempCurrentDb, "pchabit.db");
+                    }
+                    File.Delete(tempCurrentDb);
                 }
 
-                entry.ExtractToFile(dbPath, true);
+                // 2. 从备份 ZIP 提取数据库到临时文件
+                entry.ExtractToFile(tempRestorePath, true);
+
+                // 3. 用临时文件替换当前数据库
+                if (File.Exists(dbPath))
+                {
+                    File.Delete(dbPath);
+                }
+                File.Move(tempRestorePath, dbPath);
             }
 
             Log.Information("数据已从备份恢复: {BackupPath}", backupPath);
 
-            return Task.FromResult(new RestoreResult
+            return new RestoreResult
             {
                 Success = true,
                 RequiresRestart = true
-            });
+            };
         }
         catch (Exception ex)
         {
             Log.Error(ex, "恢复备份失败");
-            return Task.FromResult(new RestoreResult { Success = false, ErrorMessage = ex.Message });
+            return new RestoreResult { Success = false, ErrorMessage = ex.Message };
         }
     }
 
@@ -339,7 +367,8 @@ public class BackupService : IBackupService, IDisposable
 
     private async Task CleanupOldBackupsAsync(string backupPath, CancellationToken cancellationToken)
     {
-        var maxBackups = 7;
+        var maxBackups = _settingsService.MaxBackupCount;
+        if (maxBackups <= 0) return;
 
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         var oldRecords = await dbContext.BackupRecords

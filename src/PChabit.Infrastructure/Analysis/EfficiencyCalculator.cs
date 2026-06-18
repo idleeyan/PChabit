@@ -38,7 +38,7 @@ public class EfficiencyCalculator : IEfficiencyCalculator
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
         
         var sessions = await dbContext.AppSessions
-            .Where(s => s.StartTime.Date == date.Date)
+            .Where(s => s.StartTime >= date.Date && s.StartTime < date.Date.AddDays(1))
             .ToListAsync();
 
         if (!sessions.Any())
@@ -76,16 +76,62 @@ public class EfficiencyCalculator : IEfficiencyCalculator
 
     public async Task<List<EfficiencyBreakdown>> GetWeeklyScoresAsync(DateTime weekStart)
     {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+
+        var allSessions = await dbContext.AppSessions
+            .Where(s => s.StartTime >= weekStart && s.StartTime < weekStart.AddDays(7))
+            .ToListAsync();
+
+        var sessionsByDay = allSessions
+            .GroupBy(s => s.StartTime.Date)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var scores = new List<EfficiencyBreakdown>();
-        
+
         for (int i = 0; i < 7; i++)
         {
             var date = weekStart.AddDays(i);
-            var score = await CalculateDetailedScoreAsync(date);
+            var daySessions = sessionsByDay.GetValueOrDefault(date.Date, new List<AppSession>());
+            var score = await CalculateDetailedScoreFromSessionsAsync(date, daySessions);
             scores.Add(score);
         }
 
         return scores;
+    }
+
+    private async Task<EfficiencyBreakdown> CalculateDetailedScoreFromSessionsAsync(DateTime date, List<AppSession> sessions)
+    {
+        if (!sessions.Any())
+        {
+            return new EfficiencyBreakdown();
+        }
+
+        var totalMinutes = sessions.Sum(s => s.Duration.TotalMinutes);
+        var focusBlocks = await _patternAnalyzer.IdentifyFocusBlocksAsync(date);
+        var deepWorkMinutes = focusBlocks.Where(b => b.IsDeepWork).Sum(b => b.Duration.TotalMinutes);
+        var focusTimeMinutes = focusBlocks.Sum(b => b.Duration.TotalMinutes);
+
+        var focusScore = CalculateFocusScore(focusTimeMinutes, totalMinutes, deepWorkMinutes);
+        var taskScore = await CalculateTaskCompletionScoreAsync(sessions);
+        var balanceScore = CalculateBalanceScore(sessions, totalMinutes);
+        var interruptionScore = CalculateInterruptionScore(sessions);
+        var goalScore = await CalculateGoalScoreAsync(date, sessions);
+
+        var totalScore = (focusScore * FocusWeight) +
+                        (taskScore * TaskCompletionWeight) +
+                        (balanceScore * BalanceWeight) +
+                        (interruptionScore * InterruptionWeight) +
+                        (goalScore * GoalWeight);
+
+        return new EfficiencyBreakdown
+        {
+            FocusScore = Math.Round(focusScore, 1),
+            TaskCompletionScore = Math.Round(taskScore, 1),
+            BalanceScore = Math.Round(balanceScore, 1),
+            InterruptionScore = Math.Round(interruptionScore, 1),
+            GoalScore = Math.Round(goalScore, 1),
+            TotalScore = Math.Round(totalScore, 1)
+        };
     }
 
     private double CalculateFocusScore(double focusMinutes, double totalMinutes, double deepWorkMinutes)

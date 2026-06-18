@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 using PChabit.Infrastructure.Helpers;
 
 namespace PChabit.Infrastructure.Services;
@@ -6,7 +7,10 @@ namespace PChabit.Infrastructure.Services;
 public class AppInfoResolver
 {
     private static readonly TimeSpan ProcessInfoTimeout = TimeSpan.FromMilliseconds(500);
-    
+    private static readonly TimeSpan CacheExpiration = TimeSpan.FromMinutes(10);
+
+    private static readonly ConcurrentDictionary<uint, ProcessInfoCache> _processCache = new();
+
     public AppInfo Resolve(IntPtr windowHandle)
     {
         var processId = Win32Helper.GetProcessIdFromWindow(windowHandle);
@@ -14,22 +18,56 @@ public class AppInfoResolver
         var windowClass = Win32Helper.GetWindowClassName(windowHandle);
         var bounds = Win32Helper.GetWindowBounds(windowHandle);
         var isMaximized = Win32Helper.IsZoomed(windowHandle);
-        
+
+        ProcessInfoCache? cached = null;
+        bool useCache = false;
+
+        if (_processCache.TryGetValue(processId, out cached))
+        {
+            if (DateTime.UtcNow - cached.CachedAt < CacheExpiration)
+            {
+                useCache = true;
+            }
+            else
+            {
+                _processCache.TryRemove(processId, out _);
+            }
+        }
+
+        if (useCache && cached != null)
+        {
+            return new AppInfo
+            {
+                ProcessName = cached.ProcessName,
+                ExecutablePath = cached.ExecutablePath,
+                AppName = cached.AppName,
+                AppVersion = cached.AppVersion,
+                Publisher = cached.Publisher,
+                WindowTitle = windowTitle,
+                WindowClass = windowClass,
+                WindowX = bounds.X,
+                WindowY = bounds.Y,
+                WindowWidth = bounds.Width,
+                WindowHeight = bounds.Height,
+                IsMaximized = isMaximized
+            };
+        }
+
         string processName = "Unknown";
         string executablePath = string.Empty;
         string appName = string.Empty;
         string? appVersion = null;
         string? publisher = null;
-        
+
         try
         {
             var process = Process.GetProcessById((int)processId);
             processName = process.ProcessName;
-            
+
             try
             {
                 executablePath = GetExecutablePathSafely(process);
-                
+
                 if (!string.IsNullOrEmpty(executablePath) && File.Exists(executablePath))
                 {
                     var versionInfo = GetVersionInfoSafely(executablePath);
@@ -41,10 +79,7 @@ public class AppInfoResolver
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"获取进程路径失败: {ex.Message}");
-            }
+            catch { }
         }
         catch (ArgumentException)
         {
@@ -52,12 +87,9 @@ public class AppInfoResolver
         catch (InvalidOperationException)
         {
         }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"获取进程信息失败: {ex.Message}");
-        }
-        
-        return new AppInfo
+        catch { }
+
+        var result = new AppInfo
         {
             ProcessName = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? processName : $"{processName}.exe",
             ExecutablePath = executablePath,
@@ -72,8 +104,29 @@ public class AppInfoResolver
             WindowHeight = bounds.Height,
             IsMaximized = isMaximized
         };
+
+        _processCache[processId] = new ProcessInfoCache(
+            result.ProcessName,
+            result.ExecutablePath,
+            result.AppName,
+            result.AppVersion,
+            result.Publisher,
+            DateTime.UtcNow
+        );
+
+        return result;
     }
-    
+
+    public static void RemoveFromCache(uint processId)
+    {
+        _processCache.TryRemove(processId, out _);
+    }
+
+    public static void ClearCache()
+    {
+        _processCache.Clear();
+    }
+
     private static string GetExecutablePathSafely(Process process)
     {
         try
@@ -93,7 +146,7 @@ public class AppInfoResolver
             return string.Empty;
         }
     }
-    
+
     private static FileVersionInfo? GetVersionInfoSafely(string executablePath)
     {
         try
@@ -106,6 +159,15 @@ public class AppInfoResolver
         }
     }
 }
+
+public sealed record ProcessInfoCache(
+    string ProcessName,
+    string ExecutablePath,
+    string AppName,
+    string? AppVersion,
+    string? Publisher,
+    DateTime CachedAt
+);
 
 public class AppInfo
 {

@@ -39,6 +39,10 @@ public sealed partial class SankeyView : UserControl
         
         if (_isWebViewInitialized) return;
         
+        // 立即启动数据加载，与 WebView2 初始化并发进行
+        // 避免 WebView2 初始化慢或 NavigationCompleted 未触发导致数据一直不加载
+        _ = ViewModel.LoadDataAsync();
+
         try
         {
             Log.Information("[SankeyView] 开始初始化 WebView2...");
@@ -158,7 +162,8 @@ public sealed partial class SankeyView : UserControl
         {
             Log.Information("[SankeyView] 开始加载数据...");
             
-            var data = await ViewModel.LoadDataAsync();
+            await ViewModel.LoadDataAsync();
+            var data = ViewModel.Data;
             
             if (data == null)
             {

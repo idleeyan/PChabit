@@ -35,6 +35,15 @@ public class BackupInfo
     public long FileSize { get; set; }
     public int? RecordCount { get; set; }
     public bool IsAutomatic { get; set; }
+    public string CreatedAtText => CreatedAt.ToString("yyyy-MM-dd HH:mm");
+    public string FormattedSize => FileSize switch
+    {
+        < 1024 => $"{FileSize} B",
+        < 1024 * 1024 => $"{FileSize / 1024.0:F1} KB",
+        < 1024L * 1024 * 1024 => $"{FileSize / 1024.0 / 1024.0:F1} MB",
+        _ => $"{FileSize / 1024.0 / 1024.0 / 1024.0:F2} GB"
+    };
+    public string IsAutomaticText => IsAutomatic ? "自动" : "手动";
 }
 
 public class BackupProgressEventArgs : EventArgs

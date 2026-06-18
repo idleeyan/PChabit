@@ -30,6 +30,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     private static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
     private DataCollectionService? _dataCollectionService;
     private TrayService? _trayService;
+    private TrayProgressRefresher? _trayProgressRefresher;
     private bool _isExiting;
     private readonly object _exitLock = new();
     
@@ -67,8 +68,8 @@ public partial class App : Microsoft.UI.Xaml.Application
             "PChabit", "Logs", "app-.log");
         
         Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
-            .WriteTo.File(logPath, rollingInterval: RollingInterval.Day)
+            .MinimumLevel.Information()
+            .WriteTo.Async(a => a.File(logPath, rollingInterval: RollingInterval.Day))
             .CreateLogger();
         
         Log.Information("应用程序启动");
@@ -76,6 +77,12 @@ public partial class App : Microsoft.UI.Xaml.Application
     
     private void ConfigureServices()
     {
+        // 生产环境性能优化
+        System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
+        ThreadPool.SetMinThreads(Environment.ProcessorCount * 2, Environment.ProcessorCount * 2);
+        ThreadPool.SetMaxThreads(Environment.ProcessorCount * 4, Environment.ProcessorCount * 4);
+        Log.Information("已应用生产环境性能优化设置");
+
         var databasePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "PChabit", "Data", "pchabit.db");
@@ -94,6 +101,19 @@ public partial class App : Microsoft.UI.Xaml.Application
         services.AddSingleton<TrayService>();
         
         _serviceProvider = services.BuildServiceProvider();
+        
+        // 启动时立即加载设置，确保所有 ViewModel 构造函数可以读取到已保存的配置
+        // （此前仅在 SettingsViewModel.InitializeAsync 中加载，若用户直接导航到数据管理页，
+        //  WebDAV 等配置尚未从 JSON 加载，ViewModel 构造时会读到默认空值）
+        try
+        {
+            _serviceProvider.GetRequiredService<Core.Interfaces.ISettingsService>().Load();
+            Log.Information("启动时设置加载完成");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "启动时加载设置失败，使用默认值");
+        }
         
         // 数据库初始化异步执行，不阻塞 UI 线程
         _ = Task.Run(async () =>
@@ -218,15 +238,19 @@ public partial class App : Microsoft.UI.Xaml.Application
         {
             _trayService = _serviceProvider!.GetRequiredService<TrayService>();
             _trayService.Initialize(_window!);
-            
+
             _trayService.ExitRequested += (s, e) =>
             {
                 Log.Information("ExitRequested 事件触发");
                 BeginShutdown();
             };
-            
+
             _window!.Closed += OnWindowClosed;
-            
+
+            // 启动托盘进度刷新器（60s 一次）
+            _trayProgressRefresher = _serviceProvider!.GetRequiredService<TrayProgressRefresher>();
+            _trayProgressRefresher.Start();
+
             Log.Information("系统托盘服务初始化完成");
         }
         catch (Exception ex)
@@ -252,17 +276,19 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
     }
     
-    private void StartMonitoring()
+    private async void StartMonitoring()
     {
         try
         {
             _monitorManager = _serviceProvider!.GetRequiredService<MonitorManager>();
+            // 健康检查定时器回调在线程池执行，重启钩子时必须派发回 UI 线程
+            _monitorManager.UIDispatcher = action => Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() => action());
             _dataCollectionService = _serviceProvider!.GetRequiredService<DataCollectionService>();
             
             // Win32 低级钩子 (WH_KEYBOARD_LL, WH_MOUSE_LL) 必须安装在有消息循环的线程上。
             // 后台线程池线程没有消息泵，钩子回调不会被调用。
-            // 因此必须在 UI 线程上同步启动监控器。
-            _monitorManager.StartAllAsync().Wait();
+            // 因此必须在 UI 线程上启动监控器，但不得用 .Wait() 阻塞消息泵。
+            await _monitorManager.StartAllAsync();
             Log.Information("监控器已启动 - AppMonitor: {AppRunning}, KeyboardMonitor: {KeyboardRunning}, MouseMonitor: {MouseRunning}", 
                 _monitorManager.IsRunning, 
                 _serviceProvider!.GetRequiredService<Core.Interfaces.IKeyboardMonitor>().IsRunning,
@@ -368,6 +394,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         try
         {
             Log.Information("步骤 3/5: 释放托盘服务...");
+            _trayProgressRefresher?.Dispose();
             _trayService?.Dispose();
             Log.Information("托盘服务已释放");
         }
@@ -401,13 +428,13 @@ public partial class App : Microsoft.UI.Xaml.Application
         
         try
         {
-            Log.Information("步骤 5/5: 释放服务提供者...");
-            _serviceProvider?.Dispose();
-            Log.Information("服务提供者已释放");
+            // 跳过 Dispose：SQLite WAL checkpoint 可能产生大量磁盘 IO 导致系统级卡顿
+            // 进程退出时操作系统会回收所有资源，无需显式释放
+            Log.Information("步骤 5/5: 跳过服务提供者释放，避免 SQLite WAL checkpoint 阻塞...");
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "释放服务提供者失败");
+            Log.Error(ex, "关闭流程记录失败");
         }
         
         Log.Information("所有清理步骤完成，准备退出");

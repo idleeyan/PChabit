@@ -9,6 +9,8 @@ public class Repository<TEntity> : IRepository<TEntity> where TEntity : class, I
     protected readonly PChabitDbContext Context;
     protected readonly DbSet<TEntity> DbSet;
     
+    private const int DefaultQueryLimit = 50000;
+    
     public Repository(PChabitDbContext context)
     {
         Context = context;
@@ -22,12 +24,12 @@ public class Repository<TEntity> : IRepository<TEntity> where TEntity : class, I
     
     public async Task<IEnumerable<TEntity>> GetAllAsync()
     {
-        return await DbSet.ToListAsync();
+        return await DbSet.Take(DefaultQueryLimit).ToListAsync();
     }
     
     public async Task<List<TEntity>> FindAsync(Expression<Func<TEntity, bool>> predicate)
     {
-        return await DbSet.Where(predicate).ToListAsync();
+        return await DbSet.Where(predicate).Take(DefaultQueryLimit).ToListAsync();
     }
     
     public async Task AddAsync(TEntity entity)

@@ -2,6 +2,150 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.0.1] - 2026-06-17
+
+### 修复（性能）
+- **周期卡顿问题**：修复程序每隔几分钟卡顿导致鼠标移动困难的问题
+  - **根因 1**：Serilog 最低日志级别为 Debug，钩子回调（MouseMonitor/KeyboardMonitor）和事件处理器（DataCollectionService）中每次鼠标/键盘事件触发多次同步文件 I/O，当磁盘繁忙时阻塞钩子线程，导致全局输入消息排队
+  - **修复 1**：最低日志级别从 `Debug` 提升到 `Information`，移除钩子回调和事件处理器中的 Debug 日志调用
+  - **修复 2**：Serilog File Sink 改为异步写入（`WriteTo.Async()`），添加 `Serilog.Sinks.Async` 依赖
+  - **根因 2**：`wal_autocheckpoint=200` 阈值过低（~800KB 即触发），频繁 checkpoint 产生密集磁盘 I/O，与同步日志写入叠加放大阻塞效应
+  - **修复 3**：`wal_autocheckpoint` 从 200 提升到 10000（~40MB），大幅降低 checkpoint 频率
+
+### 修改文件
+- `src/PChabit.App/App.xaml.cs`：日志级别 Information + Async Sink
+- `src/PChabit.App/PChabit.App.csproj`：添加 `Serilog.Sinks.Async` 依赖
+- `src/PChabit.App/Services/ServiceConfiguration.cs`：提升 WAL checkpoint 阈值
+- `src/PChabit.Infrastructure/Monitoring/MouseMonitor.cs`：移除钩子回调中的 Debug 日志
+- `src/PChabit.Infrastructure/Monitoring/KeyboardMonitor.cs`：移除钩子回调中的 Debug 日志
+- `src/PChabit.App/Services/DataCollectionService.cs`：移除事件处理器中的 Debug 日志
+
+## [3.0.0] - 2026-06-17
+
+### 🚨 技术栈全面升级
+- **.NET SDK**: 8.0 → 9.0.315
+- **Microsoft.WindowsAppSDK**: 1.4.231115000 → 2.2.1
+- **EF Core**: 8.0.28 → 9.x
+- **Csproj Version**: 2.x → 3.0.0
+- **global.json**: 8.0 → 9.0.315
+
+### 新增
+- **DbSafeViewModel 基类**（`src/PChabit.App/ViewModels/DbSafeViewModel.cs`）：
+  - 封装两阶段数据加载模式（Phase 1 线程池 DB 查询 + Phase 2 UI 线程 ObservableCollection 更新）
+  - 8 个 ViewModel 迁移：Dashboard/KeyboardDetails/Timeline/Insights/AppStats/WebDetails/Heatmap/Sankey
+- **DailySummary 实体**：预聚合日汇总数据，DbContext 已注册
+- **SankeyViewModel 重构**：从单选日期改为日期范围（StartDate/EndDate, DateTimeOffset?），新增 TopN 属性
+
+### 修复（关键）
+- **陷阱 11：SQLitePCLRaw 原生库 `e_sqlite3.dll` 缺失**：
+  - 根因：`dotnet publish` 未指定 `-r win-x64`，导致 NuGet 包中的原生运行时资源未被包含
+  - 修复：在 csproj 中添加 `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`
+- **陷阱 12：DashboardViewModel 缺少 DailySummaries 表创建**：
+  - 根因：`DatabaseInitializer.MigrateAnalysisTablesAsync()` 手动创建表时遗漏了 `DailySummaries` 表
+  - 修复：在迁移方法中补建 DailySummaries 表，并对缓存查询加 try-catch 保护
+  - 修复：WebDetailsViewModel 分类筛选改为通过 WebsiteDomainMappings 表查询域名模式
+- **陷阱 13：SankeyView 数据丢失 — WebView2 初始化阻塞数据加载**：
+  - 根因：数据加载仅在 `WebView2.NavigationCompleted` 事件中调用
+  - 修复：数据加载与 WebView2 初始化并发进行
+- **陷阱 14：退出程序时 SQLite WAL checkpoint 导致系统卡顿**：
+  - 根因：`ServiceProvider.Dispose()` 触发 WAL checkpoint 产生大量磁盘 I/O
+  - 修复：跳过 `ServiceProvider.Dispose()` 调用，直接 `ForceTerminate()`
+
+### 修复（WMC9999 编译错误）
+- **WMC9999 根因与修复**：
+  - 根因链：SankeyView.xaml 中 XAML 绑定错误 → XAML 编译器尝试本地化错误消息 → 缺少中文卫星程序集资源 → 错误报告机制自身崩溃
+  - 修复：为 SankeyViewModel 添加 StartDate（DateTimeOffset?）、EndDate（DateTimeOffset?）、TopN（int）属性
+
+### 文档
+- **AI_MAINTENANCE.md**：新增 14 条已知陷阱清单，供后续 AI 智能体维护时参考
+- **MEMORY.md**：更新技术栈信息、14 条陷阱清单、两阶段数据加载架构、构建注意事项
+
+### 教训
+- **AI_MAINTENANCE.md 是项目唯一的跨智能体经验传递机制**，任何 AI 智能体在修改代码前必须完整阅读
+- **14 条陷阱中超过半数是架构级认知陷阱**，无法通过静态分析发现，只能通过文档记录传递
+- **WMC9999 本身不是根因**，而是错误报告链的崩溃，真正的 XAML 绑定错误被掩藏
+- **退出路径属于热路径**，禁止昂贵操作（如 SQLite WAL checkpoint）
+
+## [2.29.4] - 2026-06-16
+
+### 修复（关键）
+- **`.xbf` 缓存导致 `DataManagementPage` 启动崩溃**（`XamlParseException: Cannot create instance of type 'TextBox'`）:
+  - 根因：MSBuild 增量构建**没有重新生成 `.xbf` 二进制文件**（`obj/.../Views/DataManagementPage.xbf` 时间戳是 1 天前的旧版本，与新 `.xaml` 源码不匹配）。`InitializeComponent()` 加载旧 `.xbf` 时反序列化失败
+  - 修复：每次发版前**强制 `Rebuild`**（删除 `obj/` 和 `bin/`，执行 `MSBuild /t:Rebuild`）确保所有 `.xbf` 重新生成
+
+## [2.29.3] - 2026-06-16
+
+### 修复（关键）
+- **`SettingsPage` 卡死（COMException 0x8001010E）**:
+  - 根因（来自实际日志）：`SettingsViewModel.OnSelectedThemeKeyChanged` 直接同步调用 `ApplyTheme`，访问 `Window.Content`（COM 对象），从 Task.Run 线程触发崩溃
+  - 根因（来自实际日志）：`OnTrackKeyboardChanged` / `OnTrackMouseChanged` / `OnTrackWebBrowsingChanged` 直接同步调用 `ApplyMonitorSettings`，在 Task.Run 线程安装 Win32 钩子（`SetWindowsHookEx` 需要消息循环）
+  - 根因：`SettingsViewModel.InitializeAsync` 在 `LoadInBackgroundAsync` 包装下整体在 Task.Run 线程，但 `LoadUiFromSettings()` 同步触发上述 setter
+  - 修复：
+    1. `OnSelectedThemeKeyChanged` → `RunOnUIThread(() => ApplyTheme(value))`
+    2. `OnTrackKeyboardChanged/Mouse/WebBrowsingChanged` → `RunOnUIThread(ApplyMonitorSettings)`
+    3. `InitializeAsync` 中 `LoadUiFromSettings()` → `await RunOnUIThreadAsync(() => { LoadUiFromSettings(); return Task.CompletedTask; })`
+
+## [2.29.2] - 2026-06-16
+
+### 修复
+- **页面卡死（陷阱 #5.5 / #10）**:
+  - 修复 `AppStatsViewModel.OnSelectedDateChanged` 裸调用 `LoadDataAsync` —— 用 `LoadInBackgroundAsync` 包装，避免 UI 线程同步等待 DB 查询
+  - 修复 `InsightsViewModel.LoadDataAsync` 中 `Insights` / `WeeklyScores` ObservableCollection 在线程池更新 —— 改用 `RunOnUIThreadAsync` 包装
+  - 修复 `TimelineViewModel.LoadDataAsync` 中 `HourGroups` / `Activities` / `BarSegments` 集合在 Task.Run 线程更新 —— 先在线程池构造数据，再用 `RunOnUIThreadAsync` 调度到 UI 线程
+  - 修复 `InsightsViewModel.RefreshAsync` / `PreviousDayAsync` / `NextDayAsync` 裸调用 `LoadDataAsync`
+- **`ViewModelBase.RunOnUIThreadAsync` 死锁风险**:
+  - 改用 `TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)` + `ConfigureAwait(false)`，避免在异常路径上死锁
+  - 增加 `HasThreadAccess` 短路：UI 线程直接执行，避免不必要的 TryEnqueue
+  - 增加 `TryEnqueue` 失败回退
+
+## [2.26.0] - 2026-06-14
+
+### 重构
+- **数据管理界面重设计**: 解决三种数据出口语义混乱问题（云端 126M / 本地导出 1.56M / 本地备份 23M 大小不一致）
+  - 取消「备份管理 / 数据导出」顶部 Tab 结构，改为单页垂直滚动的 5 个语义清晰卡片：
+    1. **数据概览** — 一眼看清数据库大小、总记录数、数据范围、本地/云端备份状态、最近同步时间
+    2. **本地数据库备份（灾难恢复）** — ZIP 压缩整个 .db 文件，保留 7 份，可一键还原
+    3. **数据导出（分析 / 转移）** — 复用 IExportService 支持 4 种格式（json/markdown/csv/ai-prompt）
+    4. **云端同步（异地容灾）** — 上传本地 ZIP 到 WebDAV，云端保留 5 份
+    5. **操作日志** — 统一显示所有操作记录（备份/导出/同步/恢复/删除/清理）
+
+### 改进
+- **云端同步格式统一**: 不再上传 JSON（旧的 132-162M/文件），改为上传本地 ZIP（约 23M/文件，与本地备份同格式）
+  - 旧 .json 文件继续支持列表展示和删除
+  - 旧 .json 文件不再支持恢复（提示"已弃用"），避免不同格式数据冲突
+- **云端自动清理**: 上传新备份后自动清理云端旧文件（默认保留最新 5 个，可配置 1-20）
+- **数据概览**: 页面顶部新增 6 个统计卡片（数据库大小 / 总记录数 / 数据范围 / 本地备份数 / 云端备份数 / 最近云同步时间）
+- **导出日期控件**: 替换 DatePicker 为 CalendarDatePicker，修复 DateTime ↔ DateTimeOffset 类型不匹配导致的 XAML 编译器静默失败
+- **格式化显示**: BackupInfo 和 WebDAVFileInfo 新增 FormattedSize/FormattedModified/IsAutomaticText 计算属性，XAML 不再直接绑定原始 long/bool
+
+### 删除
+- `BackupTabContent.xaml/cs` 和 `ExportTabContent.xaml/cs`（合并到单页）
+- 旧的 `SyncToWebDAVAsync` 中的 JSON 序列化逻辑（4 个 132-162M 的旧 .json 文件留在云端，可手动删除）
+
+### 修复
+- **XAML 编译器静默失败**: DatePicker.SelectedDate 绑定到 DateTime 时 XamlCompiler.exe 返回 exit 1 但无任何错误输出
+  - 解决：改用 CalendarDatePicker（接受 DateTimeOffset?，可与 DateTime 互转）
+- **类型不匹配**: `<Run Text="{Binding Size}" />` 中 Size 是 long，XAML 编译器无法处理 → 新增 FormattedSize/FormattedModified 字符串属性
+
+## [2.25.2] - 2026-06-13
+
+
+### 改进
+- **图标系统重设计（方向 A · 显示器 + 进度环）**: 替换 LOGO 风格的简单显示器图标为"显示器 + 进度环"组合
+  - 主色 `#1B3A6F`，运行态绿 `#22C55E`，暂停橙 `#F59E0B`
+  - 替换 `src/PChabit.App/Assets/` 下所有 WinUI 资源（StoreLogo / Square44x44 / Square150x150 / LockScreenLogo / SplashScreen / Wide310x150 / Logo）
+  - 替换 `extensions/tai-browser-extension/icons/` 下 PNG + SVG（废弃旧的紫渐变 T 字占位）
+  - 新增 `scripts/icons-tray/tray-{running,paused,disabled}.ico` 多尺寸 ICO（16/24/32/48/64/128/256）
+  - 提供 `scripts/generate_icons.py` 批量生成脚本，可重复运行
+- **托盘动态进度环**: 托盘图标实时反映"今日已用时长 / 每日总目标"
+  - 新增 `Services/IconRenderer.cs`：内存绘制 HICON（System.Drawing），无文件 IO
+  - 新增 `Services/TrayProgressRefresher.cs`：60s 节流定时器，计算综合目标进度
+  - 改造 `Services/TrayService.cs`：新增 `UpdateProgress(progress, status)` + `ForceRefresh()` + `NIM_MODIFY` 增量刷新
+  - 改造 `App.xaml.cs`：托盘初始化后启动进度刷新器
+  - 进度计算优先级：TotalTime 目标总和 → 各目标 DailyLimit 最小值 → 各目标 DailyTarget 最大值 → 无目标显示纯显示器
+  - HICON 句柄管理：每次更新前 `DestroyIcon` 旧句柄，防止 GDI 泄漏
+  - 节流策略：30s 内重复调用 + 进度变化 < 1% 跳过；状态切换不受节流限制
+
 ## [2.23.1] - 2026-06-13
 
 ### 修复
