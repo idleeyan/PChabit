@@ -2,6 +2,18 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.1.3] - 2026-06-20
+
+### 修复
+- 构建系统：修复 XAML 编译器失败导致无法生成 `.g.i.cs` 文件的问题（需先构建依赖项目）
+
+### 清理（代码质量）
+- 删除冗余页面：
+  - `MainPage.xaml` / `.xaml.cs`：测试页面，未使用
+  - `CategoryManagementPage.xaml` / `.xaml.cs`：未注册到 NavigationService，功能已被 `CategoryManagementTab` 替代
+  - `HeatmapTab.xaml` / `.xaml.cs`：未使用，`HeatmapPage` 已提供完整功能
+  - `InsightsTab.xaml` / `.xaml.cs`：未使用，`InsightsPage` 已提供完整功能
+
 ## [3.0.1] - 2026-06-17
 
 ### 修复（性能）
