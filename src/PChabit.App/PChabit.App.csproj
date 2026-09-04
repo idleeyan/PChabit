@@ -10,30 +10,70 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>3.1.3</Version>
+        <Version>3.1.9</Version>
         <Platforms>x64</Platforms>
         <PlatformTarget>x64</PlatformTarget>
-        <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+        <SelfContained>true</SelfContained>
         <ApplicationManifest>app.manifest</ApplicationManifest>
         <ApplicationIcon>pchabit.ico</ApplicationIcon>
         <EnableMsixTooling>false</EnableMsixTooling>
         <WindowsPackageType>None</WindowsPackageType>
+        <!--
+            完全自包含部署：所有 WinAppSDK 原生 DLL 复制到输出目录，不依赖系统 framework package。
+            之前 WindowsAppSDKSelfContained=false 依赖系统 WindowsAppRuntime framework package，
+            但系统存在 2.2.0/2.3.0/2.3.1 多个版本，与 NuGet 解析的 WinUI 2.2.1 不匹配，
+            导致 XAML 解析器在 MeasureOverride 阶段创建 TextBox（控件 ControlTemplate 内嵌元素）时
+            抛 COMException 0x80004005 "Cannot create instance of type 'TextBox'"。
+        -->
         <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
         <WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>true</WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>
+        <!--
+            关键：在 self-contained 模式下，必须初始化 Bootstrap 才能加载 WindowsAppRuntime。
+            否则 WinUI 控件（TextBox/NumberBox 等）在 MeasureOverride 阶段创建时
+            抛 COMException 0x80004005 "Cannot create instance of type 'TextBox'"。
+            Bootstrap.Initialize() 会查找并加载同目录下的 WindowsAppRuntime DLL。
+        -->
+        <WindowsAppSDKBootstrapInitializeAtStartup>true</WindowsAppSDKBootstrapInitializeAtStartup>
         <EnableMrtTargets>false</EnableMrtTargets>
         <SatelliteResourceLanguages>en-US;zh-CN</SatelliteResourceLanguages>
         <NoWarn>$(NoWarn);MVVMTK0045;NETSDK1206</NoWarn>
         <PublishReadyToRun>false</PublishReadyToRun>
-        <SelfContained>true</SelfContained>
         <TieredPGO>true</TieredPGO>
     </PropertyGroup>
 
     <!--
-        删除 Build/Publish 输出中除 en-us 和 zh-CN 以外的所有 WinUI 卫星资源文件夹。
-        SatelliteResourceLanguages 只能控制 .NET 自身的资源裁剪，WinUI 通过 WindowsAppSDK
-        NuGet 包独立拷贝卫星程序集，不受 SatelliteResourceLanguages 控制，需要额外清理。
-        采用黑名单保留模式而非硬编码删除列表，避免 WinUI 更新新增语言代码后漏删。
+        ============================================================
+        关键修复：dotnet publish 不会自动复制 Microsoft.UI.Xaml 目录到
+        publish 目录，而该目录下的 Assets\NoiseAsset_256x256_PNG.png 是
+        TextBox/NumberBox 等 WinUI 控件 ControlTemplate 必需的资源。
+        缺失会导致 COMException 0x8007007E (ERROR_MOD_NOT_FOUND) 和
+        0x80004005 (E_FAIL)，在 MeasureOverride 阶段创建 TextBox 时崩溃。
+
+        此 Target 在 Publish 后强制从 bin 复制 Microsoft.UI.Xaml 整个目录
+        到 PublishDir，确保运行时能找到 NoiseAsset 资源。
+        （Build 阶段 WindowsAppSDK 自带的 targets 会自动复制到 bin，无需干预。）
+        ============================================================
+    -->
+    <Target Name="EnsureMicrosoftUIXamlInPublish" AfterTargets="Publish">
+        <ItemGroup>
+            <_MuxFilesForPublish Include="$(OutDir)Microsoft.UI.Xaml\**\*.*"
+                                 Condition="Exists('$(OutDir)Microsoft.UI.Xaml')" />
+        </ItemGroup>
+        <Copy SourceFiles="@(_MuxFilesForPublish)"
+              DestinationFiles="$(PublishDir)Microsoft.UI.Xaml\%(RecursiveDir)%(Filename)%(Extension)"
+              SkipUnchangedFiles="true"
+              Condition="'@(_MuxFilesForPublish)' != '' And Exists('$(PublishDir)')" />
+        <Message Text="已强制复制 Microsoft.UI.Xaml 到 $(PublishDir) (@(_MuxFilesForPublish->Count()) 个文件)" Importance="high" />
+    </Target>
+
+    <!--
+        清理 Build 输出中的非 en-/zh- 语言文件夹，节省空间。
+        ⚠️ 必须用 [System.IO.Path]::GetFileName() 获取目录名，不能用 %(Filename)
+        （MSBuild 的 %(Filename) 会把目录名当文件名并去掉"扩展名"，
+        导致 "Microsoft.UI.Xaml" 被识别为 "Microsoft.UI" 从而误删关键资源）。
+        必须保留：en-*（英语）、zh-*（中文）、Assets、Views、Microsoft.UI.Xaml
     -->
     <Target Name="RemoveUnusedLanguageFolders" AfterTargets="Build">
         <ItemGroup>
@@ -41,7 +81,11 @@
         </ItemGroup>
         <ItemGroup>
             <_LanguageDirsToDelete Include="@(_AllLanguageDirs)"
-                Condition="'%(Filename)' != 'en-us' And '%(Filename)' != 'en-US' And '%(Filename)' != 'zh-CN' And '%(Filename)' != 'zh-Hans' And '%(Filename)' != 'zh-Hant' And '%(Filename)' != 'zh-HK' And '%(Filename)' != 'zh-TW' And '%(Filename)' != 'zh-cn' And '%(Filename)' != 'zh-hans' And '%(Filename)' != 'zh-hant' And '%(Filename)' != 'zh-hk' And '%(Filename)' != 'zh-tw' And '%(Filename)' != 'assets' And '%(Filename)' != 'views' And '%(Filename)' != 'microsoft.ui.xaml'" />
+                Condition="!$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('en-')) And
+                          !$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('zh-')) And
+                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Assets' And
+                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Views' And
+                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Microsoft.UI.Xaml'" />
         </ItemGroup>
         <RemoveDir Directories="@(_LanguageDirsToDelete)" />
         <Message Text="已从 $(OutDir) 清理 @(_LanguageDirsToDelete->Count()) 个无关语言文件夹" Importance="high" />
@@ -54,7 +98,11 @@
         </ItemGroup>
         <ItemGroup>
             <_LanguageDirsToDelete Include="@(_AllLanguageDirs)"
-                Condition="'%(Filename)' != 'en-us' And '%(Filename)' != 'en-US' And '%(Filename)' != 'zh-CN' And '%(Filename)' != 'zh-Hans' And '%(Filename)' != 'zh-Hant' And '%(Filename)' != 'zh-HK' And '%(Filename)' != 'zh-TW' And '%(Filename)' != 'zh-cn' And '%(Filename)' != 'zh-hans' And '%(Filename)' != 'zh-hant' And '%(Filename)' != 'zh-hk' And '%(Filename)' != 'zh-tw' And '%(Filename)' != 'assets' And '%(Filename)' != 'views' And '%(Filename)' != 'microsoft.ui.xaml'" />
+                Condition="!$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('en-')) And
+                          !$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('zh-')) And
+                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Assets' And
+                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Views' And
+                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Microsoft.UI.Xaml'" />
         </ItemGroup>
         <RemoveDir Directories="@(_LanguageDirsToDelete)" />
         <Message Text="已从 $(PublishDir) 清理 @(_LanguageDirsToDelete->Count()) 个无关语言文件夹" Importance="high" />
@@ -67,12 +115,27 @@
         </PropertyGroup>
         <Copy SourceFiles="$(WinUIBuildOutput)PChabit.pri" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('$(WinUIBuildOutput)PChabit.pri')" />
         <Copy SourceFiles="$(WinUIBuildOutput)App.xbf" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="Exists('$(WinUIBuildOutput)App.xbf')" />
-        <Copy SourceFiles="@(WinUIBuildXbf)" DestinationFolder="$(PublishDir)Views" SkipUnchangedFiles="true" />
         <ItemGroup>
             <WinUIBuildXbf Include="$(WinUIBuildOutput)Views\**\*.xbf" />
         </ItemGroup>
         <Copy SourceFiles="@(WinUIBuildXbf)" DestinationFolder="$(PublishDir)Views\%(RecursiveDir)" SkipUnchangedFiles="true" />
         <Message Text="已复制 WinUI 资源文件到发布目录" Importance="high" />
+    </Target>
+
+    <!--
+        框架依赖模式（SelfContained=false）+ 无 RuntimeIdentifier 时，
+        NuGet 的 runtimes\<rid>\native\ 原生库不会被自动复制到输出目录，
+        但 deps.json 仍引用 runtimes\win-x64\native\e_sqlite3.dll。
+        此 Target 从 NuGet 包缓存中复制 SQLite 原生库到输出目录的 runtimes\win-x64\native\ 子目录，
+        让 .NET 运行时能按 deps.json 的 runtimeTargets 正确加载。
+    -->
+    <Target Name="CopyNativeSqliteToOutput" AfterTargets="Build">
+        <PropertyGroup>
+            <SqliteNativeSrc>$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\2.1.10\runtimes\win-x64\native\e_sqlite3.dll</SqliteNativeSrc>
+            <SqliteNativeDestDir>$(OutDir)runtimes\win-x64\native</SqliteNativeDestDir>
+        </PropertyGroup>
+        <Copy SourceFiles="$(SqliteNativeSrc)" DestinationFolder="$(SqliteNativeDestDir)" SkipUnchangedFiles="true" Condition="Exists('$(SqliteNativeSrc)')" />
+        <Message Text="已复制 e_sqlite3.dll 到 $(SqliteNativeDestDir)" Importance="normal" Condition="Exists('$(SqliteNativeSrc)')" />
     </Target>
 
     <ItemGroup>
