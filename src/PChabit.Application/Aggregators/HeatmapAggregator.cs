@@ -1,26 +1,20 @@
 using System.Diagnostics;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
-using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Data;
 
 namespace PChabit.Application.Aggregators;
 
 public class HeatmapAggregator
 {
-    private readonly IAppSessionRepository _appSessionRepo;
-    private readonly IKeyboardSessionRepository _keyboardSessionRepo;
-    private readonly IMouseSessionRepository _mouseSessionRepo;
+    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     private const int MaxWeeklySessions = 1000;
     private const int MaxMonthlySessions = 5000;
 
-    public HeatmapAggregator(
-        IAppSessionRepository appSessionRepo,
-        IKeyboardSessionRepository keyboardSessionRepo,
-        IMouseSessionRepository mouseSessionRepo)
+    public HeatmapAggregator(IDbContextFactory<PChabitDbContext> dbContextFactory)
     {
-        _appSessionRepo = appSessionRepo;
-        _keyboardSessionRepo = keyboardSessionRepo;
-        _mouseSessionRepo = mouseSessionRepo;
+        _dbContextFactory = dbContextFactory;
     }
 
     public async Task<List<HeatmapCell>> GetWeeklyHeatmapDataAsync(DateTime weekStart)
@@ -36,16 +30,29 @@ public class HeatmapAggregator
 
         try
         {
-            var appSessionsTask = _appSessionRepo.GetByDateRangeAsync(weekStart, weekEnd);
-            var keyboardSessionsTask = _keyboardSessionRepo.GetByDateRangeAsync(weekStart, weekEnd);
-            var mouseSessionsTask = _mouseSessionRepo.GetByDateRangeAsync(weekStart, weekEnd);
+            await using var appDb = await _dbContextFactory.CreateDbContextAsync();
+            await using var keyboardDb = await _dbContextFactory.CreateDbContextAsync();
+            await using var mouseDb = await _dbContextFactory.CreateDbContextAsync();
+
+            var appSessionsTask = appDb.AppSessions.AsNoTracking()
+                .Where(s => s.StartTime >= weekStart && s.StartTime <= weekEnd)
+                .OrderBy(s => s.StartTime)
+                .ToListAsync();
+            var keyboardSessionsTask = keyboardDb.KeyboardSessions.AsNoTracking()
+                .Where(s => s.Date >= weekStart.Date && s.Date <= weekEnd.Date)
+                .OrderBy(s => s.Date).ThenBy(s => s.Hour)
+                .ToListAsync();
+            var mouseSessionsTask = mouseDb.MouseSessions.AsNoTracking()
+                .Where(s => s.Date >= weekStart.Date && s.Date <= weekEnd.Date)
+                .OrderBy(s => s.Date).ThenBy(s => s.Hour)
+                .ToListAsync();
 
             await Task.WhenAll(appSessionsTask, keyboardSessionsTask, mouseSessionsTask);
 
             // 在服务端截断，避免加载过多数据到内存
-            var allAppSessions = appSessionsTask.Result.Take(MaxWeeklySessions).ToList();
-            var allKeyboardSessions = keyboardSessionsTask.Result.Take(MaxWeeklySessions).ToList();
-            var allMouseSessions = mouseSessionsTask.Result.Take(MaxWeeklySessions).ToList();
+            var allAppSessions = (await appSessionsTask).Take(MaxWeeklySessions).ToList();
+            var allKeyboardSessions = (await keyboardSessionsTask).Take(MaxWeeklySessions).ToList();
+            var allMouseSessions = (await mouseSessionsTask).Take(MaxWeeklySessions).ToList();
 
             Log.Information("[HeatmapAggregator] 数据库查询完成 - 应用:{AppCount}, 键盘:{KeyCount}, 鼠标:{MouseCount}",
                 allAppSessions.Count, allKeyboardSessions.Count, allMouseSessions.Count);
@@ -134,15 +141,28 @@ public class HeatmapAggregator
 
         try
         {
-            var appSessionsTask = _appSessionRepo.GetByDateRangeAsync(monthStart, monthEnd);
-            var keyboardSessionsTask = _keyboardSessionRepo.GetByDateRangeAsync(monthStart, monthEnd);
-            var mouseSessionsTask = _mouseSessionRepo.GetByDateRangeAsync(monthStart, monthEnd);
+            await using var appDb = await _dbContextFactory.CreateDbContextAsync();
+            await using var keyboardDb = await _dbContextFactory.CreateDbContextAsync();
+            await using var mouseDb = await _dbContextFactory.CreateDbContextAsync();
+
+            var appSessionsTask = appDb.AppSessions.AsNoTracking()
+                .Where(s => s.StartTime >= monthStart && s.StartTime <= monthEnd)
+                .OrderBy(s => s.StartTime)
+                .ToListAsync();
+            var keyboardSessionsTask = keyboardDb.KeyboardSessions.AsNoTracking()
+                .Where(s => s.Date >= monthStart.Date && s.Date <= monthEnd.Date)
+                .OrderBy(s => s.Date).ThenBy(s => s.Hour)
+                .ToListAsync();
+            var mouseSessionsTask = mouseDb.MouseSessions.AsNoTracking()
+                .Where(s => s.Date >= monthStart.Date && s.Date <= monthEnd.Date)
+                .OrderBy(s => s.Date).ThenBy(s => s.Hour)
+                .ToListAsync();
 
             await Task.WhenAll(appSessionsTask, keyboardSessionsTask, mouseSessionsTask);
 
-            var allAppSessions = appSessionsTask.Result.Take(MaxMonthlySessions).ToList();
-            var allKeyboardSessions = keyboardSessionsTask.Result.Take(MaxMonthlySessions).ToList();
-            var allMouseSessions = mouseSessionsTask.Result.Take(MaxMonthlySessions).ToList();
+            var allAppSessions = (await appSessionsTask).Take(MaxMonthlySessions).ToList();
+            var allKeyboardSessions = (await keyboardSessionsTask).Take(MaxMonthlySessions).ToList();
+            var allMouseSessions = (await mouseSessionsTask).Take(MaxMonthlySessions).ToList();
 
             Log.Information("[HeatmapAggregator] 数据库查询完成 - 应用:{AppCount}, 键盘:{KeyCount}, 鼠标:{MouseCount}",
                 allAppSessions.Count, allKeyboardSessions.Count, allMouseSessions.Count);
@@ -228,15 +248,28 @@ public class HeatmapAggregator
 
         try
         {
-            var appSessionsTask = _appSessionRepo.GetByDateRangeAsync(weekStart, weekEnd);
-            var keyboardSessionsTask = _keyboardSessionRepo.GetByDateRangeAsync(weekStart, weekEnd);
-            var mouseSessionsTask = _mouseSessionRepo.GetByDateRangeAsync(weekStart, weekEnd);
+            await using var appDb = await _dbContextFactory.CreateDbContextAsync();
+            await using var keyboardDb = await _dbContextFactory.CreateDbContextAsync();
+            await using var mouseDb = await _dbContextFactory.CreateDbContextAsync();
+
+            var appSessionsTask = appDb.AppSessions.AsNoTracking()
+                .Where(s => s.StartTime >= weekStart && s.StartTime <= weekEnd)
+                .OrderBy(s => s.StartTime)
+                .ToListAsync();
+            var keyboardSessionsTask = keyboardDb.KeyboardSessions.AsNoTracking()
+                .Where(s => s.Date >= weekStart.Date && s.Date <= weekEnd.Date)
+                .OrderBy(s => s.Date).ThenBy(s => s.Hour)
+                .ToListAsync();
+            var mouseSessionsTask = mouseDb.MouseSessions.AsNoTracking()
+                .Where(s => s.Date >= weekStart.Date && s.Date <= weekEnd.Date)
+                .OrderBy(s => s.Date).ThenBy(s => s.Hour)
+                .ToListAsync();
 
             await Task.WhenAll(appSessionsTask, keyboardSessionsTask, mouseSessionsTask);
 
-            var allAppSessions = appSessionsTask.Result.Take(MaxWeeklySessions).ToList();
-            var allKeyboardSessions = keyboardSessionsTask.Result.Take(MaxWeeklySessions).ToList();
-            var allMouseSessions = mouseSessionsTask.Result.Take(MaxWeeklySessions).ToList();
+            var allAppSessions = (await appSessionsTask).Take(MaxWeeklySessions).ToList();
+            var allKeyboardSessions = (await keyboardSessionsTask).Take(MaxWeeklySessions).ToList();
+            var allMouseSessions = (await mouseSessionsTask).Take(MaxWeeklySessions).ToList();
 
             Log.Information("[HeatmapAggregator] 数据库查询完成 - 应用:{AppCount}, 键盘:{KeyCount}, 鼠标:{MouseCount}",
                 allAppSessions.Count, allKeyboardSessions.Count, allMouseSessions.Count);
@@ -329,3 +362,4 @@ public class DailyHeatmapCell
     public int MouseClicks { get; set; }
     public bool HasData { get; set; }
 }
+

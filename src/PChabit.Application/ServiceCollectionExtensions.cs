@@ -9,9 +9,6 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddTaiApplication(this IServiceCollection services)
     {
-        services.AddSingleton<DailyAggregator>();
-        services.AddSingleton<SessionAggregator>();
-        services.AddSingleton<PatternDetector>();
         services.AddSingleton<HeatmapAggregator>();
         services.AddSingleton<SankeyAggregator>();
         

@@ -32,13 +32,7 @@ public static class ServiceConfiguration
         
         services.AddTaiApplication();
         
-        services.AddScoped<IUnitOfWork, UnitOfWork>();
         
-        services.AddScoped<IAppSessionRepository, AppSessionRepository>();
-        services.AddScoped<IKeyboardSessionRepository, KeyboardSessionRepository>();
-        services.AddScoped<IMouseSessionRepository, MouseSessionRepository>();
-        services.AddScoped<IWebSessionRepository, WebSessionRepository>();
-        services.AddScoped<IDailyPatternRepository, DailyPatternRepository>();
         
         services.AddSingleton<IAppMonitor, AppMonitor>();
         services.AddSingleton<IKeyboardMonitor, KeyboardMonitor>();
