@@ -1,17 +1,19 @@
-﻿using System.Text;
+using System.Text;
+using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Data;
 
 namespace PChabit.Infrastructure.Services;
 
 public class ExportService : IExportService
 {
     private readonly Dictionary<string, IExportFormatter> _formatters;
-    private readonly IUnitOfWork _unitOfWork;
+    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     
-    public ExportService(IEnumerable<IExportFormatter> formatters, IUnitOfWork unitOfWork)
+    public ExportService(IEnumerable<IExportFormatter> formatters, IDbContextFactory<PChabitDbContext> dbContextFactory)
     {
         _formatters = formatters.ToDictionary(f => f.Format, f => f, StringComparer.OrdinalIgnoreCase);
-        _unitOfWork = unitOfWork;
+        _dbContextFactory = dbContextFactory;
     }
     
     public async Task<string> ExportAsync(ExportRequest request, CancellationToken cancellationToken = default)
@@ -43,6 +45,8 @@ public class ExportService : IExportService
     
     private async Task<ExportData> CollectDataAsync(ExportRequest request, CancellationToken cancellationToken)
     {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
         var data = new ExportData
         {
             ExportTime = DateTime.Now,
@@ -52,31 +56,45 @@ public class ExportService : IExportService
         
         if (request.DataTypes.HasFlag(ExportDataTypes.AppSessions))
         {
-            var sessions = await _unitOfWork.AppSessions.FindAsync(s => s.StartTime >= request.StartTime && s.StartTime <= request.EndTime);
-            data.AppSessions.AddRange(sessions.Take(request.Options.MaxItems));
+            var sessions = await dbContext.AppSessions.AsNoTracking()
+                .Where(s => s.StartTime >= request.StartTime && s.StartTime <= request.EndTime)
+                .Take(request.Options.MaxItems)
+                .ToListAsync(cancellationToken);
+            data.AppSessions.AddRange(sessions);
         }
         
         if (request.DataTypes.HasFlag(ExportDataTypes.KeyboardSessions))
         {
-            var sessions = await _unitOfWork.KeyboardSessions.FindAsync(s => s.Date >= request.StartTime.Date && s.Date <= request.EndTime.Date);
-            data.KeyboardSessions.AddRange(sessions.Take(request.Options.MaxItems));
+            var sessions = await dbContext.KeyboardSessions.AsNoTracking()
+                .Where(s => s.Date >= request.StartTime.Date && s.Date <= request.EndTime.Date)
+                .Take(request.Options.MaxItems)
+                .ToListAsync(cancellationToken);
+            data.KeyboardSessions.AddRange(sessions);
         }
         
         if (request.DataTypes.HasFlag(ExportDataTypes.MouseSessions))
         {
-            var sessions = await _unitOfWork.MouseSessions.FindAsync(s => s.Date >= request.StartTime.Date && s.Date <= request.EndTime.Date);
-            data.MouseSessions.AddRange(sessions.Take(request.Options.MaxItems));
+            var sessions = await dbContext.MouseSessions.AsNoTracking()
+                .Where(s => s.Date >= request.StartTime.Date && s.Date <= request.EndTime.Date)
+                .Take(request.Options.MaxItems)
+                .ToListAsync(cancellationToken);
+            data.MouseSessions.AddRange(sessions);
         }
         
         if (request.DataTypes.HasFlag(ExportDataTypes.WebSessions))
         {
-            var sessions = await _unitOfWork.WebSessions.FindAsync(s => s.StartTime >= request.StartTime && s.StartTime <= request.EndTime);
-            data.WebSessions.AddRange(sessions.Take(request.Options.MaxItems));
+            var sessions = await dbContext.WebSessions.AsNoTracking()
+                .Where(s => s.StartTime >= request.StartTime && s.StartTime <= request.EndTime)
+                .Take(request.Options.MaxItems)
+                .ToListAsync(cancellationToken);
+            data.WebSessions.AddRange(sessions);
         }
         
         if (request.DataTypes.HasFlag(ExportDataTypes.DailyPatterns))
         {
-            var patterns = await _unitOfWork.DailyPatterns.FindAsync(p => p.Date >= request.StartTime.Date && p.Date <= request.EndTime.Date);
+            var patterns = await dbContext.DailyPatterns.AsNoTracking()
+                .Where(p => p.Date >= request.StartTime.Date && p.Date <= request.EndTime.Date)
+                .ToListAsync(cancellationToken);
             data.DailyPatterns.AddRange(patterns);
         }
         

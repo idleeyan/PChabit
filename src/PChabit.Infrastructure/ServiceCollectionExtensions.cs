@@ -31,14 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IMouseMonitor, MouseMonitor>();
         services.AddSingleton<IWebMonitor, WebMonitor>();
         
-        services.AddScoped<IAppSessionRepository, AppSessionRepository>();
-        services.AddScoped<IKeyboardSessionRepository, KeyboardSessionRepository>();
-        services.AddScoped<IMouseSessionRepository, MouseSessionRepository>();
-        services.AddScoped<IWebSessionRepository, WebSessionRepository>();
-        services.AddScoped<IDailyPatternRepository, DailyPatternRepository>();
         
-        services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
-        services.AddScoped<IUnitOfWork, UnitOfWork>();
         
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
         services.AddSingleton<IExportFormatter, MarkdownExportFormatter>();
