@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Serilog;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using PChabit.App.Services;
 using PChabit.App.ViewModels;
@@ -25,9 +26,18 @@ public partial class App : Microsoft.UI.Xaml.Application
     
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr LoadImage(IntPtr hInst, string lpszName, uint uType, int cxDesired, int cyDesired, uint fuLoad);
-    
+
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool FreeLibrary(IntPtr hModule);
+
+    private const uint LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x1000;
+    private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR = 0x0100;
     private DataCollectionService? _dataCollectionService;
     private TrayService? _trayService;
     private TrayProgressRefresher? _trayProgressRefresher;
@@ -49,16 +59,71 @@ public partial class App : Microsoft.UI.Xaml.Application
     {
         try
         {
+            // 关键：手动初始化 WindowsAppRuntime Bootstrap（双保险，配合 csproj 的
+            // WindowsAppSDKBootstrapInitializeAtStartup=true）
+            // 必须在 InitializeComponent 之前调用，否则 WinUI 控件创建会失败
+            // （COMException 0x80004005 E_FAIL 或 0xc000027b STATUS_STOWED_EXCEPTION）
+            // 使用反射调用，避免编译时对 Microsoft.WindowsAppRuntime.Bootstrap 命名空间的依赖
+            try
+            {
+                var bootstrapAsm = Assembly.LoadFrom(AppContext.BaseDirectory + "Microsoft.WindowsAppRuntime.Bootstrap.Net.dll");
+                var bootstrapType = bootstrapAsm.GetType("Microsoft.WindowsAppRuntime.Bootstrap.Bootstrap")
+                    ?? bootstrapAsm.GetType("Microsoft.Windows.ApplicationModel.WindowsAppRuntime.Bootstrap");
+                if (bootstrapType != null)
+                {
+                    var initMethod = bootstrapType.GetMethod("Initialize", new[] { typeof(uint) })
+                              ?? bootstrapType.GetMethod("Initialize", Type.EmptyTypes);
+                    if (initMethod != null)
+                    {
+                        var args = initMethod.GetParameters().Length == 1 ? new object[] { (uint)0 } : Array.Empty<object>();
+                        initMethod.Invoke(null, args);
+                        System.Diagnostics.Debug.WriteLine("Bootstrap.Initialize 成功 (反射调用)");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Bootstrap.Initialize 失败（可能已自动初始化）: {ex.Message}");
+            }
+
             InitializeComponent();
-            
+
             ConfigureLogging();
+            Log.Information("应用程序启动 (手动 Bootstrap 初始化已完成)");
             ConfigureServices();
+
+            // 注册未处理异常处理器，捕获 XAML/后台线程的崩溃信息
+            UnhandledException += App_UnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            System.Threading.Tasks.TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
         }
         catch (Exception ex)
         {
             Serilog.Log.Fatal(ex, "应用程序初始化失败");
             throw;
         }
+    }
+
+    private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        Log.Fatal(e.Exception, "App_UnhandledException: {Message}", e.Message);
+        Log.Fatal("  StackTrace: {StackTrace}", e.Exception?.StackTrace);
+        Log.Fatal("  Source: {Source}", e.Exception?.Source);
+        Log.Fatal("  InnerException: {Inner}", e.Exception?.InnerException);
+    }
+
+    private static void CurrentDomain_UnhandledException(object sender, System.UnhandledExceptionEventArgs e)
+    {
+        var ex = e.ExceptionObject as Exception;
+        Log.Fatal(ex, "CurrentDomain_UnhandledException (IsTerminating={IsTerminating})", e.IsTerminating);
+        Log.Fatal("  StackTrace: {StackTrace}", ex?.StackTrace);
+    }
+
+    private static void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        Log.Fatal(e.Exception, "TaskScheduler_UnobservedTaskException");
+        Log.Fatal("  StackTrace: {StackTrace}", e.Exception.StackTrace);
+        e.SetObserved();
     }
     
     private void ConfigureLogging()
@@ -143,7 +208,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         try
         {
             Log.Information("OnLaunched 开始");
-            
+
             _window = new Window();
             
             if (_window.Content is not Frame rootFrame)
@@ -176,33 +241,33 @@ public partial class App : Microsoft.UI.Xaml.Application
     {
         if (_startupServicesInitialized) return;
         _startupServicesInitialized = true;
-        
+
         // 注销一次性事件处理
         if (sender is Window window)
         {
             window.Activated -= OnWindowFirstActivated;
         }
-        
+
         Log.Information("窗口首次激活，延迟初始化后台服务");
-        
+
         // 使用低优先级延迟初始化，确保 UI 已完全渲染
         _ = Task.Run(async () =>
         {
             // 短暂延迟让 UI 线程完成首次渲染
             await Task.Delay(100);
-            
+
             // 回到 UI 线程初始化托盘和监控（Win32 钩子需要 UI 线程的消息循环）
             _window!.DispatcherQueue.TryEnqueue(() =>
             {
                 InitializeTrayService();
                 StartMonitoring();
             });
-            
+
             // 后台服务可以在任意线程启动
             StartBackupService();
         });
     }
-    
+
     private void SetWindowIcon()
     {
         try
