@@ -40,7 +40,6 @@ public partial class App : Microsoft.UI.Xaml.Application
     private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR = 0x0100;
     private DataCollectionService? _dataCollectionService;
     private TrayService? _trayService;
-    private TrayProgressRefresher? _trayProgressRefresher;
     private bool _isExiting;
     private readonly object _exitLock = new();
     
@@ -312,9 +311,6 @@ public partial class App : Microsoft.UI.Xaml.Application
 
             _window!.Closed += OnWindowClosed;
 
-            // 启动托盘进度刷新器（60s 一次）
-            _trayProgressRefresher = _serviceProvider!.GetRequiredService<TrayProgressRefresher>();
-            _trayProgressRefresher.Start();
 
             Log.Information("系统托盘服务初始化完成");
         }
@@ -459,7 +455,6 @@ public partial class App : Microsoft.UI.Xaml.Application
         try
         {
             Log.Information("步骤 3/5: 释放托盘服务...");
-            _trayProgressRefresher?.Dispose();
             _trayService?.Dispose();
             Log.Information("托盘服务已释放");
         }

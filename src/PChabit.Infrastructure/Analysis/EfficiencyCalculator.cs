@@ -13,11 +13,10 @@ public class EfficiencyCalculator : IEfficiencyCalculator
     private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     private readonly IPatternAnalyzer _patternAnalyzer;
 
-    private const double FocusWeight = 0.30;
-    private const double TaskCompletionWeight = 0.25;
-    private const double BalanceWeight = 0.20;
-    private const double InterruptionWeight = 0.15;
-    private const double GoalWeight = 0.10;
+    private const double FocusWeight = 1.0 / 3.0;
+    private const double TaskCompletionWeight = 5.0 / 18.0;
+    private const double BalanceWeight = 2.0 / 9.0;
+    private const double InterruptionWeight = 1.0 / 6.0;
 
     public EfficiencyCalculator(
         IDbContextFactory<PChabitDbContext> dbContextFactory,
@@ -55,21 +54,17 @@ public class EfficiencyCalculator : IEfficiencyCalculator
         var taskScore = await CalculateTaskCompletionScoreAsync(sessions);
         var balanceScore = CalculateBalanceScore(sessions, totalMinutes);
         var interruptionScore = CalculateInterruptionScore(sessions);
-        var goalScore = await CalculateGoalScoreAsync(date, sessions);
 
         var totalScore = (focusScore * FocusWeight) +
                         (taskScore * TaskCompletionWeight) +
                         (balanceScore * BalanceWeight) +
-                        (interruptionScore * InterruptionWeight) +
-                        (goalScore * GoalWeight);
-
-        return new EfficiencyBreakdown
+                        (interruptionScore * InterruptionWeight);
+return new EfficiencyBreakdown
         {
             FocusScore = Math.Round(focusScore, 1),
             TaskCompletionScore = Math.Round(taskScore, 1),
             BalanceScore = Math.Round(balanceScore, 1),
             InterruptionScore = Math.Round(interruptionScore, 1),
-            GoalScore = Math.Round(goalScore, 1),
             TotalScore = Math.Round(totalScore, 1)
         };
     }
@@ -115,21 +110,17 @@ public class EfficiencyCalculator : IEfficiencyCalculator
         var taskScore = await CalculateTaskCompletionScoreAsync(sessions);
         var balanceScore = CalculateBalanceScore(sessions, totalMinutes);
         var interruptionScore = CalculateInterruptionScore(sessions);
-        var goalScore = await CalculateGoalScoreAsync(date, sessions);
 
         var totalScore = (focusScore * FocusWeight) +
                         (taskScore * TaskCompletionWeight) +
                         (balanceScore * BalanceWeight) +
-                        (interruptionScore * InterruptionWeight) +
-                        (goalScore * GoalWeight);
-
-        return new EfficiencyBreakdown
+                        (interruptionScore * InterruptionWeight);
+return new EfficiencyBreakdown
         {
             FocusScore = Math.Round(focusScore, 1),
             TaskCompletionScore = Math.Round(taskScore, 1),
             BalanceScore = Math.Round(balanceScore, 1),
             InterruptionScore = Math.Round(interruptionScore, 1),
-            GoalScore = Math.Round(goalScore, 1),
             TotalScore = Math.Round(totalScore, 1)
         };
     }
@@ -225,46 +216,4 @@ public class EfficiencyCalculator : IEfficiencyCalculator
             return Math.Max(20, 100 - switchesPerHour * 2);
     }
 
-    private async Task<double> CalculateGoalScoreAsync(DateTime date, List<AppSession> sessions)
-    {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
-        var goals = await dbContext.UserGoals
-            .Where(g => g.IsActive)
-            .ToListAsync();
-
-        if (!goals.Any())
-            return 70;
-
-        var achievedCount = 0;
-        foreach (var goal in goals)
-        {
-            var minutes = 0.0;
-            
-            if (goal.TargetType == nameof(GoalTargetType.Application))
-            {
-                minutes = sessions
-                    .Where(s => s.ProcessName.Equals(goal.TargetId, StringComparison.OrdinalIgnoreCase))
-                    .Sum(s => s.Duration.TotalMinutes);
-            }
-            else if (goal.TargetType == nameof(GoalTargetType.Category))
-            {
-                minutes = sessions
-                    .Where(s => !string.IsNullOrEmpty(s.Category) && 
-                                s.Category!.Equals(goal.TargetId, StringComparison.OrdinalIgnoreCase))
-                    .Sum(s => s.Duration.TotalMinutes);
-            }
-            else if (goal.TargetType == nameof(GoalTargetType.TotalTime))
-            {
-                minutes = sessions.Sum(s => s.Duration.TotalMinutes);
-            }
-
-            if (goal.DailyLimitMinutes.HasValue && minutes <= goal.DailyLimitMinutes.Value)
-                achievedCount++;
-            else if (goal.DailyTargetMinutes.HasValue && minutes >= goal.DailyTargetMinutes.Value)
-                achievedCount++;
-        }
-
-        return goals.Any() ? (double)achievedCount / goals.Count * 100 : 70;
-    }
 }

@@ -32,7 +32,6 @@ public class NavigationService
         Register<SettingsPage>("Settings");
         Register<HeatmapPage>("Heatmap");
         Register<InsightsPage>("Insights");
-        Register<GoalsPage>("Goals");
     }
     
     public void Register<T>(string key) where T : Microsoft.UI.Xaml.Controls.Page

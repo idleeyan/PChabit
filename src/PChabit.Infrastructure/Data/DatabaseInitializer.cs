@@ -299,26 +299,6 @@ public static class DatabaseInitializer
             }
         }
 
-        if (!tables.Contains("UserGoals"))
-        {
-            Log.Information("创建 UserGoals 表");
-            using var createCmd = connection.CreateCommand();
-            createCmd.CommandText = @"
-                CREATE TABLE UserGoals (
-                    Id TEXT PRIMARY KEY,
-                    TargetType TEXT NOT NULL,
-                    TargetId TEXT,
-                    DailyLimitMinutes INTEGER,
-                    DailyTargetMinutes INTEGER,
-                    IsActive INTEGER NOT NULL DEFAULT 1,
-                    CreatedAt TEXT NOT NULL,
-                    UpdatedAt TEXT
-                );
-                CREATE INDEX IX_UserGoals_TargetType ON UserGoals (TargetType);
-                CREATE INDEX IX_UserGoals_IsActive ON UserGoals (IsActive);";
-            await createCmd.ExecuteNonQueryAsync();
-            Log.Information("UserGoals 表创建成功");
-        }
 
         if (!tables.Contains("EfficiencyScores"))
         {
@@ -407,7 +387,7 @@ public static class DatabaseInitializer
 
     private static async Task MigrateGuidTablesAsync(System.Data.Common.DbConnection connection)
     {
-        var guidTables = new[] { "UserGoals", "EfficiencyScores", "WorkPatterns", "InsightReports", "BackupRecords", "ArchiveRecords" };
+        var guidTables = new[] { "EfficiencyScores", "WorkPatterns", "InsightReports", "BackupRecords", "ArchiveRecords" };
         
         foreach (var tableName in guidTables)
         {

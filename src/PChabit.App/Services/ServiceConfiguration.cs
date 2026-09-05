@@ -65,12 +65,7 @@ public static class ServiceConfiguration
         services.AddSingleton<IPatternAnalyzer, PatternAnalyzer>();
         services.AddSingleton<IEfficiencyCalculator, EfficiencyCalculator>();
         services.AddSingleton<IInsightService, InsightService>();
-        services.AddSingleton<IGoalService, GoalService>();
         services.AddSingleton<INotificationService, NotificationService>();
-
-        // 托盘进度刷新器（TrayService 的依赖）
-        services.AddSingleton<TrayProgressRefresher>();
-        
         services.AddSingleton<ICacheService, MemoryCacheService>();
         services.AddMemoryCache();
         
@@ -95,7 +90,6 @@ public static class ServiceConfiguration
         services.AddTransient<HeatmapViewModel>();
         services.AddTransient<SankeyViewModel>();
         services.AddTransient<InsightsViewModel>();
-        services.AddTransient<GoalsViewModel>();
         
         return services;
     }

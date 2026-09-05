@@ -18,7 +18,6 @@ public class PChabitDbContext : DbContext
     public DbSet<WebsiteDomainMapping> WebsiteDomainMappings { get; set; }
     public DbSet<BackupRecord> BackupRecords { get; set; }
     public DbSet<ArchiveRecord> ArchiveRecords { get; set; }
-    public DbSet<UserGoal> UserGoals { get; set; }
     public DbSet<EfficiencyScore> EfficiencyScores { get; set; }
     public DbSet<WorkPattern> WorkPatterns { get; set; }
     public DbSet<InsightReport> InsightReports { get; set; }
@@ -49,7 +48,6 @@ public class PChabitDbContext : DbContext
         ConfigureWebsiteCategory(modelBuilder);
         ConfigureBackupRecord(modelBuilder);
         ConfigureArchiveRecord(modelBuilder);
-        ConfigureUserGoal(modelBuilder);
         ConfigureEfficiencyScore(modelBuilder);
         ConfigureWorkPattern(modelBuilder);
         ConfigureInsightReport(modelBuilder);
@@ -265,18 +263,6 @@ public class PChabitDbContext : DbContext
         });
     }
 
-    private static void ConfigureUserGoal(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<UserGoal>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasConversion(
-                v => v.ToString(),
-                v => Guid.Parse(v));
-            entity.HasIndex(e => e.TargetType);
-            entity.HasIndex(e => e.IsActive);
-        });
-    }
 
     private static void ConfigureEfficiencyScore(ModelBuilder modelBuilder)
     {

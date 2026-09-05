@@ -92,14 +92,6 @@
                         <FontIcon Glyph="&#xE88E;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-
-                <NavigationViewItem
-                    Content="目标管理"
-                    Tag="Goals">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE9D9;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <!-- 内容区域 -->
