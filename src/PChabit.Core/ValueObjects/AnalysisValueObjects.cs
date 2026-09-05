@@ -33,7 +33,6 @@ public class EfficiencyBreakdown
     public double TaskCompletionScore { get; set; }
     public double BalanceScore { get; set; }
     public double InterruptionScore { get; set; }
-    public double GoalScore { get; set; }
     public double TotalScore { get; set; }
 }
 

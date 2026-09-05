@@ -20,18 +20,6 @@ public class NotificationService : INotificationService
         }
     }
 
-    public async Task ShowGoalAlertAsync(string title, string message)
-    {
-        try
-        {
-            Log.Information("显示目标警报: {Title} - {Message}", title, message);
-            await Task.CompletedTask;
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "显示目标警报失败");
-        }
-    }
 
     public Task ScheduleReminderAsync(string id, DateTime time, string title, string message)
     {

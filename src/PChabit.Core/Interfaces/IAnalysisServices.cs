@@ -27,20 +27,10 @@ public interface IInsightService
     Task<string> GenerateMonthlyReportAsync(DateTime monthStart);
 }
 
-public interface IGoalService
-{
-    Task<IEnumerable<UserGoal>> GetActiveGoalsAsync();
-    Task<UserGoal> CreateGoalAsync(UserGoal goal);
-    Task UpdateGoalAsync(UserGoal goal);
-    Task DeleteGoalAsync(Guid goalId);
-    Task<Dictionary<Guid, double>> GetGoalProgressAsync(DateTime date);
-    Task<bool> CheckGoalViolationAsync(Guid goalId, DateTime date);
-}
 
 public interface INotificationService
 {
     Task ShowReminderAsync(string title, string message, string? action = null);
-    Task ShowGoalAlertAsync(string title, string message);
     Task ScheduleReminderAsync(string id, DateTime time, string title, string message);
     void CancelReminder(string id);
 }
