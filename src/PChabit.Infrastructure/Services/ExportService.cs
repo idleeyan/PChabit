@@ -116,9 +116,13 @@ public class ExportService : IExportService
         
         var topWebsites = data.WebSessions
             .GroupBy(s => s.Domain)
-            .OrderByDescending(g => g.Sum(s => s.Duration.TotalMinutes))
+            .OrderByDescending(g => g.Sum(s =>
+                s.ActiveDuration > TimeSpan.Zero ? s.ActiveDuration.TotalMinutes : s.Duration.TotalMinutes))
             .Take(10)
-            .ToDictionary(g => g.Key, g => TimeSpan.FromMinutes(g.Sum(s => s.Duration.TotalMinutes)));
+            .ToDictionary(
+                g => g.Key,
+                g => TimeSpan.FromMinutes(g.Sum(s =>
+                    s.ActiveDuration > TimeSpan.Zero ? s.ActiveDuration.TotalMinutes : s.Duration.TotalMinutes)));
         
         var topKeyCategories = data.KeyboardSessions
             .SelectMany(s => s.KeyCategoryFrequency)

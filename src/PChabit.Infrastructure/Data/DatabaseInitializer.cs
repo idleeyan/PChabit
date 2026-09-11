@@ -28,6 +28,30 @@ public static class DatabaseInitializer
             await MigrateTableColumnsAsync(connection, "AppSessions", "ActiveDuration", "INTEGER NOT NULL DEFAULT 0");
             await MigrateTableColumnsAsync(connection, "WebSessions", "Duration", "INTEGER NOT NULL DEFAULT 0");
             await MigrateTableColumnsAsync(connection, "WebSessions", "ActiveDuration", "INTEGER NOT NULL DEFAULT 0");
+            await MigrateTableColumnsAsync(connection, "WebSessions", "IdleDuration", "INTEGER NOT NULL DEFAULT 0");
+            await MigrateTableColumnsAsync(connection, "WebSessions", "CategoryId", "INTEGER");
+            await MigrateTableColumnsAsync(connection, "WebSessions", "CategoryName", "TEXT");
+            await MigrateTableColumnsAsync(connection, "WebSessions", "CategorySource", "TEXT");
+            await MigrateTableColumnsAsync(connection, "WebSessions", "IsLegacy", "INTEGER NOT NULL DEFAULT 0");
+            await MigrateTableColumnsAsync(connection, "DailySummary", "WebPages", "INTEGER NOT NULL DEFAULT 0");
+            await MigrateTableColumnsAsync(connection, "DailySummary", "WebDurationTicks", "INTEGER NOT NULL DEFAULT 0");
+            await MigrateTableColumnsAsync(connection, "DailySummary", "WebActiveDurationTicks", "INTEGER NOT NULL DEFAULT 0");
+
+            using (var markLegacy = connection.CreateCommand())
+            {
+                // 旧 30s 快照切片：同 URL 同 Tab 相邻行且时长 < 35s 的标记为 Legacy
+                markLegacy.CommandText = @"
+                    UPDATE WebSessions SET IsLegacy = 1
+                    WHERE IsLegacy = 0 AND Duration < 350000000
+                    AND EXISTS (
+                        SELECT 1 FROM WebSessions w2
+                        WHERE w2.Url = WebSessions.Url
+                          AND w2.TabId = WebSessions.TabId
+                          AND w2.Browser = WebSessions.Browser
+                          AND w2.Id <> WebSessions.Id
+                    )";
+                await markLegacy.ExecuteNonQueryAsync();
+            }
             
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "KeyFrequency", "TEXT");
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "KeyCategoryFrequency", "TEXT");

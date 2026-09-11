@@ -165,10 +165,21 @@ public class PChabitDbContext : DbContext
                     v => TimeSpan.FromTicks(v))
                 .HasField("_activeDuration")
                 .UsePropertyAccessMode(PropertyAccessMode.Field);
-            
+
+            entity.Property(e => e.IdleDuration)
+                .HasConversion(
+                    v => v.Ticks,
+                    v => TimeSpan.FromTicks(v))
+                .HasField("_idleDuration")
+                .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+            entity.Ignore(e => e.FocusRatio);
+            entity.Ignore(e => e.IsPersisted);
             entity.Ignore(e => e.InteractedElements);
             entity.Ignore(e => e.SearchQueries);
             entity.Ignore(e => e.TabSwitches);
+
+            entity.HasIndex(e => e.CategoryId);
         });
     }
     

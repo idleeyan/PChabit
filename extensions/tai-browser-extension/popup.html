@@ -163,6 +163,26 @@
             font-size: 10px;
             color: #555;
         }
+
+        .port-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+            font-size: 11px;
+            color: #888;
+        }
+
+        .port-row input {
+            flex: 1;
+            background: #16213e;
+            border: 1px solid #333;
+            color: #eee;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 12px;
+            min-width: 0;
+        }
     </style>
 </head>
 <body>
@@ -195,6 +215,12 @@
     <div class="actions">
         <button class="btn btn-primary" id="reconnectBtn">重新连接</button>
         <button class="btn btn-secondary" id="settingsBtn">设置</button>
+    </div>
+
+    <div class="port-row">
+        <label for="wsPort">WebSocket 端口</label>
+        <input type="number" id="wsPort" min="1" max="65535" placeholder="8765" />
+        <button class="btn btn-secondary" id="savePortBtn" style="flex:0 0 auto;padding:8px 12px;">保存</button>
     </div>
     
     <div class="footer">

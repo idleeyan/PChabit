@@ -38,7 +38,22 @@ public static class ServiceConfiguration
         services.AddSingleton<IKeyboardMonitor, KeyboardMonitor>();
         services.AddSingleton<IMouseMonitor, MouseMonitor>();
         services.AddSingleton<IWebMonitor, WebMonitor>();
-        services.AddSingleton<WebSocketServer>();
+        services.AddSingleton(sp =>
+        {
+            var port = 8765;
+            try
+            {
+                var settings = sp.GetService<ISettingsService>();
+                if (settings != null && int.TryParse(settings.WebSocketPort, out var configured) &&
+                    configured > 0 && configured < 65536)
+                {
+                    port = configured;
+                }
+            }
+            catch { /* settings 可能尚未就绪，退回默认端口 */ }
+
+            return new WebSocketServer(port);
+        });
         services.AddSingleton<MonitorManager>();
         
         services.AddSingleton<DataCollectionService>();

@@ -94,6 +94,16 @@ public partial class DataCollectionService : IDisposable
             .Where(s => s.EndTime.HasValue)
             .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
 
+        // 从 WebSession 聚合网页指标（真实会话，排除 Legacy 切片）
+        var webSessions = await dbContext.WebSessions
+            .AsNoTracking()
+            .Where(s => s.StartTime >= date && s.StartTime < nextDay && !s.IsLegacy)
+            .ToListAsync();
+
+        var webPages = webSessions.Count;
+        var webDurationTicks = webSessions.Sum(s => s.Duration.Ticks);
+        var webActiveTicks = webSessions.Sum(s => s.ActiveDuration.Ticks);
+
         var topAppsJson = System.Text.Json.JsonSerializer.Serialize(topApps);
         var hourlyKeysJson = System.Text.Json.JsonSerializer.Serialize(hourlyKeys);
 
@@ -112,6 +122,9 @@ public partial class DataCollectionService : IDisposable
                 ActiveMinutes = activeMinutes,
                 TopApps = topAppsJson,
                 HourlyKeyDistribution = hourlyKeysJson,
+                WebPages = webPages,
+                WebDurationTicks = webDurationTicks,
+                WebActiveDurationTicks = webActiveTicks,
                 LastUpdated = DateTime.Now
             };
             await dbContext.DailySummaries.AddAsync(summary);
@@ -123,13 +136,16 @@ public partial class DataCollectionService : IDisposable
             summary.ActiveMinutes = activeMinutes;
             summary.TopApps = topAppsJson;
             summary.HourlyKeyDistribution = hourlyKeysJson;
+            summary.WebPages = webPages;
+            summary.WebDurationTicks = webDurationTicks;
+            summary.WebActiveDurationTicks = webActiveTicks;
             summary.LastUpdated = DateTime.Now;
         }
 
         await dbContext.SaveChangesAsync();
 
-        Log.Information("每日聚合完成: {Date}, Keys={TotalKeys}, Clicks={TotalClicks}, ActiveMin={ActiveMin:F1}, TopApps={TopAppCount}",
-            dateKey, totalKeys, totalMouseClicks, activeMinutes, topApps.Count);
+        Log.Information("每日聚合完成: {Date}, Keys={TotalKeys}, Clicks={TotalClicks}, ActiveMin={ActiveMin:F1}, WebPages={WebPages}, TopApps={TopAppCount}",
+            dateKey, totalKeys, totalMouseClicks, activeMinutes, webPages, topApps.Count);
     }
 
     private static async Task CleanupOldDataAsync(PChabitDbContext dbContext, int retentionDays = 90)

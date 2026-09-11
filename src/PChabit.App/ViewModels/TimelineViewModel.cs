@@ -104,6 +104,21 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
             appSessions = new List<Core.Entities.AppSession>();
         }
 
+        List<Core.Entities.WebSession> webSessions;
+        try
+        {
+            webSessions = await dbContext.WebSessions
+                .AsNoTracking()
+                .Where(s => s.StartTime >= selectedDate && s.StartTime < nextDay && !s.IsLegacy)
+                .OrderByDescending(s => s.StartTime)
+                .ToListAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载 WebSessions 失败");
+            webSessions = new List<Core.Entities.WebSession>();
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
 
         var hourlyGroups = appSessions
@@ -128,13 +143,18 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
 
         foreach (var hg in hourlyGroups)
         {
+            var hourWeb = webSessions.Where(w => w.StartTime.Hour == hg.Hour).ToList();
+            var webMinutes = hourWeb.Sum(w => (w.ActiveDuration > TimeSpan.Zero ? w.ActiveDuration : w.Duration).TotalMinutes);
+            var combinedMinutes = hg.TotalMinutes + webMinutes;
+            var combinedCount = hg.Sessions.Count + hourWeb.Count;
+
             var hourGroup = new TimelineHourGroup
             {
                 Hour = hg.Hour,
                 Date = selectedDate,
                 TimeRange = $"{hg.Hour:D2}:00 - {hg.Hour:D2}:59",
-                TotalDuration = FormatDuration(hg.TotalMinutes),
-                ActivityCount = hg.Sessions.Count,
+                TotalDuration = FormatDuration(combinedMinutes),
+                ActivityCount = combinedCount,
                 IsExpanded = false,
                 IsLoaded = false
             };
@@ -153,9 +173,18 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
                     hourGroup.BarSegments.Add(new TimelineBarSegment
                     {
                         Color = GetCategoryColor(cat.Category),
-                        WidthPercent = cat.Minutes / hg.TotalMinutes * 100
+                        WidthPercent = combinedMinutes > 0 ? cat.Minutes / combinedMinutes * 100 : 0
                     });
                 }
+            }
+
+            if (hourWeb.Count > 0)
+            {
+                hourGroup.BarSegments.Add(new TimelineBarSegment
+                {
+                    Color = "#0EA5E9",
+                    WidthPercent = combinedMinutes > 0 ? webMinutes / combinedMinutes * 100 : 100
+                });
             }
 
             var isCurrent = hg.Hour == currentHour || (!hasCurrentHourData && hg == hourlyGroups.First());
@@ -166,10 +195,54 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
                 hourGroup.IsLoaded = true;
                 foreach (var session in hg.Sessions)
                     hourGroup.Activities.Add(CreateActivity(session));
+                foreach (var web in hourWeb)
+                    hourGroup.Activities.Add(CreateWebActivity(web));
             }
 
             builtGroups.Add((hourGroup, isCurrent));
         }
+
+        // 仅有网页、没有应用会话的小时也生成分组
+        var appHours = hourlyGroups.Select(h => h.Hour).ToHashSet();
+        var webOnlyHours = webSessions
+            .Select(w => w.StartTime.Hour)
+            .Where(h => !appHours.Contains(h))
+            .Distinct()
+            .OrderByDescending(h => h);
+
+        foreach (var hour in webOnlyHours)
+        {
+            var hourWeb = webSessions.Where(w => w.StartTime.Hour == hour).ToList();
+            var webMinutes = hourWeb.Sum(w => (w.ActiveDuration > TimeSpan.Zero ? w.ActiveDuration : w.Duration).TotalMinutes);
+            var hourGroup = new TimelineHourGroup
+            {
+                Hour = hour,
+                Date = selectedDate,
+                TimeRange = $"{hour:D2}:00 - {hour:D2}:59",
+                TotalDuration = FormatDuration(webMinutes),
+                ActivityCount = hourWeb.Count,
+                IsExpanded = false,
+                IsLoaded = false
+            };
+            hourGroup.BarSegments.Add(new TimelineBarSegment
+            {
+                Color = "#0EA5E9",
+                WidthPercent = 100
+            });
+
+            var isCurrent = hour == currentHour;
+            if (isCurrent)
+            {
+                hourGroup.IsExpanded = true;
+                hourGroup.IsLoaded = true;
+                foreach (var web in hourWeb)
+                    hourGroup.Activities.Add(CreateWebActivity(web));
+            }
+
+            builtGroups.Add((hourGroup, isCurrent));
+        }
+
+        builtGroups = builtGroups.OrderByDescending(x => x.Group.Hour).ToList();
 
         // 计算 RecentDates
         var sessionsByDate = appSessions.GroupBy(s => s.StartTime.Date).ToDictionary(g => g.Key, g => g.ToList());
@@ -255,6 +328,22 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
         };
     }
 
+    private static TimelineActivity CreateWebActivity(Core.Entities.WebSession session)
+    {
+        var active = session.ActiveDuration > TimeSpan.Zero ? session.ActiveDuration : session.Duration;
+        var category = session.CategoryName ?? "浏览";
+        return new TimelineActivity
+        {
+            Time = session.StartTime.ToString("HH:mm"),
+            Duration = FormatDuration(active.TotalMinutes),
+            Title = string.IsNullOrWhiteSpace(session.Title) ? session.Domain : session.Title,
+            Subtitle = $"🌐 {session.Domain} · {session.Browser}",
+            Category = category,
+            CategoryColor = GetCategoryColor(category),
+            ProcessName = session.Domain
+        };
+    }
+
     public async Task ExpandHourGroupAsync(TimelineHourGroup group)
     {
         if (group.IsLoaded) { group.IsExpanded = true; return; }
@@ -275,9 +364,21 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
                     .ToListAsync();
             });
 
+            var webInHour = await Task.Run(async () =>
+            {
+                await using var dbContext = await _dbFactory.CreateDbContextAsync();
+                return await dbContext.WebSessions
+                    .AsNoTracking()
+                    .Where(s => s.StartTime >= hourStart && s.StartTime < hourEnd && !s.IsLegacy)
+                    .OrderByDescending(s => s.StartTime)
+                    .ToListAsync();
+            });
+
             group.Activities.Clear();
             foreach (var session in sessions)
                 group.Activities.Add(CreateActivity(session));
+            foreach (var web in webInHour)
+                group.Activities.Add(CreateWebActivity(web));
 
             var processNames = sessions
                 .Where(s => !string.IsNullOrEmpty(s.ProcessName))
@@ -327,7 +428,22 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
     private static bool IsProductiveCategory(string? category) => !string.IsNullOrEmpty(category) && ProductiveCategories.TryGetValue(category, out var isProd) && isProd;
 
     private static string GetCategoryColor(string? category) => !string.IsNullOrEmpty(category) && CategoryColors.TryGetValue(category, out var color) ? color : "#6B7280";
-    private static readonly Dictionary<string, string> CategoryColors = new() { ["开发"] = "#4A90E4", ["浏览"] = "#50C878", ["沟通"] = "#FF6B6B", ["娱乐"] = "#9B59B6", ["办公"] = "#F39C12", ["设计"] = "#E74C3C", ["其他"] = "#95A5A6" };
+    private static readonly Dictionary<string, string> CategoryColors = new()
+    {
+        ["开发"] = "#4A90E4",
+        ["浏览"] = "#50C878",
+        ["沟通"] = "#FF6B6B",
+        ["娱乐"] = "#9B59B6",
+        ["办公"] = "#F39C12",
+        ["设计"] = "#E74C3C",
+        ["其他"] = "#95A5A6",
+        ["搜索"] = "#0EA5E9",
+        ["视频"] = "#F97316",
+        ["社交"] = "#22C55E",
+        ["购物"] = "#EF4444",
+        ["邮件"] = "#06B6D4",
+        ["新闻"] = "#A855F7"
+    };
 
     private static string FormatDuration(double totalMinutes)
     {
