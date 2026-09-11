@@ -2,6 +2,43 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [Unreleased]
+
+## [3.1.10] - 2026-09-12
+
+### 新增（网页访问统计增强 P0–P2）
+
+#### 修复（P0 会话正确性）
+- 扩展在 `tabClose`/`pageClose` 时携带最后已知 URL；主程序不再因无 URL 丢弃关闭事件
+- 30s 周期保存改为同一 Session Id 的 upsert，不再切片新建行、不再重置 StartTime/计数
+- content 修复 scroll direction 计算顺序；扩展增加离线队列（上限 200 条）
+
+#### 功能（P1 活跃时长与分类物化）
+- 新增 visibility / idle / heartbeat 事件，会话引擎按 ActiveDuration 累计有效浏览
+- WebSession 增加 CategoryId / CategoryName / CategorySource / IdleDuration / IsLegacy
+- 落库时物化网站分类；WebSocketPort 从设置注入，扩展 popup 可改端口
+
+#### 功能（P2 分析与呈现）
+- 时间线合并网页会话（按分类着色）；仪表盘读 DailySummary.WebPages
+- 网页统计页使用有效浏览时长、有效浏览率；分类筛选走物化字段
+- 每日聚合写入 WebPages / WebDuration / WebActiveDuration；导出 Top 站点按有效时长
+- 搜索引擎白名单扩展；旧短切片会话标记 IsLegacy
+
+### 改进（发布产物精简）
+- 发布输出只保留简体中文与英语两套 WinUI 内置控件语言资源，不再输出 `en-GB`、`zh-TW` 等多余语言目录
+  - 根因：`Microsoft.WindowsAppSDK.WinUI` 包在 `runtimes-framework\win-x64\native\<语言代码>\` 下携带 30+ 种语言的
+    `Microsoft.ui.xaml.dll.mui` 与 `Microsoft.UI.Xaml.Phone.dll.mui`；自包含部署时由
+    `Microsoft.WindowsAppSDK.SelfContained.targets` 全量 glob 复制，而 `<SatelliteResourceLanguages>`
+    只过滤 NuGet 托管附属程序集，对这类原生 `.mui` 无效
+  - 修复：`RemoveUnusedLanguageFolders*` 两个 Target 重写为「白名单 + 标记文件判定」——
+    只有目录内存在 `Microsoft.ui.xaml.dll.mui` 时才视为语言目录，且仅当不在白名单内才删除
+  - 新增属性 `KeepLanguageFolders`（默认 `zh-CN;en-us`），需要英式英语时改为 `zh-CN;en-us;en-GB`
+- 安全性修复：旧实现按「目录名不以 `en-`/`zh-` 开头即删除」做反向过滤，
+  会误删 `extensions` 等业务目录；新实现不再触碰任何非语言目录
+
+### 修改文件
+- `src/PChabit.App/PChabit.App.csproj`
+
 ## [3.1.3] - 2026-06-20
 
 ### 修复

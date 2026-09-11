@@ -188,77 +188,140 @@ public partial class DataCollectionService : IDisposable
 
     private void SaveAllWebSessionsImmediate()
     {
-        foreach (var kvp in _activeWebSessions.ToList())
+        lock (_lock)
         {
-            var session = kvp.Value;
-            session.EndTime = DateTime.Now;
-            session.Duration = session.EndTime.Value - session.StartTime;
-            session.IsActiveTab = false;
+            foreach (var kvp in _activeWebSessions.ToList())
+            {
+                var key = kvp.Key;
+                var session = kvp.Value;
+                var now = DateTime.Now;
 
-            try
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
-                dbContext.WebSessions.Add(session);
-                dbContext.SaveChangesAsync().GetAwaiter().GetResult();
+                if (_webRuntime.TryGetValue(key, out var rt))
+                {
+                    if (rt.IsCurrentlyActive)
+                    {
+                        var delta = now - rt.LastActiveAt;
+                        if (delta > TimeSpan.Zero) rt.AccumulatedActive += delta;
+                    }
+                    session.ActiveDuration = rt.AccumulatedActive;
+                    var wall = now - session.StartTime;
+                    session.IdleDuration = wall > session.ActiveDuration ? wall - session.ActiveDuration : TimeSpan.Zero;
+                }
+
+                session.EndTime = now;
+                session.Duration = now - session.StartTime;
+                session.IsActiveTab = false;
+                if (session.ActiveDuration > session.Duration)
+                {
+                    session.ActiveDuration = session.Duration;
+                }
+
+                try
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+                    var existing = dbContext.WebSessions.Find(session.Id);
+                    if (existing == null)
+                    {
+                        dbContext.WebSessions.Add(session);
+                    }
+                    else
+                    {
+                        existing.EndTime = session.EndTime;
+                        existing.Duration = session.Duration;
+                        existing.ActiveDuration = session.ActiveDuration;
+                        existing.IdleDuration = session.IdleDuration;
+                        existing.ScrollDepth = session.ScrollDepth;
+                        existing.ClickCount = session.ClickCount;
+                        existing.HasFormInteraction = session.HasFormInteraction;
+                        existing.IsActiveTab = false;
+                    }
+                    dbContext.SaveChangesAsync().GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "保存网页会话失败");
+                }
             }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "保存网页会话失败");
-            }
+            _activeWebSessions.Clear();
+            _webRuntime.Clear();
         }
-        _activeWebSessions.Clear();
     }
 
+    /// <summary>
+    /// 周期检查点：为崩溃恢复把活跃会话 upsert 到库中。
+    /// 保持同一 Session Id，不重置 StartTime / 计数，杜绝切片虚增。
+    /// </summary>
     private async Task SaveActiveWebSessionsPeriodicallyAsync()
     {
-        List<WebSession> sessionsToSave;
+        List<WebSession> snapshots;
 
         lock (_lock)
         {
-            sessionsToSave = _activeWebSessions.Values
-                .Select(session =>
+            var now = DateTime.Now;
+            snapshots = new List<WebSession>(_activeWebSessions.Count);
+
+            foreach (var kvp in _activeWebSessions)
+            {
+                var key = kvp.Key;
+                var session = kvp.Value;
+
+                // 在运行时状态上累计当前活跃区间（不关闭会话）
+                if (_webRuntime.TryGetValue(key, out var rt))
                 {
-                    var snapshot = new WebSession
+                    if (rt.IsCurrentlyActive)
                     {
-                        Id = Guid.NewGuid(),
-                        Url = session.Url,
-                        Title = session.Title,
-                        Domain = session.Domain,
-                        Browser = session.Browser,
-                        TabId = session.TabId,
-                        StartTime = session.StartTime,
-                        EndTime = DateTime.Now,
-                        Duration = DateTime.Now - session.StartTime,
-                        ScrollDepth = session.ScrollDepth,
-                        ClickCount = session.ClickCount,
-                        HasFormInteraction = session.HasFormInteraction,
-                        InteractedElements = new List<string>(session.InteractedElements),
-                        IsActiveTab = session.IsActiveTab
-                    };
+                        var delta = now - rt.LastActiveAt;
+                        if (delta > TimeSpan.Zero)
+                        {
+                            rt.AccumulatedActive += delta;
+                            rt.LastActiveAt = now;
+                        }
+                    }
+                    session.ActiveDuration = rt.AccumulatedActive;
+                    var wall = now - session.StartTime;
+                    session.IdleDuration = wall > session.ActiveDuration ? wall - session.ActiveDuration : TimeSpan.Zero;
+                }
 
-                    // 重置活跃会话起始时间
-                    session.StartTime = DateTime.Now;
-                    session.ScrollDepth = 0;
-                    session.ClickCount = 0;
-                    session.HasFormInteraction = false;
-                    session.InteractedElements = new List<string>();
+                session.EndTime = now;
+                session.Duration = now - session.StartTime;
+                if (session.ActiveDuration > session.Duration)
+                {
+                    session.ActiveDuration = session.Duration;
+                }
 
-                    return snapshot;
-                })
-                .ToList();
+                snapshots.Add(session);
+            }
         }
 
-        if (sessionsToSave.Count == 0) return;
+        if (snapshots.Count == 0) return;
 
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
 
-            foreach (var session in sessionsToSave)
+            foreach (var session in snapshots)
             {
-                dbContext.WebSessions.Add(session);
+                var existing = await dbContext.WebSessions.FindAsync(session.Id);
+                if (existing == null)
+                {
+                    dbContext.WebSessions.Add(session);
+                    session.IsPersisted = true;
+                }
+                else
+                {
+                    existing.EndTime = session.EndTime;
+                    existing.Duration = session.Duration;
+                    existing.ActiveDuration = session.ActiveDuration;
+                    existing.IdleDuration = session.IdleDuration;
+                    existing.ScrollDepth = session.ScrollDepth;
+                    existing.ClickCount = session.ClickCount;
+                    existing.HasFormInteraction = session.HasFormInteraction;
+                    existing.IsActiveTab = session.IsActiveTab;
+                    existing.Title = session.Title;
+                    existing.Favicon = session.Favicon;
+                }
             }
 
             await dbContext.SaveChangesAsync();

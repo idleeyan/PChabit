@@ -6,7 +6,7 @@ public interface IWebMonitor : IMonitor
 {
     event EventHandler<WebActivityEventArgs>? WebActivityReceived;
     event EventHandler<WebClientDisconnectedEventArgs>? ClientDisconnected;
-    
+
     IReadOnlyList<WebSession> GetCurrentSessions();
     Task<IEnumerable<WebSession>> GetSessionsAsync(DateTime startTime, DateTime endTime);
 }
@@ -22,6 +22,11 @@ public class WebActivityEventArgs : EventArgs
     public WebActivityType ActivityType { get; init; }
     public DateTime Timestamp { get; init; }
     public Dictionary<string, object> Metadata { get; init; } = new();
+
+    public string? Favicon { get; init; }
+    public bool? IsIdle { get; init; }
+    public bool? IsVisible { get; init; }
+    public bool? IsActive { get; init; }
 }
 
 public class WebClientDisconnectedEventArgs : EventArgs
@@ -39,5 +44,8 @@ public enum WebActivityType
     Click,
     Scroll,
     FormSubmit,
-    Navigation
+    Navigation,
+    Heartbeat,
+    Visibility,
+    Idle
 }

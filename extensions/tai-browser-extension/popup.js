@@ -67,8 +67,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     settingsBtn.addEventListener('click', () => {
-        chrome.tabs.create({ url: 'http://localhost:8765' });
+        const port = document.getElementById('wsPort')?.value || '8765';
+        chrome.tabs.create({ url: `http://localhost:${port}` });
     });
+
+    const portInput = document.getElementById('wsPort');
+    const savePortBtn = document.getElementById('savePortBtn');
+    if (portInput && savePortBtn) {
+        chrome.storage.local.get(['wsPort'], (result) => {
+            portInput.value = result.wsPort || '8765';
+        });
+        savePortBtn.addEventListener('click', async () => {
+            const port = parseInt(portInput.value, 10);
+            if (Number.isNaN(port) || port < 1 || port > 65535) {
+                statusText.textContent = '端口无效';
+                return;
+            }
+            try {
+                await chrome.runtime.sendMessage({ type: 'setPort', port });
+                statusText.textContent = `端口已切换到 ${port}`;
+            } catch (e) {
+                statusText.textContent = '端口保存失败';
+            }
+            setTimeout(checkConnection, 1500);
+        });
+    }
     
     chrome.storage.local.get(['pagesViewed', 'sessionStart', 'connected'], (result) => {
         if (result.pagesViewed !== undefined) {

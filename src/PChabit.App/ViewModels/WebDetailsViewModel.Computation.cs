@@ -22,6 +22,28 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         return domain == lowerPattern || domain.EndsWith("." + lowerPattern);
     }
 
+    private static string EffectiveMinutes(Core.Entities.WebSession s)
+    {
+        return s.ActiveDuration > TimeSpan.Zero
+            ? s.ActiveDuration.TotalMinutes.ToString("F1")
+            : s.Duration.TotalMinutes.ToString("F1");
+    }
+
+    private static double EffectiveMinutesValue(Core.Entities.WebSession s)
+    {
+        return s.ActiveDuration > TimeSpan.Zero ? s.ActiveDuration.TotalMinutes : s.Duration.TotalMinutes;
+    }
+
+    private static double EffectiveSecondsValue(Core.Entities.WebSession s)
+    {
+        return s.ActiveDuration > TimeSpan.Zero ? s.ActiveDuration.TotalSeconds : s.Duration.TotalSeconds;
+    }
+
+    private string ResolveCategory(Core.Entities.WebSession s)
+    {
+        return !string.IsNullOrEmpty(s.CategoryName) ? s.CategoryName! : GetCategory(s.Domain);
+    }
+
     private List<DomainStatItem> ComputeDomainStats(List<Core.Entities.WebSession> sessions)
     {
         return sessions
@@ -30,9 +52,9 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             {
                 Domain = g.Key,
                 VisitCount = g.Count(),
-                TotalDuration = g.Sum(s => s.Duration.TotalMinutes),
-                AvgDuration = g.Average(s => s.Duration.TotalSeconds),
-                Category = GetCategory(g.Key),
+                TotalDuration = g.Sum(EffectiveMinutesValue),
+                AvgDuration = g.Average(EffectiveSecondsValue),
+                Category = ResolveCategory(g.First()),
                 LastVisit = g.Max(s => s.StartTime)
             })
             .OrderByDescending(x => x.TotalDuration)
@@ -117,23 +139,34 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             });
         }
         
-        var shortVisits = sessions.Count(s => s.Duration.TotalSeconds < 30);
-        var longVisits = sessions.Count(s => s.Duration.TotalMinutes >= 5);
+        var shortVisits = sessions.Count(s => EffectiveSecondsValue(s) < 30);
+        var longVisits = sessions.Count(s => EffectiveMinutesValue(s) >= 5);
         
         result.Add(new BrowsingPatternItem
         {
             Pattern = "访问时长分布",
-            Description = $"快速浏览 {shortVisits}次 / 深度访问 {longVisits}次",
+            Description = $"快速浏览 {shortVisits}次 / 深度访问 {longVisits}次（按有效浏览）",
             Icon = "\uE9D9",
             Color = "#FF8C00"
         });
         
         var categoryGroups = sessions
-            .GroupBy(s => GetCategory(s.Domain))
+            .GroupBy(ResolveCategory)
             .Select(g => new { Category = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .FirstOrDefault();
         
+        
+        var focusAvg = sessions.Count > 0
+            ? sessions.Average(s => s.Duration > TimeSpan.Zero ? s.FocusRatio : 1.0)
+            : 1.0;
+        result.Add(new BrowsingPatternItem
+        {
+            Pattern = "有效浏览率",
+            Description = $"{(int)(focusAvg * 100)}%",
+            Icon = "",
+            Color = focusAvg >= 0.6 ? "#107C10" : "#E81123"
+        });
         if (categoryGroups != null)
         {
             result.Add(new BrowsingPatternItem
@@ -159,11 +192,11 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
                 Title = session.Title,
                 Url = session.Url,
                 VisitTime = session.StartTime.ToString("HH:mm:ss"),
-                Duration = session.Duration.TotalSeconds > 0 
-                    ? $"{(int)session.Duration.TotalMinutes}分{(int)session.Duration.Seconds}秒"
+                Duration = EffectiveMinutesValue(session) > 0
+                    ? $"{(int)EffectiveMinutesValue(session)}分{(int)(EffectiveSecondsValue(session) % 60)}秒"
                     : "-",
-                Category = GetCategory(session.Domain),
-                CategoryColor = GetCategoryColor(GetCategory(session.Domain)),
+                Category = ResolveCategory(session),
+                CategoryColor = GetCategoryColor(ResolveCategory(session)),
                 ScrollDepth = session.ScrollDepth,
                 ClickCount = session.ClickCount,
                 HasInteraction = session.HasFormInteraction || session.ClickCount > 0
@@ -193,24 +226,18 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             
             if (SelectedCategory != "全部分类")
             {
-                // 通过 WebsiteDomainMappings 查询该分类的域名模式
-                var domainPatterns = await dbContext.WebsiteDomainMappings
+                // 优先按物化 CategoryName 过滤；历史行回退域名映射
+                var category = await dbContext.WebsiteCategories
                     .AsNoTracking()
-                    .Include(m => m.Category)
-                    .Where(m => m.Category != null && m.Category.Name == SelectedCategory)
-                    .Select(m => m.DomainPattern)
-                    .Distinct()
-                    .ToListAsync();
+                    .FirstOrDefaultAsync(c => c.Name == SelectedCategory);
 
-                if (domainPatterns.Any())
+                if (category != null)
                 {
-                    var lowerPatterns = domainPatterns.Select(p => p.ToLower()).ToList();
-                    query = query.Where(s => lowerPatterns.Any(p => s.Domain.ToLower().Contains(p)));
+                    query = query.Where(s => s.CategoryId == category.Id || s.CategoryName == SelectedCategory);
                 }
                 else
                 {
-                    // 没有匹配的域名模式则返回空，避免错误的中文关键词硬匹配
-                    return new List<Core.Entities.WebSession>();
+                    query = query.Where(s => s.CategoryName == SelectedCategory);
                 }
             }
             
@@ -246,29 +273,32 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
     private SummaryStatsResult ComputeSummaryStats(List<Core.Entities.WebSession> sessions)
     {
         var totalVisits = sessions.Count;
-        var totalMinutes = sessions.Sum(s => s.Duration.TotalMinutes);
+        var totalMinutes = sessions.Sum(EffectiveMinutesValue);
+        var wallMinutes = sessions.Sum(s => s.Duration.TotalMinutes);
         var uniqueDomains = sessions.Select(s => s.Domain).Distinct().Count();
-        var avgSeconds = totalVisits > 0 ? sessions.Average(s => s.Duration.TotalSeconds) : 0;
-        
+        var avgSeconds = totalVisits > 0 ? sessions.Average(EffectiveSecondsValue) : 0;
+        var focusRatio = wallMinutes > 0 ? totalMinutes / wallMinutes : 1.0;
+
         var hourlyGroups = sessions
             .GroupBy(s => s.StartTime.Hour)
             .Select(g => new { Hour = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .FirstOrDefault();
-        
+
         var topDomain = sessions
             .GroupBy(s => s.Domain)
             .Select(g => new { Domain = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .FirstOrDefault();
-        
+
         return new SummaryStatsResult(
             totalVisits.ToString("N0"),
             $"{(int)totalMinutes}分钟",
             uniqueDomains.ToString("N0"),
             $"{(int)avgSeconds}秒",
             hourlyGroups != null ? $"{hourlyGroups.Hour}:00" : "-",
-            topDomain?.Domain ?? "-"
+            topDomain?.Domain ?? "-",
+            $"{(int)(focusRatio * 100)}%"
         );
     }
 

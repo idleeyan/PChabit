@@ -179,7 +179,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         {
             stats.WebSessions = await dbContext.WebSessions
                 .AsNoTracking()
-                .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd)
+                .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd && !s.IsLegacy)
                 .ToListAsync();
         }
         catch (Exception ex)

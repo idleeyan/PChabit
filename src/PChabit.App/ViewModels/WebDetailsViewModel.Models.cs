@@ -25,7 +25,7 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
 
     public record SummaryStatsResult(
         string TotalVisits, string TotalDuration, string UniqueDomains,
-        string AvgDuration, string PeakHour, string TopDomain);
+        string AvgDuration, string PeakHour, string TopDomain, string FocusRatio = "-");
 
 public class DomainStatItem
 {

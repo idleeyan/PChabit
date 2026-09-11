@@ -111,15 +111,18 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
                     dateKey, summary.TotalKeys, summary.TotalMouseClicks);
                 var stats = BuildStatsFromSummary(summary);
 
-                // 补充网页访问数量（DailySummary 不存储此字段）
-                try
+                // 今日尚未写入 DailySummary 时，用实时会话补齐
+                if (stats.TodayWebPages == "0")
                 {
-                    var webCount = await dbContext.WebSessions
-                        .AsNoTracking()
-                        .CountAsync(s => s.StartTime >= today && s.StartTime < today.AddDays(1));
-                    stats.TodayWebPages = webCount.ToString();
+                    try
+                    {
+                        var webCount = await dbContext.WebSessions
+                            .AsNoTracking()
+                            .CountAsync(s => s.StartTime >= today && s.StartTime < today.AddDays(1) && !s.IsLegacy);
+                        stats.TodayWebPages = webCount.ToString();
+                    }
+                    catch { /* WebSessions 查询失败不影响主流程 */ }
                 }
-                catch { /* WebSessions 查询失败不影响主流程 */ }
 
                 return stats;
             }
@@ -144,7 +147,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             TodayActiveTime = $"{hours}小时 {minutes}分钟",
             TodayKeyPresses = summary.TotalKeys.ToString("N0"),
             TodayMouseClicks = summary.TotalMouseClicks.ToString("N0"),
-            TodayWebPages = "0", // DailySummary 不存储网页数
+            TodayWebPages = summary.WebPages.ToString("N0"),
             ProductivityScore = 0 // DailySummary 不存储生产力分数
         };
 

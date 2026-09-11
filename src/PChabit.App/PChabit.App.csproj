@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>3.1.9</Version>
+        <Version>3.1.10</Version>
         <Platforms>x64</Platforms>
         <PlatformTarget>x64</PlatformTarget>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -45,6 +45,20 @@
 
     <!--
         ============================================================
+        WinUI 内置控件多语言资源白名单（只保留简体中文 + 英语）
+
+        保留项：
+          - zh-CN：简体中文
+          - en-us：英语（同时是 WinUI 的中性回退语言）
+        需要英式英语时改为：zh-CN;en-us;en-GB
+        ============================================================
+    -->
+    <PropertyGroup>
+        <KeepLanguageFolders Condition="'$(KeepLanguageFolders)' == ''">zh-CN;en-us</KeepLanguageFolders>
+    </PropertyGroup>
+
+    <!--
+        ============================================================
         关键修复：dotnet publish 不会自动复制 Microsoft.UI.Xaml 目录到
         publish 目录，而该目录下的 Assets\NoiseAsset_256x256_PNG.png 是
         TextBox/NumberBox 等 WinUI 控件 ControlTemplate 必需的资源。
@@ -69,43 +83,84 @@
     </Target>
 
     <!--
-        清理 Build 输出中的非 en-/zh- 语言文件夹，节省空间。
-        ⚠️ 必须用 [System.IO.Path]::GetFileName() 获取目录名，不能用 %(Filename)
-        （MSBuild 的 %(Filename) 会把目录名当文件名并去掉"扩展名"，
-        导致 "Microsoft.UI.Xaml" 被识别为 "Microsoft.UI" 从而误删关键资源）。
-        必须保留：en-*（英语）、zh-*（中文）、Assets、Views、Microsoft.UI.Xaml
+        ============================================================
+        清理输出目录中多余的 WinUI 语言资源（.mui）
+
+        根因：Microsoft.WindowsAppSDK.WinUI 包在
+          runtimes-framework\win-x64\native\<语言代码>\
+        下携带 30+ 种语言（af-ZA / de-DE / ja-JP / zh-TW ...）的
+          Microsoft.ui.xaml.dll.mui
+          Microsoft.UI.Xaml.Phone.dll.mui
+        自包含部署（WindowsAppSDKSelfContained=true）时，
+        Microsoft.WindowsAppSDK.SelfContained.targets 用
+          <MicrosoftWindowsAppSDKFiles Include="...\**\*.mui" />
+        全量 glob 复制，不做语言过滤；而 <SatelliteResourceLanguages>
+        只作用于 NuGet 托管附属程序集，对这类原生 .mui 无效。
+        因此 en-GB / zh-TW 会被一并输出到 bin 与 publish。
+
+        策略：白名单 + 标记文件判定
+          1) 只有「目录内存在 Microsoft.ui.xaml.dll.mui」的目录才被视为
+             WinUI 语言目录，其余目录（Assets / Views / extensions /
+             Microsoft.UI.Xaml / runtimes ...）一律不参与匹配；
+          2) 命中标记但不在 $(KeepLanguageFolders) 内的目录才删除。
+
+        ⚠️ 必须用「完整路径 + Exclude」做白名单匹配，有以下两条实测教训：
+          - 禁止把目录名写进元数据再用它判断（例如在 ItemGroup 里定义
+            <DirLower>$([System.String]::Copy('%(Filename)').ToLowerInvariant())</DirLower>）：
+            MSBuild 在元数据定义位置不展开 %(Identity)/%(Filename)，会静默得到空串，
+            导致白名单判断恒为 false，把该保留的 zh-CN / en-us 一起删掉（无报错、无警告）；
+          - 禁止用字符串 Contains 做白名单匹配：真实目录名大小写不统一
+            （en-GB 大写、en-us 小写、zh-CN 混合），字符串比较会漏判。
+            MSBuild 的 Exclude 走路径匹配，大小写不敏感，可容忍该差异
+            （实测：白名单写成 ZH-cn;EN-US 仍能正确保留 zh-CN / en-us）。
+
+        ⚠️ 曾存在的缺陷：旧实现用「目录名不以 en-/zh- 开头就删除，
+        仅豁免 Assets/Views/Microsoft.UI.Xaml」的反向过滤，
+        会误删 extensions 等业务目录。新实现不再触碰任何非语言目录。
+        ============================================================
     -->
-    <Target Name="RemoveUnusedLanguageFolders" AfterTargets="Build">
+    <Target Name="RemoveUnusedMuiLanguageFolders" AfterTargets="Build" Condition="Exists('$(OutDir)')">
         <ItemGroup>
-            <_AllLanguageDirs Include="$([System.IO.Directory]::GetDirectories('$(OutDir)'))" />
+            <_OutDirEntryFortrim Include="$([System.IO.Directory]::GetDirectories('$(OutDir)'))" />
+            <_MuiLanguageDir Include="@(_OutDirEntryFortrim)"
+                             Condition="Exists('%(Identity)\Microsoft.ui.xaml.dll.mui')" />
+            <_KeepLangEntry Include="$(KeepLanguageFolders.Split(';'))" />
+            <_KeepLangDirFull Include="@(_KeepLangEntry->'$(OutDir)%(Identity)\')" />
+            <!-- 冗余保险：即使这些目录里将来出现同名 .mui，也不参与清理 -->
+            <_ProtectedDirName Include="Assets;Views;extensions;Microsoft.UI.Xaml;runtimes" />
+            <_ProtectedDirFull Include="@(_ProtectedDirName->'$(OutDir)%(Identity)\')" />
         </ItemGroup>
         <ItemGroup>
-            <_LanguageDirsToDelete Include="@(_AllLanguageDirs)"
-                Condition="!$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('en-')) And
-                          !$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('zh-')) And
-                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Assets' And
-                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Views' And
-                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Microsoft.UI.Xaml'" />
+            <_MuiLanguageDirToDelete Include="@(_MuiLanguageDir)"
+                                     Exclude="@(_KeepLangDirFull);@(_ProtectedDirFull)" />
         </ItemGroup>
-        <RemoveDir Directories="@(_LanguageDirsToDelete)" />
-        <Message Text="已从 $(OutDir) 清理 @(_LanguageDirsToDelete->Count()) 个无关语言文件夹" Importance="high" />
+        <!-- 诊断用（-v:d 可见）：排查语言目录判定为何未命中 -->
+        <Message Text="[PCH-LANG][Build] OutDir=$(OutDir)" Importance="low" />
+        <Message Text="[PCH-LANG][Build] candidates=@(_MuiLanguageDir)" Importance="low" />
+        <Message Text="[PCH-LANG][Build] keep=@(_KeepLangDirFull)" Importance="low" />
+        <Message Text="[PCH-LANG][Build] delete=@(_MuiLanguageDirToDelete)" Importance="low" />
+        <RemoveDir Directories="@(_MuiLanguageDirToDelete)"
+                   Condition="'@(_MuiLanguageDirToDelete)' != ''" />
+        <Message Text="已从 $(OutDir) 清理 @(_MuiLanguageDirToDelete->Count()) 个多余语言目录（保留 $(KeepLanguageFolders)）" Importance="high" />
     </Target>
 
-    <Target Name="RemoveUnusedLanguageFoldersForPublish" AfterTargets="Publish">
+    <Target Name="RemoveUnusedMuiLanguageFoldersForPublish" AfterTargets="Publish" Condition="Exists('$(PublishDir)')">
         <ItemGroup>
-            <_AllLanguageDirs Include="$([System.IO.Directory]::GetDirectories('$(PublishDir)'))"
-                Condition="Exists('$(PublishDir)')" />
+            <_PublishEntryFortrim Include="$([System.IO.Directory]::GetDirectories('$(PublishDir)'))" />
+            <_MuiLanguageDirForPublish Include="@(_PublishEntryFortrim)"
+                                       Condition="Exists('%(Identity)\Microsoft.ui.xaml.dll.mui')" />
+            <_KeepLangEntryForPublish Include="$(KeepLanguageFolders.Split(';'))" />
+            <_KeepLangDirFullForPublish Include="@(_KeepLangEntryForPublish->'$(PublishDir)%(Identity)\')" />
+            <_ProtectedDirNameForPublish Include="Assets;Views;extensions;Microsoft.UI.Xaml;runtimes" />
+            <_ProtectedDirFullForPublish Include="@(_ProtectedDirNameForPublish->'$(PublishDir)%(Identity)\')" />
         </ItemGroup>
         <ItemGroup>
-            <_LanguageDirsToDelete Include="@(_AllLanguageDirs)"
-                Condition="!$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('en-')) And
-                          !$([System.String]::Copy('$([System.IO.Path]::GetFileName(%(Identity)))').ToLowerInvariant().StartsWith('zh-')) And
-                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Assets' And
-                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Views' And
-                          '$([System.IO.Path]::GetFileName(%(Identity)))' != 'Microsoft.UI.Xaml'" />
+            <_MuiLanguageDirToDeleteForPublish Include="@(_MuiLanguageDirForPublish)"
+                                               Exclude="@(_KeepLangDirFullForPublish);@(_ProtectedDirFullForPublish)" />
         </ItemGroup>
-        <RemoveDir Directories="@(_LanguageDirsToDelete)" />
-        <Message Text="已从 $(PublishDir) 清理 @(_LanguageDirsToDelete->Count()) 个无关语言文件夹" Importance="high" />
+        <RemoveDir Directories="@(_MuiLanguageDirToDeleteForPublish)"
+                   Condition="'@(_MuiLanguageDirToDeleteForPublish)' != ''" />
+        <Message Text="已从 $(PublishDir) 清理 @(_MuiLanguageDirToDeleteForPublish->Count()) 个多余语言目录（保留 $(KeepLanguageFolders)）" Importance="high" />
     </Target>
 
     <!-- WinUI 3 unpacked publish fix: dotnet publish may miss XBF/PRI files -->

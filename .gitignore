@@ -32,6 +32,11 @@ bld/
 # Internal documentation (not for public)
 docs/
 
+# 根目录原型设计稿（本地使用，不公开）
+/index.html
+/app.js
+/styles.css
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
