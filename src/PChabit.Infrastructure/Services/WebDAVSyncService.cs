@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using System.Xml.Linq;
 using Serilog;
 using PChabit.Core.Interfaces;
@@ -10,11 +10,11 @@ public interface IWebDAVSyncService
     event EventHandler<WebDAVProgressEventArgs>? ProgressChanged;
     
     Task<bool> TestConnectionAsync(string url, string username, string password);
-    Task<string?> UploadFileAsync(string url, string username, string password, string fileName, byte[] content);
-    Task<string?> UploadFileWithProgressAsync(string url, string username, string password, string fileName, byte[] content, IProgress<int>? progress = null);
-    Task<byte[]?> DownloadFileAsync(string url, string username, string password, string fileName);
-    Task<byte[]?> DownloadFileWithProgressAsync(string url, string username, string password, string fileName, IProgress<int>? progress = null);
-    Task<List<WebDAVFileInfo>> ListFilesAsync(string url, string username, string password, string? path = null);
+    Task<string?> UploadFileAsync(string url, string username, string password, string fileName, byte[] content, CancellationToken ct = default);
+    Task<string?> UploadFileWithProgressAsync(string url, string username, string password, string fileName, byte[] content, IProgress<int>? progress = null, CancellationToken ct = default);
+    Task<byte[]?> DownloadFileAsync(string url, string username, string password, string fileName, CancellationToken ct = default);
+    Task<byte[]?> DownloadFileWithProgressAsync(string url, string username, string password, string fileName, IProgress<int>? progress = null, CancellationToken ct = default);
+    Task<List<WebDAVFileInfo>> ListFilesAsync(string url, string username, string password, string? path = null, CancellationToken ct = default);
     Task<bool> DeleteFileAsync(string url, string username, string password, string fileName);
     Task<bool> CreateFolderAsync(string url, string username, string password, string folderName);
 }
@@ -53,7 +53,7 @@ public class WebDAVSyncService : IWebDAVSyncService
     public WebDAVSyncService()
     {
         _httpClient = new HttpClient();
-        _httpClient.Timeout = TimeSpan.FromMinutes(30);
+        _httpClient.Timeout = TimeSpan.FromSeconds(30);
     }
     
     public async Task<bool> TestConnectionAsync(string url, string username, string password)
@@ -75,12 +75,12 @@ public class WebDAVSyncService : IWebDAVSyncService
         }
     }
     
-    public async Task<string?> UploadFileAsync(string url, string username, string password, string fileName, byte[] content)
+    public async Task<string?> UploadFileAsync(string url, string username, string password, string fileName, byte[] content, CancellationToken ct = default)
     {
-        return await UploadFileWithProgressAsync(url, username, password, fileName, content, null);
+        return await UploadFileWithProgressAsync(url, username, password, fileName, content, null, ct);
     }
     
-    public async Task<string?> UploadFileWithProgressAsync(string url, string username, string password, string fileName, byte[] content, IProgress<int>? progress = null)
+    public async Task<string?> UploadFileWithProgressAsync(string url, string username, string password, string fileName, byte[] content, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         try
         {
@@ -101,7 +101,7 @@ public class WebDAVSyncService : IWebDAVSyncService
             request.Content.Headers.ContentLength = content.Length;
             AddAuthentication(request, username, password);
             
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             
             if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.Created || response.StatusCode == System.Net.HttpStatusCode.NoContent)
             {
@@ -173,12 +173,12 @@ public class WebDAVSyncService : IWebDAVSyncService
         }
     }
     
-    public async Task<byte[]?> DownloadFileAsync(string url, string username, string password, string fileName)
+    public async Task<byte[]?> DownloadFileAsync(string url, string username, string password, string fileName, CancellationToken ct = default)
     {
-        return await DownloadFileWithProgressAsync(url, username, password, fileName, null);
+        return await DownloadFileWithProgressAsync(url, username, password, fileName, null, ct);
     }
     
-    public async Task<byte[]?> DownloadFileWithProgressAsync(string url, string username, string password, string fileName, IProgress<int>? progress = null)
+    public async Task<byte[]?> DownloadFileWithProgressAsync(string url, string username, string password, string fileName, IProgress<int>? progress = null, CancellationToken ct = default)
     {
         try
         {
@@ -190,7 +190,7 @@ public class WebDAVSyncService : IWebDAVSyncService
             var request = new HttpRequestMessage(HttpMethod.Get, fullUrl);
             AddAuthentication(request, username, password);
             
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             
             if (!response.IsSuccessStatusCode)
             {
@@ -202,16 +202,16 @@ public class WebDAVSyncService : IWebDAVSyncService
             var totalBytes = response.Content.Headers.ContentLength ?? -1L;
             var canReportProgress = totalBytes > 0 && progress != null;
             
-            using var stream = await response.Content.ReadAsStreamAsync();
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var memoryStream = new MemoryStream();
             
             var buffer = new byte[8192];
             long totalRead = 0;
             int bytesRead;
             
-            while ((bytesRead = await stream.ReadAsync(buffer)) > 0)
+            while ((bytesRead = await stream.ReadAsync(buffer, ct)) > 0)
             {
-                await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead));
+                await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead), ct);
                 totalRead += bytesRead;
                 
                 if (canReportProgress)
@@ -235,7 +235,7 @@ public class WebDAVSyncService : IWebDAVSyncService
         }
     }
     
-    public async Task<List<WebDAVFileInfo>> ListFilesAsync(string url, string username, string password, string? path = null)
+    public async Task<List<WebDAVFileInfo>> ListFilesAsync(string url, string username, string password, string? path = null, CancellationToken ct = default)
     {
         var files = new List<WebDAVFileInfo>();
         
@@ -251,7 +251,7 @@ public class WebDAVSyncService : IWebDAVSyncService
             request.Headers.Add("Depth", "1");
             AddAuthentication(request, username, password);
             
-            var response = await _httpClient.SendAsync(request);
+            var response = await _httpClient.SendAsync(request, ct);
             
             if (!response.IsSuccessStatusCode)
             {

@@ -1,3 +1,9 @@
+// Chrome MV3：经典 SW 用 importScripts 加载书签同步模块
+// Firefox MV2：manifest scripts 数组已按序加载 browser-sync.js
+if (typeof importScripts === 'function' && typeof BrowserSync === 'undefined') {
+    try { importScripts('browser-sync.js'); } catch (e) { console.error('[Tai] load browser-sync failed', e); }
+}
+
 const DEFAULT_WS_PORT = 8765;
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_ATTEMPTS = 100;
@@ -13,15 +19,86 @@ let heartbeatTimer = null;
 /** tabId -> { url, title, favIconUrl } */
 const tabState = new Map();
 
-const browserName = getBrowserName();
+const browserName = { current: 'Chrome', override: null };
 
-function getBrowserName() {
-    if (typeof chrome !== 'undefined') {
-        if (navigator.userAgent.includes('Edg/')) return 'Edge';
-        if (navigator.userAgent.includes('Firefox/')) return 'Firefox';
-        return 'Chrome';
+async function loadBrowserName() {
+    try {
+        const r = await chrome.storage.local.get(['browserNameOverride']);
+        browserName.override = r.browserNameOverride || null;
+    } catch { /* ignore */ }
+    browserName.current = resolveBrowserName();
+    return browserName.current;
+}
+
+function resolveBrowserName() {
+    if (browserName.override && browserName.override.trim())
+        return browserName.override.trim();
+
+    if (typeof chrome === 'undefined') return 'Unknown';
+    const ua = navigator.userAgent || '';
+
+    // UA Client Hints brands（更准）
+    try {
+        const brands = navigator.userAgentData?.brands;
+        if (Array.isArray(brands)) {
+            const names = brands.map(b => (b.brand || '').toLowerCase()).join(' ');
+            if (names.includes('doubao') || names.includes('bytedance')) return '豆包浏览器';
+            if (names.includes('microsoft edge') || names.includes('edge')) return 'Edge';
+            if (names.includes('brave')) return 'Brave';
+            if (names.includes('opera')) return 'Opera';
+            if (names.includes('vivaldi')) return 'Vivaldi';
+        }
+    } catch { /* ignore */ }
+
+    if (ua.includes('Edg/')) return 'Edge';
+    if (ua.includes('Firefox/')) return 'Firefox';
+    if (/Doubao|DBBrowser|ByteDance|DoubaoBrowser/i.test(ua)) return '豆包浏览器';
+    if (ua.includes('Brave/')) return 'Brave';
+    if (ua.includes('OPR/') || ua.includes('Opera')) return 'Opera';
+    if (ua.includes('Vivaldi/')) return 'Vivaldi';
+    if (ua.includes('QQBrowser') || ua.includes('QHB')) return 'QQ浏览器';
+    if (ua.includes('QIHU') || ua.includes('360SE')) return '360浏览器';
+    if (ua.includes('Quark')) return '夸克';
+
+    // 兜底：不再冒充 Chrome。Chromium 壳浏览器（豆包等）的 UA 常与 Chrome 完全相同，
+    // 真实身份由桌面端按进程 exe 路径判定；这里返回中性的 Chromium，避免误报。
+    return 'Chromium';
+}
+
+function currentBrowserName() {
+    return browserName.current || resolveBrowserName();
+}
+
+function hasUserOverride() {
+    return !!(browserName.override && browserName.override.trim());
+}
+
+function autoDetectedName() {
+    const saved = browserName.override;
+    browserName.override = null;
+    const auto = resolveBrowserName();
+    browserName.override = saved;
+    return auto;
+}
+
+function sendMessage(data) {
+    const override = hasUserOverride();
+    const message = {
+        ...data,
+        timestamp: new Date().toISOString(),
+        browser: currentBrowserName(),
+        browserSource: override ? 'override' : 'auto',
+        isUserOverride: override,
+        autoDetected: autoDetectedName()
+    };
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(message));
+        return true;
     }
-    return 'Unknown';
+
+    enqueueOffline(message);
+    return false;
 }
 
 async function loadConfig() {
@@ -49,7 +126,15 @@ async function connect() {
             console.log('[Tai] Connected to', wsUrl);
             reconnectAttempts = 0;
             isConnected = true;
-            sendMessage({ type: 'connection', browser: browserName });
+            sendMessage({ type: 'connection', browser: currentBrowserName(), ua: navigator.userAgent || '' });
+            if (typeof BrowserSync !== 'undefined') {
+                sendMessage({
+                    type: 'browser_sync_ready',
+                    browser: currentBrowserName(),
+                    ua: navigator.userAgent || '',
+                    extVersion: BrowserSync.EXT_VERSION
+                });
+            }
             updateStorage({ connected: true });
             await flushOfflineQueue();
             startHeartbeat();
@@ -104,22 +189,6 @@ function isTrackableUrl(url) {
              lower.startsWith('view-source:'));
 }
 
-function sendMessage(data) {
-    const message = {
-        ...data,
-        timestamp: new Date().toISOString(),
-        browser: browserName
-    };
-
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message));
-        return true;
-    }
-
-    enqueueOffline(message);
-    return false;
-}
-
 async function enqueueOffline(message) {
     if (message.type === 'heartbeat' || message.type === 'scroll' || message.type === 'click') {
         return;
@@ -160,6 +229,97 @@ function handleMessage(message) {
                 tabsCount: true
             });
             break;
+        case 'bookmarks_request_export':
+            handleBookmarksRequestExport(message);
+            break;
+        case 'bookmarks_apply':
+            handleBookmarksApply(message);
+            break;
+        case 'history_request_export':
+            handleHistoryRequestExport(message);
+            break;
+    }
+}
+
+async function handleHistoryRequestExport(message) {
+    if (typeof BrowserSync === 'undefined' || !chrome.history) return;
+    try {
+        await BrowserSync.exportHistoryInBatches(
+            message.requestId,
+            sendMessage,
+            currentBrowserName(),
+            message.startTime
+        );
+        console.log('[Tai] history_export 完成');
+    } catch (e) {
+        console.error('[Tai] history_export 失败:', e);
+    }
+}
+
+async function handleBookmarksRequestExport(message) {
+    if (typeof BrowserSync === 'undefined') {
+        sendMessage({
+            type: 'bookmarks_export',
+            browser: currentBrowserName(),
+            items: [],
+            batchIndex: 0,
+            batchCount: 1,
+            requestId: message.requestId,
+            total: 0,
+            error: 'BrowserSync 模块未加载'
+        });
+        return;
+    }
+    try {
+        const result = await BrowserSync.exportBookmarksInBatches(
+            message.requestId,
+            sendMessage,
+            currentBrowserName()
+        );
+        console.log(`[Tai] bookmarks_export 完成: ${result.total} 条 / ${result.batchCount} 批`);
+    } catch (e) {
+        console.error('[Tai] bookmarks_export 失败:', e);
+        sendMessage({
+            type: 'bookmarks_export',
+            browser: currentBrowserName(),
+            items: [],
+            batchIndex: 0,
+            batchCount: 1,
+            requestId: message.requestId,
+            total: 0,
+            error: e.message || String(e)
+        });
+    }
+}
+
+async function handleBookmarksApply(message) {
+    if (typeof BrowserSync === 'undefined') {
+        sendMessage({
+            type: 'bookmarks_apply_result',
+            requestId: message.requestId,
+            browser: currentBrowserName(),
+            ok: false,
+            added: 0,
+            removed: 0,
+            renamed: 0,
+            errors: ['BrowserSync 模块未加载']
+        });
+        return;
+    }
+    try {
+        await BrowserSync.applyPlan(message, sendMessage, currentBrowserName());
+    } catch (e) {
+        console.error('[Tai] bookmarks_apply 失败:', e);
+        sendMessage({
+            type: 'bookmarks_apply_result',
+            requestId: message.requestId,
+            browser: currentBrowserName(),
+            ok: false,
+            added: 0,
+            removed: 0,
+            renamed: 0,
+            errors: [e.message || String(e)]
+        });
     }
 }
 
@@ -355,6 +515,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.type === 'setBrowserName') {
+        const name = (message.name || '').trim();
+        if (name && name.length > 20) {
+            sendResponse({ ok: false, error: '名称最多 20 字' });
+            return true;
+        }
+        chrome.storage.local.set({ browserNameOverride: name || null }, () => {
+            browserName.override = name || null;
+            browserName.current = resolveBrowserName();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                sendMessage({
+                    type: 'browser_sync_ready',
+                    browser: currentBrowserName(),
+                    extVersion: typeof BrowserSync !== 'undefined' ? BrowserSync.EXT_VERSION : '2.1.0'
+                });
+            }
+            sendResponse({
+                ok: true,
+                browser: currentBrowserName(),
+                override: browserName.override,
+                isUserOverride: hasUserOverride(),
+                autoDetected: autoDetectedName()
+            });
+        });
+        return true;
+    }
+
+    if (message.type === 'clearBrowserName') {
+        chrome.storage.local.set({ browserNameOverride: null }, () => {
+            browserName.override = null;
+            browserName.current = resolveBrowserName();
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                sendMessage({
+                    type: 'browser_sync_ready',
+                    browser: currentBrowserName(),
+                    extVersion: typeof BrowserSync !== 'undefined' ? BrowserSync.EXT_VERSION : '2.1.0'
+                });
+            }
+            sendResponse({ ok: true, browser: currentBrowserName(), autoDetected: autoDetectedName() });
+        });
+        return true;
+    }
+
+    if (message.type === 'getBrowserName') {
+        sendResponse({
+            browser: currentBrowserName(),
+            override: browserName.override,
+            isUserOverride: hasUserOverride(),
+            autoDetected: autoDetectedName()
+        });
+        return true;
+    }
+
     return true;
 });
 
@@ -366,6 +579,7 @@ chrome.storage.local.set({
 
 (async () => {
     await loadConfig();
+    await loadBrowserName();
     connect();
 })();
 
@@ -373,6 +587,7 @@ chrome.runtime.onInstalled.addListener(async () => {
     console.log('[Tai] Extension installed');
     reconnectAttempts = 0;
     await loadConfig();
+    await loadBrowserName();
     connect();
 });
 
@@ -380,5 +595,6 @@ chrome.runtime.onStartup.addListener(async () => {
     console.log('[Tai] Browser started');
     reconnectAttempts = 0;
     await loadConfig();
+    await loadBrowserName();
     connect();
 });

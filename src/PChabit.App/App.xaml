@@ -18,31 +18,10 @@
             <!-- ======================================== -->
             <!-- 转换器                                     -->
             <!-- ======================================== -->
-            <converters:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
-            <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
-            <converters:DateToStringConverter x:Key="DateToStringConverter" />
-            <converters:StringToBrushConverter x:Key="StringToBrushConverter" />
-            <converters:FirstLetterConverter x:Key="FirstLetterConverter" />
-            <converters:HoursToStringConverter x:Key="HoursToStringConverter" />
-            <converters:TrendColorConverter x:Key="TrendColorConverter" />
-            <converters:InsightBackgroundConverter x:Key="InsightBackgroundConverter" />
-            <converters:PercentageConverter x:Key="PercentageConverter" />
-            <converters:IntToProgramCountTextConverter x:Key="IntToProgramCountTextConverter" />
-            <converters:ColorSelectionConverter x:Key="ColorSelectionConverter" />
-            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
-            <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
-            <converters:InverseCountToVisibilityConverter x:Key="InverseCountToVisibilityConverter" />
-            <converters:CountToEnabledConverter x:Key="CountToEnabledConverter" />
-            <converters:SelectedCountConverter x:Key="SelectedCountConverter" />
-            <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
-            <converters:SystemCategoryConverter x:Key="SystemCategoryConverter" />
-            <converters:InverseBooleanConverter x:Key="InverseBooleanConverter" />
-            <converters:TimeSpanToReadableConverter x:Key="TimeSpanToReadableConverter" />
-            <converters:DoubleToScoreConverter x:Key="DoubleToScoreConverter" />
-            <converters:ActivityToColorConverter x:Key="ActivityToColorConverter" />
-            <converters:ActivityToForegroundConverter x:Key="ActivityToForegroundConverter" />
-            <converters:DateToDetailConverter x:Key="DateToDetailConverter" />
+            <!-- ========================================
+                 转换器（已移至 App.xaml.cs RegisterAppConverters 代码注册，
+                 避免 XAML 编译器 pass1 解析自身程序集类型时失败）
+                 ======================================== -->
 
             <!-- ======================================== -->
             <!-- PChabit 设计系统 - 深色模式就绪        -->

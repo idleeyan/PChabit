@@ -11,24 +11,25 @@ public class MouseMonitor : IMouseMonitor
     public event EventHandler<MouseClickEventArgs>? OnMouseClick;
     public event EventHandler<MouseMoveEventArgs>? OnMouseMove;
     public event EventHandler<MouseScrollEventArgs>? OnMouseScroll;
-    
+
     private delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
-    
+
     private IntPtr _hook = IntPtr.Zero;
     private LowLevelMouseProc? _proc;
-    
+
     private const double MoveThreshold = 5.0;
-    private const int MoveThrottleMs = 50;
+    private const long MoveThrottleMs = 50;
     private const int TrailSampleInterval = 100;
-    
+
     private double _lastX;
     private double _lastY;
-    private DateTime _lastMoveTime = DateTime.MinValue;
-    private DateTime _lastTrailTime = DateTime.MinValue;
+    private long _lastMoveTick = long.MinValue;
+    private long _lastTrailTick = long.MinValue;
+    private bool _hasPosition;
 
     private double _totalTrailDistance;
     private string? _currentProcess;
-    
+
     public event EventHandler<MouseTrailEventArgs>? OnTrailCompleted;
 
     public void Start()
@@ -50,35 +51,51 @@ public class MouseMonitor : IMouseMonitor
 
         IsRunning = _hook != IntPtr.Zero;
     }
-    
+
     public void Stop()
     {
         if (!IsRunning) return;
-        
+
         if (_hook != IntPtr.Zero)
         {
             Win32Helper.UnhookWindowsHookEx(_hook);
             _hook = IntPtr.Zero;
         }
-        
+
         CompleteTrail();
         IsRunning = false;
     }
-    
+
     public void SetCurrentProcess(string? processName)
     {
         _currentProcess = processName;
     }
-    
+
     private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
     {
         if (nCode >= 0)
         {
             try
             {
-                LastActivityTime = DateTime.Now;
-                var hookStruct = Marshal.PtrToStructure<Win32Helper.MOUSEHOOKSTRUCT>(lParam);
                 var wParamInt = wParam.ToInt32();
+
+                // 高频移动包：先 TickCount 节流，再解结构体，避免拖慢输入泵
+                if (wParamInt == Win32Helper.WM_MOUSEMOVE)
+                {
+                    var tick = Environment.TickCount64;
+                    if (tick - _lastMoveTick < MoveThrottleMs)
+                    {
+                        return Win32Helper.CallNextHookEx(_hook, nCode, wParam, lParam);
+                    }
+
+                    LastActivityTime = DateTime.Now;
+                    var moveStruct = Marshal.PtrToStructure<Win32Helper.MSLLHOOKSTRUCT>(lParam);
+                    HandleMouseMove(moveStruct.pt.X, moveStruct.pt.Y, tick);
+                    return Win32Helper.CallNextHookEx(_hook, nCode, wParam, lParam);
+                }
+
+                LastActivityTime = DateTime.Now;
+                var hookStruct = Marshal.PtrToStructure<Win32Helper.MSLLHOOKSTRUCT>(lParam);
                 var now = DateTime.Now;
 
                 switch (wParamInt)
@@ -115,10 +132,6 @@ public class MouseMonitor : IMouseMonitor
                         OnMouseScroll?.Invoke(this, new MouseScrollEventArgs(
                             delta, hookStruct.pt.X, hookStruct.pt.Y, now));
                         break;
-
-                    case Win32Helper.WM_MOUSEMOVE:
-                        HandleMouseMove(hookStruct.pt.X, hookStruct.pt.Y, now);
-                        break;
                 }
             }
             catch
@@ -129,15 +142,16 @@ public class MouseMonitor : IMouseMonitor
 
         return Win32Helper.CallNextHookEx(_hook, nCode, wParam, lParam);
     }
-    
-    private void HandleMouseMove(double x, double y, DateTime now)
+
+    private void HandleMouseMove(double x, double y, long tick)
     {
-        if (_lastX == 0 && _lastY == 0)
+        if (!_hasPosition)
         {
             _lastX = x;
             _lastY = y;
-            _lastMoveTime = now;
-            _lastTrailTime = now;
+            _lastMoveTick = tick;
+            _lastTrailTick = tick;
+            _hasPosition = true;
             return;
         }
 
@@ -145,16 +159,21 @@ public class MouseMonitor : IMouseMonitor
         var dy = y - _lastY;
         var distance = Math.Sqrt(dx * dx + dy * dy);
 
-        if (distance < MoveThreshold) return;
-        if ((now - _lastMoveTime).TotalMilliseconds < MoveThrottleMs) return;
+        if (distance < MoveThreshold)
+        {
+            _lastX = x;
+            _lastY = y;
+            _lastMoveTick = tick;
+            return;
+        }
 
-        OnMouseMove?.Invoke(this, new MouseMoveEventArgs(_lastX, _lastY, x, y, now));
+        OnMouseMove?.Invoke(this, new MouseMoveEventArgs(_lastX, _lastY, x, y, DateTime.Now));
 
         _totalTrailDistance += distance;
 
-        if ((now - _lastTrailTime).TotalMilliseconds >= TrailSampleInterval)
+        if (tick - _lastTrailTick >= TrailSampleInterval)
         {
-            _lastTrailTime = now;
+            _lastTrailTick = tick;
 
             if (_totalTrailDistance > 0)
             {
@@ -165,7 +184,7 @@ public class MouseMonitor : IMouseMonitor
 
         _lastX = x;
         _lastY = y;
-        _lastMoveTime = now;
+        _lastMoveTick = tick;
     }
 
     private void CompleteTrail()

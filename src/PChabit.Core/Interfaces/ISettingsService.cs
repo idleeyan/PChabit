@@ -31,7 +31,36 @@ public interface ISettingsService
     bool AutoCleanupEnabled { get; set; }
     bool ArchiveBeforeCleanup { get; set; }
     int MaxCloudBackupCount { get; set; }
-    
+
+    bool BrowserSyncEnabled { get; set; }
+    bool BrowserBookmarkSyncEnabled { get; set; }
+    bool BrowserHistoryIngestEnabled { get; set; }
+    int BrowserSyncIntervalMinutes { get; set; }
+
+    bool TaskbarEnabled { get; set; }
+    // 任务栏小窗显示项（3.9.4：删除托盘悬停提示后由 TrayTipShow* 更名而来）
+    bool TaskbarShowCpu { get; set; }
+    bool TaskbarShowMemory { get; set; }
+    bool TaskbarShowGpu { get; set; }
+    bool TaskbarShowNet { get; set; }
+    bool TaskbarShowDisk { get; set; }
+    bool TaskbarShowTemp { get; set; }
+    bool TaskbarShowUsage { get; set; }
+    double DailyUsageGoalHours { get; set; }
+
+    /// <summary>分析页「AI 深度解读」总开关（默认关）。仅上传聚合指标。</summary>
+    bool AiInsightsEnabled { get; set; }
+    /// <summary>OpenAI 兼容 BaseUrl，如 https://api.openai.com/v1 或本地 Ollama。</summary>
+    string AiBaseUrl { get; set; }
+    string AiApiKey { get; set; }
+    string AiModel { get; set; }
+    /// <summary>AI Provider：zhipu | deepseek | lmstudio | custom</summary>
+    string AiProvider { get; set; }
+    /// <summary>AI 解读超时（秒）。本地大模型推理慢，默认 300；范围 30–900。</summary>
+    int AiTimeoutSeconds { get; set; }
+    /// <summary>书签库整树自动推送到浏览器。</summary>
+    bool BrowserAutoPush { get; set; }
+
     event EventHandler<SettingsChangedEventArgs>? SettingsChanged;
     
     Task LoadAsync();
@@ -45,3 +74,4 @@ public class SettingsChangedEventArgs : EventArgs
 {
     public string? PropertyName { get; init; }
 }
+

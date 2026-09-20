@@ -223,13 +223,14 @@
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="最常访问" />
-                        <TextBlock
+                        <HyperlinkButton
                             x:Name="TopDomainText"
+                            Padding="0"
                             FontSize="16"
                             FontWeight="SemiBold"
-                            MaxLines="1"
-                            Text="-"
-                            TextTrimming="CharacterEllipsis" />
+                            Content="-"
+                            ToolTipService.ToolTip="在浏览器中打开"
+                            Click="OpenDomain_Click" />
                     </StackPanel>
                 </Border>
             </Grid>
@@ -253,10 +254,29 @@
                             FontSize="16"
                             FontWeight="SemiBold"
                             Text="网站访问排行" />
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="提示：在域名上右键可直接设置分类" />
 
                         <ListView
                             x:Name="DomainStatsList"
                             SelectionMode="None">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="ContextFlyout">
+                                        <Setter.Value>
+                                            <MenuFlyout Opening="DomainMenu_Opening">
+                                                <MenuFlyoutItem Text="设置分类…" IsEnabled="False" />
+                                                <MenuFlyoutSeparator />
+                                                <MenuFlyoutItem x:Name="ClearCategoryMenuItem" Text="清除分类映射" Click="ClearCategory_Click" />
+                                                <MenuFlyoutSeparator x:Name="CategoryMenuSep" />
+                                            </MenuFlyout>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="0,8">
@@ -267,7 +287,14 @@
                                         </Grid.ColumnDefinitions>
 
                                         <StackPanel Spacing="2">
-                                            <TextBlock FontWeight="Medium" Text="{Binding Domain}" />
+                                            <HyperlinkButton
+                                                Padding="0"
+                                                FontSize="14"
+                                                FontWeight="Medium"
+                                                Content="{Binding Domain}"
+                                                Tag="{Binding Domain}"
+                                                ToolTipService.ToolTip="在浏览器中打开"
+                                                Click="OpenDomain_Click" />
                                             <Border
                                                 Padding="6,2"
                                                 HorizontalAlignment="Left"
@@ -490,12 +517,13 @@
                                                         Text="{Binding Category}" />
                                                 </Border>
                                             </Grid>
-                                            <TextBlock
+                                            <HyperlinkButton
+                                                Padding="0"
                                                 FontSize="12"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                MaxLines="1"
-                                                Text="{Binding Domain}"
-                                                TextTrimming="CharacterEllipsis" />
+                                                Content="{Binding Domain}"
+                                                Tag="{Binding Url}"
+                                                ToolTipService.ToolTip="在浏览器中打开"
+                                                Click="OpenDomain_Click" />
                                         </StackPanel>
 
                                         <TextBlock

@@ -1,7 +1,10 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.UI.Windowing;
+using Windows.Graphics;
 using Serilog;
 using System.Diagnostics;
 using System.Reflection;
@@ -9,8 +12,11 @@ using System.Runtime.InteropServices;
 using PChabit.App.Services;
 using PChabit.App.ViewModels;
 using PChabit.App.Views;
+using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Monitoring;
 using PChabit.Infrastructure.Services;
+using PChabit.HardwareMonitor;
 
 namespace PChabit.App;
 
@@ -19,6 +25,8 @@ public partial class App : Microsoft.UI.Xaml.Application
     private Window? _window;
     private ServiceProvider? _serviceProvider;
     private MonitorManager? _monitorManager;
+    private Timer? _bookmarkSyncTimer;
+    private readonly TaskCompletionSource _dbInitCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     
     private const int WM_SETICON = 0x0080;
     private const int IMAGE_ICON = 1;
@@ -36,10 +44,38 @@ public partial class App : Microsoft.UI.Xaml.Application
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool FreeLibrary(IntPtr hModule);
 
+[DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+    [DllImport("user32.dll")]
+    private static extern bool IsZoomed(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
     private const uint LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x1000;
     private const uint LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR = 0x0100;
     private DataCollectionService? _dataCollectionService;
+    private HardwareMonitorService? _hardwareMonitorService;
+    private HardwareSampleWriter? _hardwareSampleWriter;
     private TrayService? _trayService;
+    private Microsoft.UI.Xaml.DispatcherTimer? _trayDisplayTimer;
+    private TaskbarWidget? _taskbarWidget;
+    private double _todayActiveMinutes;
+    private DateTime _todayUsageCacheTime = DateTime.MinValue;
     private bool _isExiting;
     private readonly object _exitLock = new();
     
@@ -54,8 +90,27 @@ public partial class App : Microsoft.UI.Xaml.Application
     
     public static Window MainWindow => ((App)Current)._window!;
     
+    private static Mutex? _instanceMutex;
+
     public App()
     {
+        try
+        {
+            // 单实例保护：多实例并发写同一 SQLite 数据库会导致同步卡死（等锁），
+            // 已有实例在跑时本次启动直接退出。
+            _instanceMutex = new Mutex(true, @"Local\PChabit_SingleInstance", out bool createdNew);
+            if (!createdNew)
+            {
+                Log.Warning("检测到已有 PChabit 实例运行，本次启动退出（单实例保护）");
+                Environment.Exit(0);
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "单实例互斥检查失败，继续启动");
+        }
+
         try
         {
             // 关键：手动初始化 WindowsAppRuntime Bootstrap（双保险，配合 csproj 的
@@ -125,6 +180,39 @@ public partial class App : Microsoft.UI.Xaml.Application
         e.SetObserved();
     }
     
+    /// <summary>在 XAML 资源字典中注册转换器。App.xaml 中不再实例化，
+    /// 避免 XAML 编译器 pass1 全量解析自身程序集类型时失败（WMC0001/WMC1509）。</summary>
+    private void RegisterAppConverters()
+    {
+        Resources["InverseBooleanToVisibilityConverter"] = new PChabit.App.Converters.InverseBooleanToVisibilityConverter();
+        Resources["BooleanToVisibilityConverter"] = new PChabit.App.Converters.BooleanToVisibilityConverter();
+        Resources["NullToVisibilityConverter"] = new PChabit.App.Converters.NullToVisibilityConverter();
+        Resources["DateToStringConverter"] = new PChabit.App.Converters.DateToStringConverter();
+        Resources["StringToBrushConverter"] = new PChabit.App.Converters.StringToBrushConverter();
+        Resources["FirstLetterConverter"] = new PChabit.App.Converters.FirstLetterConverter();
+        Resources["HoursToStringConverter"] = new PChabit.App.Converters.HoursToStringConverter();
+        Resources["TrendColorConverter"] = new PChabit.App.Converters.TrendColorConverter();
+        Resources["InsightBackgroundConverter"] = new PChabit.App.Converters.InsightBackgroundConverter();
+        Resources["PercentageConverter"] = new PChabit.App.Converters.PercentageConverter();
+        Resources["IntToProgramCountTextConverter"] = new PChabit.App.Converters.IntToProgramCountTextConverter();
+        Resources["ColorSelectionConverter"] = new PChabit.App.Converters.ColorSelectionConverter();
+        Resources["InverseBoolConverter"] = new PChabit.App.Converters.InverseBoolConverter();
+        Resources["CountToVisibilityConverter"] = new PChabit.App.Converters.CountToVisibilityConverter();
+        Resources["InverseCountToVisibilityConverter"] = new PChabit.App.Converters.InverseCountToVisibilityConverter();
+        Resources["CountToEnabledConverter"] = new PChabit.App.Converters.CountToEnabledConverter();
+        Resources["SelectedCountConverter"] = new PChabit.App.Converters.SelectedCountConverter();
+        Resources["StringToVisibilityConverter"] = new PChabit.App.Converters.StringToVisibilityConverter();
+        Resources["SystemCategoryConverter"] = new PChabit.App.Converters.SystemCategoryConverter();
+        Resources["InverseBooleanConverter"] = new PChabit.App.Converters.InverseBooleanConverter();
+        Resources["TimeSpanToReadableConverter"] = new PChabit.App.Converters.TimeSpanToReadableConverter();
+        Resources["DoubleToScoreConverter"] = new PChabit.App.Converters.DoubleToScoreConverter();
+        Resources["HeatLevelToOpacityConverter"] = new PChabit.App.Converters.HeatLevelToOpacityConverter();
+        Resources["ActivityToColorConverter"] = new PChabit.App.Converters.ActivityToColorConverter();
+        Resources["ActivityToForegroundConverter"] = new PChabit.App.Converters.ActivityToForegroundConverter();
+        Resources["DateToDetailConverter"] = new PChabit.App.Converters.DateToDetailConverter();
+        Resources["PercentageToGridLengthConverter"] = new PChabit.App.Converters.PercentageToGridLengthConverter();
+    }
+
     private void ConfigureLogging()
     {
         var logPath = Path.Combine(
@@ -185,7 +273,7 @@ public partial class App : Microsoft.UI.Xaml.Application
             try
             {
                 await ServiceConfiguration.EnableWalModeAsync(databasePath);
-                
+
                 using (var scope = _serviceProvider.CreateScope())
                 {
                     var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
@@ -197,6 +285,10 @@ public partial class App : Microsoft.UI.Xaml.Application
             {
                 Log.Fatal(ex, "数据库初始化失败");
             }
+            finally
+            {
+                _dbInitCompleted.TrySetResult();
+            }
         });
     }
     
@@ -207,6 +299,16 @@ public partial class App : Microsoft.UI.Xaml.Application
         try
         {
             Log.Information("OnLaunched 开始");
+
+            // 注册转换器到应用资源（在导航前完成，页面 XAML 的 StaticResource 依赖这些键）
+            try
+            {
+                RegisterAppConverters();
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "注册应用转换器失败");
+            }
 
             _window = new Window();
             
@@ -226,7 +328,10 @@ public partial class App : Microsoft.UI.Xaml.Application
             _window.Activated += OnWindowFirstActivated;
             
             _window.Activate();
-            
+
+            // 校正窗口位置：仅在窗口几乎完全离开屏幕时干预，避免把正常靠右/最大化窗口拽到左上角
+            CorrectWindowBoundsIfOffscreen();
+
             Log.Information("窗口已激活");
         }
         catch (Exception ex)
@@ -235,7 +340,7 @@ public partial class App : Microsoft.UI.Xaml.Application
             throw;
         }
     }
-    
+
     private void OnWindowFirstActivated(object sender, WindowActivatedEventArgs args)
     {
         if (_startupServicesInitialized) return;
@@ -248,6 +353,8 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
 
         Log.Information("窗口首次激活，延迟初始化后台服务");
+
+        CorrectWindowBoundsIfOffscreen();
 
         // 使用低优先级延迟初始化，确保 UI 已完全渲染
         _ = Task.Run(async () =>
@@ -296,6 +403,67 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
     }
     
+    /// <summary>
+    /// 仅当窗口几乎完全离开主屏、或尺寸异常时才校正。
+    /// 禁止用「75% 屏幕」当边界——最大化/靠右窗口会被误判并拽到左上角。
+    /// </summary>
+    private void CorrectWindowBoundsIfOffscreen()
+    {
+        try
+        {
+            var hWnd = FindMainWindowHandle();
+            if (hWnd == IntPtr.Zero || !GetWindowRect(hWnd, out var rect)) return;
+
+            var w = rect.Right - rect.Left;
+            var h = rect.Bottom - rect.Top;
+            if (w < 80 || h < 80) return;
+
+            // 最大化/全屏窗口不干预
+            if (IsZoomed(hWnd)) return;
+
+            var screenW = GetSystemMetrics(0);
+            var screenH = GetSystemMetrics(1);
+            if (screenW <= 0 || screenH <= 0) return;
+
+            // 窗口与主屏几乎无交集（露头 < 48px）或尺寸离谱才校正
+            var visibleW = Math.Max(0, Math.Min(rect.Right, screenW) - Math.Max(rect.Left, 0));
+            var visibleH = Math.Max(0, Math.Min(rect.Bottom, screenH) - Math.Max(rect.Top, 0));
+            var mostlyOff = visibleW < 48 || visibleH < 48;
+            var absurdSize = w > screenW * 1.25 || h > screenH * 1.25;
+            if (!mostlyOff && !absurdSize) return;
+
+            if (w > screenW * 0.95) w = (int)(screenW * 0.9);
+            if (h > screenH * 0.95) h = (int)(screenH * 0.85);
+            var x = Math.Max(0, (screenW - w) / 2);
+            var y = Math.Max(0, (screenH - h) / 2);
+            SetWindowPos(hWnd, IntPtr.Zero, x, y, w, h, 0x0040);
+            Log.Information("窗口离屏/尺寸异常，已校正到 ({X},{Y}) {W}x{H}（原 {OL},{OT},{OR},{OB}）",
+                x, y, w, h, rect.Left, rect.Top, rect.Right, rect.Bottom);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "校正窗口位置失败");
+        }
+    }
+    private static IntPtr FindMainWindowHandle()
+    {
+        var pid = (uint)Environment.ProcessId;
+        IntPtr result = IntPtr.Zero;
+        EnumWindows((hWnd, _) =>
+        {
+            GetWindowThreadProcessId(hWnd, out uint wndPid);
+            if (wndPid != pid) return true;
+            GetWindowRect(hWnd, out var r);
+            if ((r.Right - r.Left) > 100 && (r.Bottom - r.Top) > 100)
+            {
+                result = hWnd;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
+
     private void InitializeTrayService()
     {
         try
@@ -342,25 +510,261 @@ public partial class App : Microsoft.UI.Xaml.Application
         try
         {
             _monitorManager = _serviceProvider!.GetRequiredService<MonitorManager>();
-            // 健康检查定时器回调在线程池执行，重启钩子时必须派发回 UI 线程
+
+            // 低级输入钩子安装在专用消息泵线程上，避免 UI 线程布局/渲染阻塞导致
+            // 全系统鼠标停顿。钩子重启也派发到该线程。
+            var hookThread = _serviceProvider!.GetRequiredService<InputHookThread>();
+            hookThread.Start();
+            _monitorManager.HookThread = hookThread;
+            // 兼容旧路径：钩子线程不可用时才回退 UI 调度器
             _monitorManager.UIDispatcher = action => Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() => action());
+
             _dataCollectionService = _serviceProvider!.GetRequiredService<DataCollectionService>();
-            
-            // Win32 低级钩子 (WH_KEYBOARD_LL, WH_MOUSE_LL) 必须安装在有消息循环的线程上。
-            // 后台线程池线程没有消息泵，钩子回调不会被调用。
-            // 因此必须在 UI 线程上启动监控器，但不得用 .Wait() 阻塞消息泵。
+
+            // 书签/历史同步消息处理器：必须在 WebSocketServer 启动前完成订阅
+            _serviceProvider!.GetRequiredService<BrowserSyncWebSocketHandler>();
+
             await _monitorManager.StartAllAsync();
-            Log.Information("监控器已启动 - AppMonitor: {AppRunning}, KeyboardMonitor: {KeyboardRunning}, MouseMonitor: {MouseRunning}", 
-                _monitorManager.IsRunning, 
+            Log.Information("监控器已启动 - AppMonitor: {AppRunning}, KeyboardMonitor: {KeyboardRunning}, MouseMonitor: {MouseRunning}, HookThread: {HookThread}",
+                _monitorManager.IsRunning,
                 _serviceProvider!.GetRequiredService<Core.Interfaces.IKeyboardMonitor>().IsRunning,
-                _serviceProvider!.GetRequiredService<Core.Interfaces.IMouseMonitor>().IsRunning);
-            
+                _serviceProvider!.GetRequiredService<Core.Interfaces.IMouseMonitor>().IsRunning,
+                hookThread.IsRunning);
+
             _dataCollectionService.Start();
             Log.Information("数据收集服务已启动");
+
+            // 硬件监控（LiteMonitor 核心移植）
+            _hardwareMonitorService = _serviceProvider!.GetRequiredService<HardwareMonitorService>();
+            _hardwareMonitorService.Start();
+            Log.Information("硬件监控服务已启动");
+
+            // 硬件分钟样本落库（分析升级 P0，与硬件监控同生命周期）
+            _hardwareSampleWriter = _serviceProvider!.GetRequiredService<HardwareSampleWriter>();
+            _hardwareSampleWriter.Start();
+
+            StartTrayDisplayTimer();
+
+            StartBookmarkAutoSync();
         }
         catch (Exception ex)
         {
             Log.Error(ex, "启动监控服务失败");
+        }
+    }
+
+    private void StartTrayDisplayTimer()
+    {
+        try
+        {
+            _trayDisplayTimer?.Stop();
+            _trayDisplayTimer = new Microsoft.UI.Xaml.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5)
+            };
+            _trayDisplayTimer.Tick += (_, _) => RefreshTrayDisplay();
+            _trayDisplayTimer.Start();
+            Log.Information("任务栏/托盘显示定时器已启动（5s 刷新）");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "启动任务栏/托盘显示定时器失败");
+        }
+    }
+
+    private void RefreshTrayDisplay()
+    {
+        try
+        {
+            var settings = _serviceProvider!.GetRequiredService<ISettingsService>();
+            RefreshTaskbarWidget(settings);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "刷新任务栏小窗失败");
+        }
+    }
+
+    /// <summary>驱动任务栏小窗：开关 + 两行文本（AI_MAINTENANCE 3.9.1 记录）。</summary>
+    private void RefreshTaskbarWidget(ISettingsService settings)
+    {
+        if (!settings.TaskbarEnabled)
+        {
+            if (_taskbarWidget != null && _taskbarWidget.IsRunning)
+            {
+                _taskbarWidget.Dispose();
+                _taskbarWidget = null;
+                Log.Information("任务栏小窗已隐藏");
+            }
+            return;
+        }
+
+        if (_taskbarWidget == null)
+        {
+            _taskbarWidget = new TaskbarWidget();
+        }
+        if (!_taskbarWidget.IsRunning)
+        {
+            _taskbarWidget.Start();
+        }
+        if (!_taskbarWidget.IsRunning) return;
+
+        double todayMinutes = GetTodayActiveMinutes();
+        var (row1, row2) = BuildTaskbarRows(settings, todayMinutes);
+        _taskbarWidget.UpdateContent(row1, row2);
+        _taskbarWidget.SetTheme(IsSystemLightTheme());
+    }
+
+    /// <summary>按勾选组装任务栏两行文本（照抄 LiteMonitor 任务栏显示风格）。</summary>
+    private (List<TaskbarMetricItem> row1, List<TaskbarMetricItem> row2) BuildTaskbarRows(ISettingsService settings, double todayMinutes)
+    {
+        var hw = _hardwareMonitorService;
+        var row1 = new List<TaskbarMetricItem>();
+        var row2 = new List<TaskbarMetricItem>();
+
+        if (settings.TaskbarShowCpu)
+            row1.Add(new TaskbarMetricItem("CPU", FormatPercent(hw?.Get("CPU.Load")), LoadColor(hw?.Get("CPU.Load"))));
+        if (settings.TaskbarShowMemory)
+            row1.Add(new TaskbarMetricItem("内存", FormatPercent(hw?.Get("MEM.Load")), LoadColor(hw?.Get("MEM.Load"))));
+        if (settings.TaskbarShowGpu)
+            row1.Add(new TaskbarMetricItem("GPU", FormatPercent(hw?.Get("GPU.Load")), LoadColor(hw?.Get("GPU.Load"))));
+
+        var vramUsed = hw?.Get("GPU.VRAM.Used");
+        var vramTotal = hw?.Get("GPU.VRAM.Total");
+        if (settings.TaskbarShowGpu && vramTotal.HasValue && vramTotal > 0)
+        {
+            float vramPct = (float)(vramUsed.GetValueOrDefault() / vramTotal.Value * 100.0);
+            row1.Add(new TaskbarMetricItem("显存", FormatPercent(vramPct), LoadColor(vramPct)));
+        }
+
+        if (settings.TaskbarShowNet)
+        {
+            row2.Add(new TaskbarMetricItem("网速",
+                $"↓{FormatSpeed(hw?.Get("NET.Down"))} ↑{FormatSpeed(hw?.Get("NET.Up"))}", TaskbarMetricColor.Safe));
+        }
+        if (settings.TaskbarShowDisk)
+            row2.Add(new TaskbarMetricItem("磁盘", FormatPercent(hw?.Get("DISK.Activity")), LoadColor(hw?.Get("DISK.Activity"))));
+        if (settings.TaskbarShowTemp)
+        {
+            row2.Add(new TaskbarMetricItem("CPU", FormatTemp(hw?.Get("CPU.Temp")), TempColor(hw?.Get("CPU.Temp"))));
+            row2.Add(new TaskbarMetricItem("GPU", FormatTemp(hw?.Get("GPU.Temp")), TempColor(hw?.Get("GPU.Temp"))));
+        }
+        if (settings.TaskbarShowUsage)
+            row2.Add(new TaskbarMetricItem("今日", FormatUsage(todayMinutes, settings.DailyUsageGoalHours), TaskbarMetricColor.Safe));
+
+        return (row1, row2);
+    }
+
+    private static TaskbarMetricColor LoadColor(float? v) =>
+        v.HasValue && !float.IsNaN(v.Value)
+            ? v.Value >= 90 ? TaskbarMetricColor.Crit : v.Value >= 70 ? TaskbarMetricColor.Warn : TaskbarMetricColor.Safe
+            : TaskbarMetricColor.Safe;
+
+    private static TaskbarMetricColor TempColor(float? v) =>
+        v.HasValue && !float.IsNaN(v.Value)
+            ? v.Value >= 85 ? TaskbarMetricColor.Crit : v.Value >= 70 ? TaskbarMetricColor.Warn : TaskbarMetricColor.Safe
+            : TaskbarMetricColor.Safe;
+
+    private static string FormatUsage(double minutes, double goalHours)
+    {
+        var goal = Math.Max(0.1, goalHours);
+        return $"{minutes / 60:F1}/{goal:0.#}h";
+    }
+
+    /// <summary>系统深浅主题（任务栏小窗配色自适应）。</summary>
+    private static bool IsSystemLightTheme()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("SystemUsesLightTheme") is int i && i == 1;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>今日活跃时长（分钟，60s 缓存，来自 AppSessions 实时查询；DailySummary 仅含昨日）。</summary>
+    private double GetTodayActiveMinutes()
+    {
+        if ((DateTime.Now - _todayUsageCacheTime).TotalSeconds < 60) return _todayActiveMinutes;
+        _todayUsageCacheTime = DateTime.Now;
+
+        try
+        {
+            var today = DateTime.Today;
+            using var scope = _serviceProvider!.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+            var sessions = dbContext.AppSessions.AsNoTracking()
+                .Where(s => s.StartTime >= today && s.StartTime < today.AddDays(1))
+                .Select(s => new { s.StartTime, s.EndTime, s.ActiveDuration })
+                .ToList();
+
+            double minutes = 0;
+            foreach (var s in sessions)
+            {
+                var d = s.ActiveDuration > TimeSpan.Zero
+                    ? s.ActiveDuration
+                    : (s.EndTime.HasValue ? s.EndTime.Value - s.StartTime : TimeSpan.Zero);
+                if (d > TimeSpan.Zero) minutes += d.TotalMinutes;
+            }
+            _todayActiveMinutes = minutes;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "查询今日活跃时长失败");
+        }
+        return _todayActiveMinutes;
+    }
+
+    private static string FormatPercent(float? v) =>
+        v.HasValue && !float.IsNaN(v.Value) ? $"{Math.Clamp(v.Value, 0, 999):F0}%" : "--";
+
+    private static string FormatSpeed(float? bytesPerSec)
+    {
+        if (!bytesPerSec.HasValue || float.IsNaN(bytesPerSec.Value) || bytesPerSec.Value < 0) return "--";
+        double v = bytesPerSec.Value;
+        if (v < 1024) return $"{v:F0}B/s";
+        if (v < 1024 * 1024) return $"{v / 1024:F0}K/s";
+        if (v < 1024.0 * 1024 * 1024) return $"{v / 1024 / 1024:F1}M/s";
+        return $"{v / 1024 / 1024 / 1024:F1}G/s";
+    }
+
+    private static string FormatTemp(float? v) =>
+        v.HasValue && !float.IsNaN(v.Value) ? $"{v.Value:F0}°C" : "--";
+
+
+    private void StartBookmarkAutoSync()
+    {
+        try
+        {
+            var settings = _serviceProvider!.GetService<ISettingsService>();
+            var syncService = _serviceProvider!.GetService<IBookmarkSyncService>();
+            if (settings == null || syncService == null) return;
+            if (!settings.BrowserSyncEnabled || !settings.BrowserBookmarkSyncEnabled)
+            {
+                Log.Information("书签自动同步已停用（模块下线，数据保留在本地库）");
+                return;
+            }
+
+            var minutes = Math.Max(5, settings.BrowserSyncIntervalMinutes);
+            _bookmarkSyncTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    Log.Information("自动书签同步触发（间隔 {Minutes} 分钟）", minutes);
+                    var result = await syncService.SyncAsync();
+                    Log.Information("自动书签同步结果: {Message}", result.Message);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "自动书签同步失败");
+                }
+            }, null, TimeSpan.FromMinutes(minutes), TimeSpan.FromMinutes(minutes));
+
+            Log.Information("书签自动同步已启动，间隔 {Minutes} 分钟", minutes);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "启动书签自动同步失败");
         }
     }
 
@@ -370,14 +774,27 @@ public partial class App : Microsoft.UI.Xaml.Application
         {
             var backupService = _serviceProvider!.GetRequiredService<Core.Interfaces.IBackupService>();
             var settings = _serviceProvider!.GetRequiredService<Core.Interfaces.ISettingsService>();
-            
+
             if (settings.AutoBackupEnabled)
             {
-                Log.Information("执行启动时自动备份");
-                _ = backupService.CreateBackupAsync();
-                
-                backupService.StartPeriodicBackupAsync(TimeSpan.FromHours(settings.AutoBackupIntervalHours));
-                Log.Information("定时备份服务已启动，间隔: {Hours} 小时", settings.AutoBackupIntervalHours);
+                // 必须等数据库迁移真正完成再 VACUUM；迁移可能因锁卡住，超时后跳过本次启动备份
+                _ = Task.Run(async () =>
+                {
+                    var finished = await Task.WhenAny(_dbInitCompleted.Task, Task.Delay(TimeSpan.FromSeconds(15)));
+                    if (finished != _dbInitCompleted.Task)
+                    {
+                        Log.Warning("数据库初始化未在 15 秒内完成，跳过启动时自动备份（避免 VACUUM 与迁移争锁）");
+                    }
+                    else
+                    {
+                        Log.Information("执行启动时自动备份");
+                        try { await backupService.CreateBackupAsync(); }
+                        catch (Exception ex) { Log.Warning(ex, "启动时自动备份失败"); }
+                    }
+
+                    backupService.StartPeriodicBackupAsync(TimeSpan.FromHours(settings.AutoBackupIntervalHours));
+                    Log.Information("定时备份服务已启动，间隔: {Hours} 小时", settings.AutoBackupIntervalHours);
+                });
             }
         }
         catch (Exception ex)
@@ -446,6 +863,45 @@ public partial class App : Microsoft.UI.Xaml.Application
                 }
             }
             Log.Information("监控器已停止");
+
+            try
+            {
+                // 先停样本写入器（提交残余分钟桶），再停硬件采集
+                if (_hardwareSampleWriter != null)
+                {
+                    await _hardwareSampleWriter.StopAsync();
+                    _hardwareSampleWriter.Dispose();
+                    _hardwareSampleWriter = null;
+                }
+
+                _hardwareMonitorService?.Stop();
+                Log.Information("硬件监控服务已停止");
+
+                _trayDisplayTimer?.Stop();
+                _trayDisplayTimer = null;
+                _taskbarWidget?.Dispose();
+                _taskbarWidget = null;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "停止硬件监控服务失败");
+            }
+
+            try
+            {
+                _serviceProvider?.GetService<InputHookThread>()?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "停止输入钩子线程失败");
+            }
+
+            try
+            {
+                _bookmarkSyncTimer?.Dispose();
+                _bookmarkSyncTimer = null;
+            }
+            catch { /* ignore */ }
         }
         catch (Exception ex)
         {
@@ -523,3 +979,4 @@ public partial class App : Microsoft.UI.Xaml.Application
         throw new Exception("Failed to load Page " + e.SourcePageType.FullName);
     }
 }
+

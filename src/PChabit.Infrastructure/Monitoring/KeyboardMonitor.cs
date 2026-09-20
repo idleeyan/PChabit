@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
 
@@ -22,7 +23,12 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
 
     private string? _currentProcess;
 
-    // 修饰键 VK Code 集合，单独按下时不计入按键统计
+    // 前台进程缓存：Process.GetProcessById 在钩子回调中代价过高，会引起输入卡顿
+    private uint _cachedPid;
+    private string? _cachedProcessName;
+    private long _cachedProcessTick;
+    private const long ProcessCacheMs = 250;
+
     private static readonly HashSet<int> ModifierVkCodes = new()
     {
         Win32Helper.VK_SHIFT, Win32Helper.VK_LSHIFT, Win32Helper.VK_RSHIFT,
@@ -87,13 +93,10 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
 
                 UpdateModifierState(vkCode, isKeyDown, isKeyUp);
 
-                // 只在 KeyDown 时处理，且排除单独的修饰键
                 if (isKeyDown && !ModifierVkCodes.Contains(vkCode))
                 {
                     var keyName = GetKeyName(vkCode);
-
-                    // 直接从系统获取当前前台进程，避免定时器延迟导致的进程归属错误
-                    var activeProcess = ResolveForegroundProcess();
+                    var activeProcess = ResolveForegroundProcessFast();
 
                     var args = new KeyboardEventArgs(vkCode, keyName, true, DateTime.Now)
                     {
@@ -117,24 +120,71 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
     }
 
     /// <summary>
-    /// 直接从系统获取前台窗口的进程名，避免依赖定时器同步造成的延迟
+    /// 获取前台进程名：短 TTL 缓存 + QueryFullProcessImageName，避免在钩子路径上
+    /// 反复 Process.GetProcessById（会打开进程句柄并触发多次系统调用）。
     /// </summary>
-    private static string? ResolveForegroundProcess()
+    private string? ResolveForegroundProcessFast()
     {
+        var hwnd = Win32Helper.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) return _currentProcess;
+
+        var pid = Win32Helper.GetProcessIdFromWindow(hwnd);
+        if (pid == 0) return _currentProcess;
+
+        var tick = Environment.TickCount64;
+        if (pid == _cachedPid && _cachedProcessName != null && tick - _cachedProcessTick < ProcessCacheMs)
+        {
+            return _cachedProcessName;
+        }
+
+        var name = QueryProcessName(pid) ?? _currentProcess;
+        if (name != null)
+        {
+            _cachedPid = pid;
+            _cachedProcessName = name;
+            _cachedProcessTick = tick;
+        }
+
+        return name;
+    }
+
+    private static string? QueryProcessName(uint pid)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle == IntPtr.Zero) return null;
+
         try
         {
-            var hwnd = Win32Helper.GetForegroundWindow();
-            if (hwnd == IntPtr.Zero) return null;
-            var pid = Win32Helper.GetProcessIdFromWindow(hwnd);
-            if (pid == 0) return null;
-            using var process = System.Diagnostics.Process.GetProcessById((int)pid);
-            return process.ProcessName;
+            var buffer = new StringBuilder(1024);
+            var size = (uint)buffer.Capacity;
+            if (!QueryFullProcessImageName(handle, 0, buffer, ref size) || size == 0)
+            {
+                return null;
+            }
+
+            var fileName = Path.GetFileNameWithoutExtension(buffer.ToString(0, (int)size));
+            return string.IsNullOrEmpty(fileName) ? null : fileName;
         }
         catch
         {
             return null;
         }
+        finally
+        {
+            CloseHandle(handle);
+        }
     }
+
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
 
     private void UpdateModifierState(int vkCode, bool isKeyDown, bool isKeyUp)
     {

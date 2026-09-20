@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Monitoring;
 using PChabit.Infrastructure.Services;
 using Serilog;
 
@@ -44,6 +45,63 @@ public partial class DataManagementViewModel : ViewModelBase
     public ObservableCollection<BackupInfo> Backups { get; } = new();
     public ObservableCollection<WebDAVFileInfo> RemoteFiles { get; } = new();
     public ObservableCollection<OperationLogItem> OperationLogs { get; } = new();
+
+    /// <summary>全局日志（含书签库推送等，来自 GlobalOpLog）。</summary>
+    public ObservableCollection<string> GlobalLogs { get; } = new();
+
+    public bool HasGlobalLogs => GlobalLogs.Count > 0;
+
+    private void OnGlobalOpLogged(PChabit.App.Services.GlobalOpLog.OpLogItem item)
+    {
+        try
+        {
+            Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() =>
+            {
+                GlobalLogs.Insert(0, item.Display);
+                if (GlobalLogs.Count > 300) GlobalLogs.RemoveAt(GlobalLogs.Count - 1);
+                OnPropertyChanged(nameof(HasGlobalLogs));
+            });
+        }
+        catch { }
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private async Task RefreshGlobalLogsAsync()
+    {
+        try
+        {
+            GlobalLogs.Clear();
+            foreach (var i in PChabit.App.Services.GlobalOpLog.Snapshot())
+                GlobalLogs.Insert(0, i.Display);
+            // 磁盘更早记录
+            foreach (var line in PChabit.App.Services.GlobalOpLog.ReadTodayFile().Take(50))
+            {
+                if (!GlobalLogs.Contains(line))
+                    GlobalLogs.Add(line);
+            }
+            OnPropertyChanged(nameof(HasGlobalLogs));
+            await Task.CompletedTask;
+        }
+        catch { }
+    }
+
+    [CommunityToolkit.Mvvm.Input.RelayCommand]
+    private async Task CopyGlobalLogsAsync()
+    {
+        try
+        {
+            var text = PChabit.App.Services.GlobalOpLog.ExportToday();
+            var pkg = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            pkg.SetText(text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(pkg);
+            AddLog("信息", "已复制全局操作日志到剪贴板");
+            await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            AddLog("错误", "复制全局日志失败：" + ex.Message);
+        }
+    }
 }
 public class OperationLogItem
 {
@@ -59,14 +117,25 @@ public partial class DataManagementViewModel
         ISettingsService settingsService,
         IDbContextFactory<PChabitDbContext> dbFactory,
         IWebDAVSyncService webDAVSyncService,
-        IExportService exportService) : base()
+        IExportService exportService,
+        IBookmarkSyncService bookmarkSyncService) : base()
     {
         _backupService = backupService;
         _settingsService = settingsService;
         _dbFactory = dbFactory;
         _webDAVSyncService = webDAVSyncService;
         _exportService = exportService;
+        _bookmarkSyncService = bookmarkSyncService;
         Title = "数据管理";
+
+        // 订阅全局操作日志（书签库推送等也会写入）
+        try
+        {
+            foreach (var i in PChabit.App.Services.GlobalOpLog.Snapshot())
+                GlobalLogs.Insert(0, i.Display);
+            PChabit.App.Services.GlobalOpLog.Logged += OnGlobalOpLogged;
+        }
+        catch { }
 
         _backupPath = string.IsNullOrEmpty(settingsService.BackupPath)
             ? Path.Combine(
@@ -86,6 +155,32 @@ public partial class DataManagementViewModel
         _webDAVEnabled = settingsService.WebDAVEnabled;
 
         _maxCloudBackupCount = settingsService.MaxCloudBackupCount;
+
+        _browserSyncEnabled = settingsService.BrowserSyncEnabled;
+        _browserBookmarkSyncEnabled = settingsService.BrowserBookmarkSyncEnabled;
+        _browserSyncIntervalMinutes = settingsService.BrowserSyncIntervalMinutes;
+        _browserHistoryIngestEnabled = settingsService.BrowserHistoryIngestEnabled;
+
+        // 书签整理服务
+        try { _tidyService = App.GetService<BookmarkTidyService>(); }
+        catch { _tidyService = null; }
+        try { _historySyncService = App.GetService<HistorySyncService>(); }
+        catch { _historySyncService = null; }
+
+        // 浏览器连接状态
+        try
+        {
+            var wsHandler = App.GetService<BrowserSyncWebSocketHandler>();
+            UpdateConnectedBrowsers(wsHandler.ReadyBrowsers);
+            wsHandler.BrowserSyncReady += (_, e) =>
+            {
+                Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() =>
+                {
+                    UpdateConnectedBrowsers(wsHandler.ReadyBrowsers);
+                });
+            };
+        }
+        catch { /* handler 可能未注册 */ }
 
         if (settingsService.WebDAVLastSync.HasValue)
         {

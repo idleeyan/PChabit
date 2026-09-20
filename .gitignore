@@ -37,6 +37,17 @@ docs/
 /app.js
 /styles.css
 
+# 一次性修复脚本（临时改码工具，含本机绝对路径，不入库）
+/fix_converters.ps1
+/fix_converters.py
+/fix_v379.ps1
+/scripts/fix_planner_block.py
+/scripts/patch_bookmark_planner.py
+/scripts/patch_ext_apply.py
+
+# 本地程序集残留（编译产物，非仓库源）
+PChabit.LocalAssembly/
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*

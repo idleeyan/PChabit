@@ -222,9 +222,32 @@
         <input type="number" id="wsPort" min="1" max="65535" placeholder="8765" />
         <button class="btn btn-secondary" id="savePortBtn" style="flex:0 0 auto;padding:8px 12px;">保存</button>
     </div>
-    
+
+    <div class="port-row">
+        <label for="browserName">浏览器名称</label>
+        <select id="browserName" style="flex:1;background:#16213e;border:1px solid #333;color:#eee;border-radius:6px;padding:6px 8px;font-size:12px;min-width:0;">
+            <option value="">自动检测</option>
+            <option value="Chrome">Chrome</option>
+            <option value="Edge">Edge</option>
+            <option value="豆包浏览器">豆包浏览器</option>
+            <option value="Brave">Brave</option>
+            <option value="Opera">Opera</option>
+            <option value="Firefox">Firefox</option>
+            <option value="__custom__">自定义…</option>
+        </select>
+        <button class="btn btn-secondary" id="saveBrowserBtn" style="flex:0 0 auto;padding:8px 12px;">保存</button>
+    </div>
+    <div class="port-row" id="customNameRow" style="display:none;">
+        <label for="customBrowserName">自定义名称</label>
+        <input type="text" id="customBrowserName" placeholder="例如：工作豆包" maxlength="20" />
+    </div>
+    <div class="port-row" style="margin-top:6px;justify-content:space-between;">
+        <span id="currentBrowserLabel" style="font-size:11px;color:#6cf;">当前识别：-</span>
+        <button class="btn btn-secondary" id="clearBrowserBtn" style="padding:6px 10px;font-size:11px;">清除自定义</button>
+    </div>
+
     <div class="footer">
-        Tai-AI v1.0.0
+        Tai-AI v2.1.0
     </div>
     
     <script src="popup.js"></script>

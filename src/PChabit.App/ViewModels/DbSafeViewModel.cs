@@ -1,3 +1,5 @@
+using Serilog;
+
 namespace PChabit.App.ViewModels;
 
 /// <summary>
@@ -22,6 +24,11 @@ public abstract class DbSafeViewModel<TStats> : ViewModelBase where TStats : cla
         {
             var stats = await Task.Run(LoadStatsOnBackgroundAsync);
             await RunOnUIThreadAsync(() => ApplyStatsOnUIAsync(stats));
+        }
+        catch (Exception ex)
+        {
+            // 吞掉加载异常，避免 async void 导航路径把整个进程打崩
+            Log.Error(ex, "页面数据加载失败: {Type}", GetType().Name);
         }
         finally
         {

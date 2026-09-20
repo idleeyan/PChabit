@@ -57,6 +57,51 @@ public partial class SettingsViewModel : ViewModelBase
     
     [ObservableProperty]
     private string _selectedLanguageKey = "zh-CN";
+    [ObservableProperty]
+    private bool _taskbarEnabled = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowCpu = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowMemory = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowGpu = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowNet = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowDisk = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowTemp = true;
+
+    [ObservableProperty]
+    private bool _taskbarShowUsage = true;
+
+    [ObservableProperty]
+    private double _dailyUsageGoalHours = 6;
+
+    [ObservableProperty]
+    private bool _aiInsightsEnabled;
+
+    [ObservableProperty]
+    private string _aiBaseUrl = "https://api.openai.com/v1";
+
+    [ObservableProperty]
+    private string _aiApiKey = "";
+
+    [ObservableProperty]
+    private string _aiModel = "glm-4-flash";
+
+    [ObservableProperty]
+    private string _aiProvider = "zhipu";
+
+    [ObservableProperty]
+    private double _aiTimeoutSeconds = 300;
+
     
     [ObservableProperty]
     private int _dataRetentionDays = 90;
@@ -200,6 +245,21 @@ public partial class SettingsViewModel : ViewModelBase
         AutoCleanupEnabled = _settingsService.AutoCleanupEnabled;
         SelectedThemeKey = _settingsService.CurrentTheme;
         SelectedLanguageKey = _settingsService.CurrentLanguage;
+        TaskbarEnabled = _settingsService.TaskbarEnabled;
+        TaskbarShowCpu = _settingsService.TaskbarShowCpu;
+        TaskbarShowMemory = _settingsService.TaskbarShowMemory;
+        TaskbarShowGpu = _settingsService.TaskbarShowGpu;
+        TaskbarShowNet = _settingsService.TaskbarShowNet;
+        TaskbarShowDisk = _settingsService.TaskbarShowDisk;
+        TaskbarShowTemp = _settingsService.TaskbarShowTemp;
+        TaskbarShowUsage = _settingsService.TaskbarShowUsage;
+        DailyUsageGoalHours = _settingsService.DailyUsageGoalHours;
+        AiInsightsEnabled = _settingsService.AiInsightsEnabled;
+        AiBaseUrl = _settingsService.AiBaseUrl;
+        AiApiKey = _settingsService.AiApiKey;
+        AiModel = _settingsService.AiModel;
+        AiProvider = string.IsNullOrEmpty(_settingsService.AiProvider) ? "zhipu" : _settingsService.AiProvider;
+        AiTimeoutSeconds = _settingsService.AiTimeoutSeconds;
     }
 
     public void SaveSetting(string propertyName)
@@ -247,6 +307,71 @@ public partial class SettingsViewModel : ViewModelBase
             case "AutoCleanupEnabled":
                 _settingsService.AutoCleanupEnabled = AutoCleanupEnabled;
                 break;
+            case "TaskbarEnabled":
+                _settingsService.TaskbarEnabled = TaskbarEnabled;
+                break;
+            case "TaskbarShowCpu":
+                _settingsService.TaskbarShowCpu = TaskbarShowCpu;
+                break;
+            case "TaskbarShowMemory":
+                _settingsService.TaskbarShowMemory = TaskbarShowMemory;
+                break;
+            case "TaskbarShowGpu":
+                _settingsService.TaskbarShowGpu = TaskbarShowGpu;
+                break;
+            case "TaskbarShowNet":
+                _settingsService.TaskbarShowNet = TaskbarShowNet;
+                break;
+            case "TaskbarShowDisk":
+                _settingsService.TaskbarShowDisk = TaskbarShowDisk;
+                break;
+            case "TaskbarShowTemp":
+                _settingsService.TaskbarShowTemp = TaskbarShowTemp;
+                break;
+            case "TaskbarShowUsage":
+                _settingsService.TaskbarShowUsage = TaskbarShowUsage;
+                break;
+            case "DailyUsageGoalHours":
+                _settingsService.DailyUsageGoalHours = DailyUsageGoalHours;
+                break;
+            case "AiInsightsEnabled":
+                _settingsService.AiInsightsEnabled = AiInsightsEnabled;
+                break;
+            case "AiBaseUrl":
+                _settingsService.AiBaseUrl = AiBaseUrl;
+                break;
+            case "AiApiKey":
+                _settingsService.AiApiKey = AiApiKey;
+                break;
+            case "AiModel":
+                _settingsService.AiModel = AiModel;
+                break;
+            case "AiProvider":
+                _settingsService.AiProvider = AiProvider;
+                var preset = PChabit.Infrastructure.Services.AiProviderPresets.All
+                    .FirstOrDefault(p => string.Equals(p.Kind.ToString(), AiProvider, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(p.Label, AiProvider, StringComparison.Ordinal));
+                // 若通过枚举名匹配
+                if (Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(AiProvider, true, out var kind))
+                    preset = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
+                if (preset != null)
+                {
+                    if (string.IsNullOrWhiteSpace(AiBaseUrl) || AiBaseUrl.Contains("bigmodel") || AiBaseUrl.Contains("deepseek") || AiBaseUrl.Contains("1234/v1"))
+                    {
+                        AiBaseUrl = preset.DefaultBaseUrl;
+                        _settingsService.AiBaseUrl = AiBaseUrl;
+                    }
+                    if (string.IsNullOrWhiteSpace(AiModel) || AiModel is "gpt-4o-mini" or "glm-4-flash" or "deepseek-chat" or "local-model")
+                    {
+                        AiModel = preset.DefaultModel;
+                        _settingsService.AiModel = AiModel;
+                    }
+                }
+                break;
+            case "AiTimeoutSeconds":
+                _settingsService.AiTimeoutSeconds = (int)Math.Clamp(AiTimeoutSeconds, 30, 900);
+                break;
+
         }
         
         _ = Task.Run(() => _settingsService.SaveAsync());

@@ -92,6 +92,92 @@ document.addEventListener('DOMContentLoaded', () => {
             setTimeout(checkConnection, 1500);
         });
     }
+
+    // 浏览器名称
+    const browserSelect = document.getElementById('browserName');
+    const customNameRow = document.getElementById('customNameRow');
+    const customNameInput = document.getElementById('customBrowserName');
+    const saveBrowserBtn = document.getElementById('saveBrowserBtn');
+    const clearBrowserBtn = document.getElementById('clearBrowserBtn');
+    const currentBrowserLabel = document.getElementById('currentBrowserLabel');
+
+    async function refreshBrowserNameLabel() {
+        try {
+            const r = await chrome.runtime.sendMessage({ type: 'getBrowserName' });
+            if (currentBrowserLabel && r?.browser) {
+                const tag = r.isUserOverride ? '（自定义）' : `（自动${r.autoDetected ? '·' + r.autoDetected : ''}）`;
+                currentBrowserLabel.textContent = `当前识别：${r.browser}${tag}`;
+            }
+            if (browserSelect) {
+                const ov = r?.override || '';
+                if (!ov) {
+                    browserSelect.value = '';
+                    if (customNameRow) customNameRow.style.display = 'none';
+                } else if (['Chrome', 'Edge', '豆包浏览器', 'Brave', 'Opera', 'Firefox'].includes(ov)) {
+                    browserSelect.value = ov;
+                    if (customNameRow) customNameRow.style.display = 'none';
+                } else {
+                    browserSelect.value = '__custom__';
+                    if (customNameRow) customNameRow.style.display = 'flex';
+                    if (customNameInput) customNameInput.value = ov;
+                }
+            }
+        } catch { /* ignore */ }
+    }
+
+    if (browserSelect) {
+        browserSelect.addEventListener('change', () => {
+            if (customNameRow)
+                customNameRow.style.display = browserSelect.value === '__custom__' ? 'flex' : 'none';
+        });
+    }
+
+    if (saveBrowserBtn) {
+        saveBrowserBtn.addEventListener('click', async () => {
+            let name = browserSelect?.value || '';
+            if (name === '__custom__') {
+                name = (customNameInput?.value || '').trim();
+                if (!name) {
+                    statusText.textContent = '请输入自定义名称';
+                    return;
+                }
+                if (name.length > 20) {
+                    statusText.textContent = '名称最多 20 字';
+                    return;
+                }
+            }
+            try {
+                const r = await chrome.runtime.sendMessage({ type: 'setBrowserName', name });
+                if (r && r.ok === false) {
+                    statusText.textContent = r.error || '名称无效';
+                    return;
+                }
+                statusText.textContent = r?.isUserOverride
+                    ? `已上报桌面：${r.browser}（自定义）`
+                    : `浏览器名称：${r?.browser || '自动'}`;
+                refreshBrowserNameLabel();
+            } catch (e) {
+                statusText.textContent = '名称保存失败';
+            }
+        });
+    }
+
+    if (clearBrowserBtn) {
+        clearBrowserBtn.addEventListener('click', async () => {
+            try {
+                const r = await chrome.runtime.sendMessage({ type: 'clearBrowserName' });
+                statusText.textContent = `已恢复自动：${r?.browser || '自动'}`;
+                if (browserSelect) browserSelect.value = '';
+                if (customNameRow) customNameRow.style.display = 'none';
+                if (customNameInput) customNameInput.value = '';
+                refreshBrowserNameLabel();
+            } catch (e) {
+                statusText.textContent = '清除失败';
+            }
+        });
+    }
+
+    refreshBrowserNameLabel();
     
     chrome.storage.local.get(['pagesViewed', 'sessionStart', 'connected'], (result) => {
         if (result.pagesViewed !== undefined) {

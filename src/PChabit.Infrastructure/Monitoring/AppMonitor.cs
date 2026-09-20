@@ -74,8 +74,15 @@ public class AppMonitor : IAppMonitor
         
         _cts.Cancel();
         _windowChangeChannel.Writer.TryComplete();
-        
-        _processingTask?.Wait(TimeSpan.FromSeconds(2));
+
+        // 避免在输入钩子线程上长时间阻塞（StopAllAsync 会在钩子线程执行）
+        try
+        {
+            _processingTask?.Wait(TimeSpan.FromMilliseconds(500));
+        }
+        catch
+        {
+        }
         
         if (_foregroundHook != IntPtr.Zero)
         {

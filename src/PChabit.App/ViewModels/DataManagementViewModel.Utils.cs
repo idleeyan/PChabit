@@ -15,7 +15,13 @@ public partial class DataManagementViewModel : ViewModelBase
     [RelayCommand]
     private void ClearLogs()
     {
-        OperationLogs.Clear();
+        try
+        {
+            OperationLogs.Clear();
+            GlobalLogs.Clear();
+            PChabit.App.Services.GlobalOpLog.Action("数据管理", "已清空界面日志显示（磁盘 ops-*.log 保留）");
+        }
+        catch { }
     }
     private void OnBackupProgressChanged(object? sender, BackupProgressEventArgs e)
     {
@@ -46,8 +52,24 @@ public partial class DataManagementViewModel : ViewModelBase
         RunOnUIThread(() =>
         {
             OperationLogs.Insert(0, logItem);
-            if (OperationLogs.Count > 100) OperationLogs.RemoveAt(OperationLogs.Count - 1);
+            if (OperationLogs.Count > 200) OperationLogs.RemoveAt(OperationLogs.Count - 1);
         });
+
+        try
+        {
+            var level = type switch
+            {
+                "错误" => "error",
+                "警告" => "warn",
+                "成功" => "ok",
+                _ => "op"
+            };
+            if (level == "error") PChabit.App.Services.GlobalOpLog.Error("数据管理", message);
+            else if (level == "warn") PChabit.App.Services.GlobalOpLog.Warn("数据管理", message);
+            else if (level == "ok") PChabit.App.Services.GlobalOpLog.Success("数据管理", message);
+            else PChabit.App.Services.GlobalOpLog.Action("数据管理", message);
+        }
+        catch { }
     }
     private static string FormatSize(long bytes)
     {

@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Serilog;
 using PChabit.Core.Entities;
@@ -65,6 +65,17 @@ public class WebMonitor : IWebMonitor, IDisposable
     {
         try
         {
+            // 先 peek type，同步类消息不走活动统计反序列化（体积大且字段不同）
+            using var peek = JsonDocument.Parse(e.Message);
+            if (peek.RootElement.TryGetProperty("type", out var typeEl))
+            {
+                var t = typeEl.GetString()?.ToLowerInvariant() ?? "";
+                if (t.StartsWith("browser_sync_") || t.StartsWith("bookmarks_") || t == "history_export")
+                {
+                    return;
+                }
+            }
+
             Log.Debug("收到浏览器消息: {Message}", e.Message);
             var message = JsonSerializer.Deserialize<BrowserExtensionMessage>(e.Message, JsonOptions);
             if (message == null)
@@ -80,7 +91,7 @@ public class WebMonitor : IWebMonitor, IDisposable
         }
         catch (JsonException ex)
         {
-            Log.Warning(ex, "解析浏览器消息失败: {Message}", e.Message);
+            Log.Warning(ex, "解析浏览器消息失败: {Message}", e.Message.Length > 200 ? e.Message[..200] + "..." : e.Message);
         }
     }
 
@@ -89,6 +100,13 @@ public class WebMonitor : IWebMonitor, IDisposable
         if (message.Type == "connection")
         {
             Log.Debug("浏览器连接确认: {Browser}", message.Browser);
+            return;
+        }
+
+        // 书签/历史同步消息由 BrowserSyncWebSocketHandler 独立处理
+        var rawType = message.Type?.ToLowerInvariant() ?? "";
+        if (rawType.StartsWith("browser_sync_") || rawType.StartsWith("bookmarks_") || rawType == "history_export")
+        {
             return;
         }
 

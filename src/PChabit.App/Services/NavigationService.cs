@@ -27,8 +27,10 @@ public class NavigationService
         Register<AppStatsPage>("AppStats");
         Register<KeyboardDetailsPage>("KeyboardDetails");
         Register<WebAccessPage>("WebAccess");
+        Register<HardwareMonitorPage>("Monitor");
         Register<AnalyticsPage>("Analytics");
         Register<DataManagementPage>("DataManagement");
+        Register<HistoryReportPage>("HistoryReport");
         Register<SettingsPage>("Settings");
         Register<HeatmapPage>("Heatmap");
         Register<InsightsPage>("Insights");
@@ -109,3 +111,4 @@ public class NavigatedEventArgs : EventArgs
     public string? PageKey { get; init; }
     public object? Parameter { get; init; }
 }
+

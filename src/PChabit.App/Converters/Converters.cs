@@ -171,11 +171,36 @@ public class InsightBackgroundConverter : IValueConverter
         }
         return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
     }
-    
+
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {
         throw new NotImplementedException();
     }
+}
+
+/// <summary>热力等级 0–4 → 不透明度。</summary>
+public class HeatLevelToOpacityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var level = value switch
+        {
+            int i => i,
+            double d => (int)d,
+            _ => 0
+        };
+        return level switch
+        {
+            <= 0 => 0.08,
+            1 => 0.25,
+            2 => 0.45,
+            3 => 0.70,
+            _ => 0.95
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
 }
 
 public class PercentageConverter : IValueConverter
@@ -188,7 +213,7 @@ public class PercentageConverter : IValueConverter
         }
         return "0%";
     }
-    
+
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {
         throw new NotImplementedException();
@@ -542,4 +567,22 @@ public class HourToTimeConverter : IValueConverter
     {
         throw new NotImplementedException();
     }
+}
+
+/// <summary>百分比（0–100）→ Grid 星号列宽，用于占比细条。值为 0 时返回 0 宽。</summary>
+public class PercentageToGridLengthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var pct = value switch
+        {
+            double d => d,
+            int i => (double)i,
+            _ => 0.0
+        };
+        return new GridLength(Math.Max(0, Math.Min(100, pct)), GridUnitType.Star);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+        => throw new NotImplementedException();
 }

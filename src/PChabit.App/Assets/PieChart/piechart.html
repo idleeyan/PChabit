@@ -5,11 +5,11 @@
     <script src="echarts.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { 
-            width: 100%; 
-            height: 100%; 
-            background: #ffffff;
-            overflow: hidden; 
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            overflow: hidden;
         }
         #chart { width: 100%; height: 100%; }
         #empty {
@@ -21,10 +21,15 @@
             justify-content: center;
             color: #888;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #ffffff;
+            background: transparent;
         }
         #empty-icon { font-size: 48px; margin-bottom: 16px; }
         #empty-text { font-size: 16px; }
+
+        /* 深色主题：由 WebView2 PreferredColorScheme 驱动 prefers-color-scheme */
+        @media (prefers-color-scheme: dark) {
+            #empty { color: #aaa; }
+        }
     </style>
 </head>
 <body>
@@ -35,61 +40,77 @@
     </div>
     <script>
         var chart = null;
-        
+        var __pieData = null;
+
+        function isDark() {
+            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+
+        function themeText()   { return isDark() ? '#e8e8e8' : '#333'; }
+        function themeSub()    { return isDark() ? '#9aa0a6' : '#666'; }
+        function themeBorder() { return isDark() ? '#3c4043' : '#ddd'; }
+        function tooltipBg()   { return isDark() ? 'rgba(32,33,36,0.96)' : 'rgba(255,255,255,0.96)'; }
+        function sliceBorder() { return isDark() ? '#1e1e1e' : '#ffffff'; }
+
         function showEmpty() {
             document.getElementById('chart').style.display = 'none';
             document.getElementById('empty').style.display = 'flex';
         }
-        
+
         function hideEmpty() {
             document.getElementById('chart').style.display = 'block';
             document.getElementById('empty').style.display = 'none';
         }
-        
+
+        // ECharts 默认色板，与应用 Token 对齐（#3B82F6 #10B981 #F59E0B #8B5CF6 #60A5FA #EF4444）
+        var PALETTE = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#60A5FA', '#EF4444', '#14B8A6', '#F97316', '#6366F1'];
+
         function renderPieChart(data) {
             try {
+                __pieData = data;
                 if (!data || data.length === 0) {
                     showEmpty();
                     return 'error: no data';
                 }
-                
+
                 hideEmpty();
-                
-                if (chart) {
-                    chart.dispose();
+
+                // 复用图表实例，不重建（修复每次 dispose+init 导致的闪烁与开销）
+                var el = document.getElementById('chart');
+                if (!chart || chart.isDisposed()) {
+                    chart = echarts.init(el);
                 }
-                chart = echarts.init(document.getElementById('chart'));
-                
-                var pieData = data.map(function(item) {
+
+                var pieData = data.map(function(item, index) {
                     return {
                         name: item.name,
                         value: item.value,
                         itemStyle: {
-                            color: item.color || '#8B5CF6'
+                            color: item.color || PALETTE[index % PALETTE.length]
                         }
                     };
                 });
-                
+
                 var totalMinutes = data.reduce(function(sum, item) {
                     return sum + (item.value || 0);
                 }, 0);
-                
+
                 chart.setOption({
-                    backgroundColor: '#ffffff',
+                    color: PALETTE,
                     tooltip: {
                         trigger: 'item',
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                        borderColor: '#ddd',
+                        backgroundColor: tooltipBg(),
+                        borderColor: themeBorder(),
                         borderWidth: 1,
                         textStyle: {
-                            color: '#333'
+                            color: themeText()
                         },
                         formatter: function(params) {
                             var mins = params.value || 0;
                             var hours = Math.floor(mins / 60);
                             var minutes = Math.round(mins % 60);
                             var timeStr = hours > 0 ? hours + '小时' + minutes + '分钟' : minutes + '分钟';
-                            return '<div style="padding: 4px 8px;"><strong style="font-size: 14px;">' + params.name + '</strong><br/><span style="color: #666;">' + timeStr + '</span><br/><span style="color: #999;">占比: ' + params.percent.toFixed(1) + '%</span></div>';
+                            return '<div style="padding: 4px 8px;"><strong style="font-size: 14px;">' + params.name + '</strong><br/><span style="color: ' + themeSub() + ';">' + timeStr + '</span><br/><span style="color: ' + themeSub() + ';">占比: ' + params.percent.toFixed(1) + '%</span></div>';
                         }
                     },
                     legend: {
@@ -100,7 +121,7 @@
                         itemHeight: 12,
                         textStyle: {
                             fontSize: 12,
-                            color: '#333'
+                            color: themeText()
                         },
                         formatter: function(name) {
                             var item = data.find(function(d) { return d.name === name; });
@@ -121,7 +142,7 @@
                         avoidLabelOverlap: true,
                         itemStyle: {
                             borderRadius: 6,
-                            borderColor: '#fff',
+                            borderColor: sliceBorder(),
                             borderWidth: 2
                         },
                         label: {
@@ -141,19 +162,28 @@
                         },
                         data: pieData
                     }]
-                });
-                
+                }, true);
+
                 return 'success: ' + pieData.length + ' items';
             } catch (e) {
                 return 'error: ' + e.message;
             }
         }
-        
+
         function resize() {
-            if (chart) chart.resize();
+            if (chart && !chart.isDisposed()) chart.resize();
         }
-        
+
         window.onresize = resize;
+
+        // 主题切换时自动重绘
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
+                if (chart && !chart.isDisposed() && __pieData) {
+                    renderPieChart(__pieData);
+                }
+            });
+        }
     </script>
 </body>
 </html>

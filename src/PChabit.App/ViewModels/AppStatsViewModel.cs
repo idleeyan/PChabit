@@ -8,33 +8,87 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace PChabit.App.ViewModels;
 
-public partial class AppStatsViewModel : DbSafeViewModel<AppStatsViewModel.AppStatsData>
+public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
 {
     private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
     private readonly IAppIconService _iconService;
     private readonly IBackgroundAppSettings _backgroundAppSettings;
 
     [ObservableProperty]
-    private DateTime _selectedDate = DateTime.Today;
+    private AnalyticsPeriodKind _selectedRange = AnalyticsPeriodKind.Today;
+
+    [ObservableProperty]
+    private DateTime? _customStart;
+
+    /// <summary>自定义周期结束时间（Exclusive）。</summary>
+    [ObservableProperty]
+    private DateTime? _customEnd;
+
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    [ObservableProperty]
+    private string? _selectedCategoryFilter;
+
+    // === KPI ===
 
     [ObservableProperty]
     private string _totalUsageTime = "0小时 0分钟";
 
     [ObservableProperty]
-    private int _totalApps;
+    private int _activeApps;
 
     [ObservableProperty]
-    private string _mostUsedApp = "无";
+    private string _topAppText = "无";
+
+    [ObservableProperty]
+    private string _focusText = "0 次";
+
+    [ObservableProperty]
+    private string _rangeLabel = "今天";
+
+    [ObservableProperty]
+    private string _resultHint = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasData;
 
     [ObservableProperty]
     private string _pieChartData = "[]";
 
+    [ObservableProperty]
+    private string _summaryMarkdown = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCopying;
+
+    /// <summary>最近一次加载的周期（供应用详情卡片）。</summary>
+    public AnalyticsPeriod? LastPeriod { get; private set; }
+
+    public double LastTotalMinutes { get; private set; }
+
     public ObservableCollection<AppStatItem> AppStats { get; } = new();
     public ObservableCollection<HourlyUsageItem> HourlyUsage { get; } = new();
+    public ObservableCollection<string> CategoryOptions { get; } = new();
+
+    /// <summary>周期下拉选项。</summary>
+    public IReadOnlyList<PeriodOption> PeriodOptions { get; } = new[]
+    {
+        new PeriodOption(AnalyticsPeriodKind.Today, "今天"),
+        new PeriodOption(AnalyticsPeriodKind.Yesterday, "昨天"),
+        new PeriodOption(AnalyticsPeriodKind.ThisWeek, "本周"),
+        new PeriodOption(AnalyticsPeriodKind.LastWeek, "上周"),
+        new PeriodOption(AnalyticsPeriodKind.Last7Days, "近 7 天"),
+        new PeriodOption(AnalyticsPeriodKind.Last30Days, "近 30 天"),
+        new PeriodOption(AnalyticsPeriodKind.ThisMonth, "本月"),
+        new PeriodOption(AnalyticsPeriodKind.Custom, "自定义")
+    };
 
     public AppStatsViewModel(IDbContextFactory<PChabitDbContext> dbFactory, IAppIconService iconService, IBackgroundAppSettings backgroundAppSettings)
     {
@@ -44,191 +98,132 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsViewModel.AppSt
         Title = "应用统计";
     }
 
-    // === Phase 1 中间数据 ===
+    // === DbSafeViewModel 抽象方法（两阶段：Phase1 后台计算 / Phase2 UI 回填） ===
 
-    public sealed class AppStatsData
+    protected override async Task<AppStatsReport> LoadStatsOnBackgroundAsync()
     {
-        public string TotalUsageTime = "0小时 0分钟";
-        public int TotalApps;
-        public string MostUsedApp = "无";
-        public List<AppGroupInfo> AppGroups = new();
-        public List<HourlyUsageItem> HourlyUsage = new();
-        public double TotalMinutes;
-    }
-
-    public sealed class AppGroupInfo
-    {
-        public string ProcessName { get; set; } = "";
-        public string AppName { get; set; } = "";
-        public double Duration { get; set; }
-        public int Sessions { get; set; }
-        public string Category { get; set; } = "";
-        public string? CategoryColor { get; set; }
-        public string? CategoryIcon { get; set; }
-    }
-
-    // === DbSafeViewModel 抽象方法 ===
-
-    protected override async Task<AppStatsData> LoadStatsOnBackgroundAsync()
-    {
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-        List<Core.Entities.ProgramCategory>? categories = null;
-        try
+        var today = DateTime.Today;
+        var period = SelectedRange switch
         {
-            categories = await dbContext.ProgramCategories
-                .Include(c => c.ProgramMappings)
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.SortOrder)
-                .ThenBy(c => c.Name)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载分类失败");
-        }
-
-        var categoryDictionary = new Dictionary<string, Core.Entities.ProgramCategory>(StringComparer.OrdinalIgnoreCase);
-        if (categories != null)
-        {
-            foreach (var cat in categories)
-            {
-                if (cat.ProgramMappings != null)
-                {
-                    foreach (var mapping in cat.ProgramMappings)
-                    {
-                        if (!string.IsNullOrEmpty(mapping.ProcessName))
-                        {
-                            var processName = mapping.ProcessName;
-                            categoryDictionary[processName] = cat;
-                            if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
-                                categoryDictionary[processName.Substring(0, processName.Length - 4)] = cat;
-                            else
-                                categoryDictionary[$"{processName}.exe"] = cat;
-                        }
-                    }
-                }
-            }
-        }
-
-        var selectedDate = SelectedDate.Date;
-        var nextDay = selectedDate.AddDays(1);
-
-        List<Core.Entities.AppSession> sessions;
-        try
-        {
-            sessions = await dbContext.AppSessions
-                .Where(s => s.StartTime >= selectedDate && s.StartTime < nextDay)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 AppSessions 失败");
-            sessions = new List<Core.Entities.AppSession>();
-        }
-
-        var totalMinutes = sessions
-            .Where(s => s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-
-        var appGroups = sessions
-            .GroupBy(s => s.ProcessName)
-            .Select(g =>
-            {
-                var processName = g.Key ?? "";
-                string categoryName;
-                string? categoryColor = null;
-                string? categoryIcon = null;
-
-                if (categoryDictionary.TryGetValue(processName, out var category))
-                {
-                    categoryName = category.Name;
-                    categoryColor = category.Color;
-                    categoryIcon = category.Icon;
-                }
-                else
-                {
-                    categoryName = g.First().Category ?? "其他";
-                }
-
-                return new AppGroupInfo
-                {
-                    ProcessName = g.Key ?? "",
-                    AppName = g.First().AppName ?? g.Key ?? "",
-                    Duration = g.Where(s => s.EndTime.HasValue).Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes),
-                    Sessions = g.Count(),
-                    Category = categoryName,
-                    CategoryColor = categoryColor,
-                    CategoryIcon = categoryIcon
-                };
-            })
-            .OrderByDescending(x => x.Duration)
-            .ToList();
-
-        var hourlyItems = new List<HourlyUsageItem>();
-        for (int i = 0; i < 24; i++)
-        {
-            var hourStart = selectedDate.AddHours(i);
-            var hourEnd = hourStart.AddHours(1);
-            var hourMinutes = sessions
-                .Where(s => s.StartTime < hourEnd && (s.EndTime == null || s.EndTime > hourStart))
-                .Sum(s =>
-                {
-                    var start = s.StartTime < hourStart ? hourStart : s.StartTime;
-                    var end = s.EndTime == null || s.EndTime > hourEnd ? hourEnd : s.EndTime.Value;
-                    return (end - start).TotalMinutes;
-                });
-            hourlyItems.Add(new HourlyUsageItem { Hour = $"{i:D2}:00", Minutes = (int)hourMinutes, Activity = Math.Min(100, (int)(hourMinutes / 60 * 100)) });
-        }
-
-        return new AppStatsData
-        {
-            TotalUsageTime = $"{(int)(totalMinutes / 60)}小时 {(int)(totalMinutes % 60)}分钟",
-            TotalApps = sessions.Select(s => s.ProcessName).Distinct().Count(),
-            MostUsedApp = appGroups.FirstOrDefault()?.AppName ?? "无",
-            AppGroups = appGroups,
-            HourlyUsage = hourlyItems,
-            TotalMinutes = totalMinutes
+            AnalyticsPeriodKind.Custom => AnalyticsPeriod.FromCustom(
+                CustomStart ?? today,
+                CustomEnd ?? today.AddDays(1)),
+            _ => AnalyticsPeriod.FromKind(SelectedRange, today)
         };
+
+        LastPeriod = period;
+        return await AppStatsEngine.BuildAsync(_dbFactory, period, SelectedCategoryFilter, SearchText);
     }
 
-    protected override async Task ApplyStatsOnUIAsync(AppStatsData s)
+    protected override async Task ApplyStatsOnUIAsync(AppStatsReport report)
     {
-        TotalUsageTime = s.TotalUsageTime;
-        TotalApps = s.TotalApps;
-        MostUsedApp = s.MostUsedApp;
-
+        LastPeriod = report.Period;
+        LastTotalMinutes = report.TotalMinutes;
         var backgroundApps = _backgroundAppSettings.GetBackgroundApps();
 
-        AppStats.Clear();
-        foreach (var app in s.AppGroups)
-        {
-            var hours = (int)(app.Duration / 60);
-            var minutes = (int)(app.Duration % 60);
-            var seconds = (int)((app.Duration - Math.Floor(app.Duration)) * 60);
+        TotalUsageTime = AnalyticsEngine.FormatHours(report.TotalMinutes);
+        ActiveApps = report.ActiveApps;
+        TopAppText = report.TopAppMinutes > 0
+            ? $"{report.TopAppName}（{AnalyticsEngine.FormatHours(report.TopAppMinutes)}）"
+            : "无";
+        FocusText = $"{report.FocusSessions} 次";
+        RangeLabel = report.Period.Label;
+        ResultHint = report.Rows.Count > 0 ? $"共 {report.Rows.Count} 个应用" : string.Empty;
+        HasData = report.TotalMinutes > 0;
 
+        AppStats.Clear();
+        foreach (var row in report.Rows)
+        {
             var item = new AppStatItem
             {
-                AppName = app.AppName,
-                ProcessName = app.ProcessName ?? "",
-                Duration = hours > 0 ? $"{hours}h {minutes}m {seconds}s" : $"{minutes}m {seconds}s",
-                DurationMinutes = app.Duration,
-                Sessions = app.Sessions,
-                Category = app.Category,
-                CategoryIcon = app.CategoryIcon ?? "📁",
-                CategoryColor = GetCategoryBrush(app.Category, app.CategoryColor),
-                Percentage = s.TotalMinutes > 0 ? (int)(app.Duration / s.TotalMinutes * 100) : 0,
-                IsBackgroundMode = backgroundApps.Contains(app.ProcessName ?? "")
+                AppName = row.AppName,
+                ProcessName = row.ProcessName,
+                Duration = AnalyticsEngine.FormatHours(row.DurationMinutes),
+                DurationMinutes = row.DurationMinutes,
+                Sessions = row.Sessions,
+                AvgDuration = row.Sessions > 0 ? AnalyticsEngine.FormatHours(row.AvgDurationMinutes) : "—",
+                Percentage = row.Percentage,
+                Category = row.Category,
+                CategoryIcon = "📁",
+                CategoryColorHex = row.CategoryColorHex,
+                CategoryColor = GetCategoryBrush(row.CategoryColorHex),
+                DeltaText = row.DeltaText,
+                DeltaDirection = row.DeltaDirection,
+                FocusMinutes = row.FocusMinutes,
+                IsBackgroundMode = backgroundApps.Contains(row.ProcessName)
             };
 
             AppStats.Add(item);
             _ = LoadIconAsync(item);
         }
 
-        GeneratePieChartData(s.AppGroups, s.TotalMinutes);
+        GeneratePieChartData(report);
 
         HourlyUsage.Clear();
-        foreach (var item in s.HourlyUsage) HourlyUsage.Add(item);
+        foreach (var h in report.Hourly)
+        {
+            HourlyUsage.Add(new HourlyUsageItem
+            {
+                Hour = h.Label,
+                Minutes = (int)h.Minutes,
+                Activity = Math.Min(100, (int)(h.Minutes / 60 * 100))
+            });
+        }
+
+        // 分类筛选选项：全部分类 + 实际出现的分类
+        CategoryOptions.Clear();
+        CategoryOptions.Add("全部分类");
+        foreach (var share in report.CategoryShares)
+        {
+            if (!CategoryOptions.Contains(share.Category))
+                CategoryOptions.Add(share.Category);
+        }
+
+        SummaryMarkdown = BuildSummaryMarkdown(report);
+    }
+
+    private static string BuildSummaryMarkdown(AppStatsReport report)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"## 应用统计摘要（{report.Period.Label}）");
+        sb.AppendLine();
+        sb.AppendLine($"- 总使用时长：{AnalyticsEngine.FormatHours(report.TotalMinutes)}");
+        sb.AppendLine($"- 活跃应用：{report.ActiveApps} 个");
+        if (report.TopAppMinutes > 0)
+            sb.AppendLine($"- Top 应用：{report.TopAppName}（{AnalyticsEngine.FormatHours(report.TopAppMinutes)}）");
+        sb.AppendLine($"- 专注段（≥25 分钟且属生产力分类）：{report.FocusSessions} 次");
+        if (report.Rows.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### 排行 Top 5");
+            foreach (var row in report.Rows.Take(5))
+            {
+                sb.AppendLine($"- {row.AppName}：{AnalyticsEngine.FormatHours(row.DurationMinutes)}（{row.Percentage:F0}%，{row.DeltaText}）");
+            }
+        }
+        return sb.ToString();
+    }
+
+    [RelayCommand]
+    private async Task CopySummaryAsync()
+    {
+        if (string.IsNullOrEmpty(SummaryMarkdown) || IsCopying) return;
+        IsCopying = true;
+        try
+        {
+            var package = new DataPackage();
+            package.SetText(SummaryMarkdown);
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "复制应用统计摘要失败");
+        }
+        finally
+        {
+            IsCopying = false;
+        }
     }
 
     [RelayCommand]
@@ -252,13 +247,9 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsViewModel.AppSt
         }
     }
 
-    private static SolidColorBrush GetCategoryBrush(string? category, string? customColor = null)
+    private static SolidColorBrush GetCategoryBrush(string hexColor)
     {
-        string hexColor;
-        if (!string.IsNullOrEmpty(customColor)) hexColor = customColor;
-        else hexColor = category switch { "开发" => "#512BD4", "浏览" => "#0078D4", "沟通" => "#107C10", "娱乐" => "#FF8C00", "办公" => "#00B7C3", _ => "#6B7280" };
-
-        if (hexColor.StartsWith("#") && hexColor.Length == 7)
+        if (!string.IsNullOrEmpty(hexColor) && hexColor.StartsWith("#") && hexColor.Length == 7)
         {
             var r = System.Convert.ToByte(hexColor.Substring(1, 2), 16);
             var g = System.Convert.ToByte(hexColor.Substring(3, 2), 16);
@@ -268,28 +259,48 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsViewModel.AppSt
         return new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
 
-    partial void OnSelectedDateChanged(DateTime value)
+    partial void OnSelectedRangeChanged(AnalyticsPeriodKind value)
     {
         _ = LoadDataAsync();
     }
 
-    private void GeneratePieChartData(List<AppGroupInfo> appGroups, double totalMinutes)
+    partial void OnCustomStartChanged(DateTime? value)
     {
-        if (totalMinutes <= 0 || appGroups.Count == 0) { PieChartData = "[]"; return; }
+        if (SelectedRange == AnalyticsPeriodKind.Custom) _ = LoadDataAsync();
+    }
 
-        var topApps = appGroups.Take(8).Select((app, _) => new {
-            name = app.AppName,
-            value = Math.Round(app.Duration, 1),
-            category = app.Category,
-            color = GetCategoryHexColor(app.Category, app.CategoryColor)
-        }).ToList();
+    partial void OnCustomEndChanged(DateTime? value)
+    {
+        if (SelectedRange == AnalyticsPeriodKind.Custom) _ = LoadDataAsync();
+    }
 
-        if (appGroups.Count > 8)
+    partial void OnSelectedCategoryFilterChanged(string? value)
+    {
+        _ = LoadDataAsync();
+    }
+
+    private string _debouncedSearch = string.Empty;
+
+    partial void OnSearchTextChanged(string value)
+    {
+        // 简单防抖：与上次搜索内容一致才触发
+        var q = value?.Trim() ?? string.Empty;
+        var prev = _debouncedSearch;
+        _debouncedSearch = q;
+        if (q != prev) _ = LoadDataAsync();
+    }
+
+    private void GeneratePieChartData(AppStatsReport report)
+    {
+        if (report.PieSlices.Count == 0) { PieChartData = "[]"; return; }
+
+        var topApps = report.PieSlices.Select(s => new
         {
-            double otherMinutes = appGroups.Skip(8).Sum(app => app.Duration);
-            if (otherMinutes > 0)
-                topApps.Add(new { name = "其他", value = Math.Round(otherMinutes, 1), category = "其他", color = "#8B5CF6" });
-        }
+            name = s.Name,
+            value = Math.Round(s.Minutes, 1),
+            category = "",
+            color = s.ColorHex
+        }).ToList();
 
         var options = new JsonSerializerOptions
         {
@@ -298,12 +309,18 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsViewModel.AppSt
         };
         PieChartData = JsonSerializer.Serialize(topApps, options);
     }
+}
 
-    private static string GetCategoryHexColor(string? category, string? customColor = null)
+public class PeriodOption
+{
+    public PeriodOption(AnalyticsPeriodKind kind, string label)
     {
-        if (!string.IsNullOrEmpty(customColor)) return customColor;
-        return category switch { "开发" => "#512BD4", "浏览" => "#0078D4", "沟通" => "#107C10", "娱乐" => "#FF8C00", "办公" => "#00B7C3", _ => "#8B5CF6" };
+        Kind = kind;
+        Label = label;
     }
+
+    public AnalyticsPeriodKind Kind { get; }
+    public string Label { get; }
 }
 
 public class AppStatItem : ObservableObject
@@ -313,7 +330,12 @@ public class AppStatItem : ObservableObject
     public string Duration { get; init; } = string.Empty;
     public double DurationMinutes { get; init; }
     public int Sessions { get; init; }
-    public int Percentage { get; init; }
+    public string AvgDuration { get; init; } = "—";
+    public double Percentage { get; init; }
+    public double FocusMinutes { get; init; }
+    public string DeltaText { get; init; } = "—";
+    public string DeltaDirection { get; init; } = "none";
+    public string CategoryColorHex { get; init; } = "#6B7280";
     private string _category = string.Empty;
     public string Category { get => _category; set => SetProperty(ref _category, value); }
     private string _categoryIcon = "📁";

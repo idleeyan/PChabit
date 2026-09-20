@@ -19,6 +19,7 @@ public partial class DataCollectionService : IDisposable
     private readonly IWebMonitor _webMonitor;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IBackgroundAppSettings _backgroundAppSettings;
+    private readonly ISettingsService _settingsService;
 
     private AppSession? _currentAppSession;
     private string _currentProcessName = string.Empty;
@@ -42,7 +43,8 @@ public partial class DataCollectionService : IDisposable
         IMouseMonitor mouseMonitor,
         IWebMonitor webMonitor,
         IServiceScopeFactory scopeFactory,
-        IBackgroundAppSettings backgroundAppSettings)
+        IBackgroundAppSettings backgroundAppSettings,
+        ISettingsService settingsService)
     {
         _appMonitor = appMonitor;
         _keyboardMonitor = keyboardMonitor;
@@ -50,6 +52,7 @@ public partial class DataCollectionService : IDisposable
         _webMonitor = webMonitor;
         _scopeFactory = scopeFactory;
         _backgroundAppSettings = backgroundAppSettings;
+        _settingsService = settingsService;
 
         _dataChannel = Channel.CreateUnbounded<DataOperation>(new UnboundedChannelOptions
         {
@@ -66,10 +69,13 @@ public partial class DataCollectionService : IDisposable
         _processingTask = ProcessDataAsync(_cts.Token);
 
         _backgroundTimerTask = RunPeriodicTimerAsync(
-            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(15),
             _cts.Token,
             async () =>
             {
+                // 键盘/鼠标内存累计每 15s 落库一次，避免钩子路径驱动高频 SQLite 写入
+                FlushLiveInputSessions();
+                await FlushBrowserHistoryQueueAsync();
                 await SaveBackgroundSessionsPeriodicallyAsync();
                 await SaveActiveWebSessionsPeriodicallyAsync();
                 await CheckDailyAggregationAsync();
@@ -108,6 +114,24 @@ public partial class DataCollectionService : IDisposable
             }
         }
         catch { }
+
+        try
+        {
+            FlushLiveInputSessions();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "落库键盘/鼠标会话失败");
+        }
+
+        try
+        {
+            FlushBrowserHistoryQueueAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "落库浏览历史队列失败");
+        }
 
         try
         {

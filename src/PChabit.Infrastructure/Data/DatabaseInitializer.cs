@@ -9,21 +9,68 @@ public static class DatabaseInitializer
 {
     public static async Task InitializeAsync(PChabitDbContext context)
     {
+        Log.Information("数据库初始化开始");
         var created = await context.Database.EnsureCreatedAsync();
         Log.Information("数据库创建状态: {Created}", created);
-        
+
         await MigrateSchemaAsync(context);
-        
+
         await SeedDefaultDataAsync(context);
+        Log.Information("数据库初始化全部完成");
     }
     
     private static async Task MigrateSchemaAsync(PChabitDbContext context)
     {
         try
         {
-            var connection = context.Database.GetDbConnection();
+            // 使用独立连接，避免与 DataCollectionService 的 DbContext 写事务互锁
+            var cs = context.Database.GetConnectionString();
+            if (string.IsNullOrEmpty(cs))
+            {
+                Log.Warning("无法获取连接串，跳过架构迁移");
+                return;
+            }
+
+            await using var connection = new SqliteConnection(cs);
             await connection.OpenAsync();
-            
+            // 锁等待最多 3 秒，避免迁移被其它写连接无限阻塞
+            using (var busy = connection.CreateCommand())
+            {
+                busy.CommandText = "PRAGMA busy_timeout = 3000;";
+                await busy.ExecuteNonQueryAsync();
+            }
+            Log.Information("迁移独立连接已打开");
+
+            // 书签/历史表优先创建（短连接、独立 try）
+            try
+            {
+                await MigrateBrowserBookmarkTablesAsync(connection);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "创建书签同步表失败");
+            }
+
+            // DailySummary 实际表名可能是 DailySummaries；表不存在时跳过
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "WebPages", "INTEGER NOT NULL DEFAULT 0");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "WebDurationTicks", "INTEGER NOT NULL DEFAULT 0");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "WebActiveDurationTicks", "INTEGER NOT NULL DEFAULT 0");
+
+            // 分析升级 P0：DailySummaries 扩展列（均可空；脚本可重复执行）
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "AppSwitches", "INTEGER");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "FocusMinutesV2", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "FocusCountV2", "INTEGER");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "FocusQualityAvg", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "WebMinutes", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "CpuLoadAvg", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "CpuLoadP95", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "GpuLoadAvg", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "GpuTempMax", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "MemLoadAvg", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NetBytesUp", "INTEGER");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NetBytesDown", "INTEGER");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "MetricsVersion", "INTEGER");
+
             await MigrateTableColumnsAsync(connection, "AppSessions", "Duration", "INTEGER NOT NULL DEFAULT 0");
             await MigrateTableColumnsAsync(connection, "AppSessions", "ActiveDuration", "INTEGER NOT NULL DEFAULT 0");
             await MigrateTableColumnsAsync(connection, "WebSessions", "Duration", "INTEGER NOT NULL DEFAULT 0");
@@ -33,78 +80,20 @@ public static class DatabaseInitializer
             await MigrateTableColumnsAsync(connection, "WebSessions", "CategoryName", "TEXT");
             await MigrateTableColumnsAsync(connection, "WebSessions", "CategorySource", "TEXT");
             await MigrateTableColumnsAsync(connection, "WebSessions", "IsLegacy", "INTEGER NOT NULL DEFAULT 0");
-            await MigrateTableColumnsAsync(connection, "DailySummary", "WebPages", "INTEGER NOT NULL DEFAULT 0");
-            await MigrateTableColumnsAsync(connection, "DailySummary", "WebDurationTicks", "INTEGER NOT NULL DEFAULT 0");
-            await MigrateTableColumnsAsync(connection, "DailySummary", "WebActiveDurationTicks", "INTEGER NOT NULL DEFAULT 0");
 
-            using (var markLegacy = connection.CreateCommand())
-            {
-                // 旧 30s 快照切片：同 URL 同 Tab 相邻行且时长 < 35s 的标记为 Legacy
-                markLegacy.CommandText = @"
-                    UPDATE WebSessions SET IsLegacy = 1
-                    WHERE IsLegacy = 0 AND Duration < 350000000
-                    AND EXISTS (
-                        SELECT 1 FROM WebSessions w2
-                        WHERE w2.Url = WebSessions.Url
-                          AND w2.TabId = WebSessions.TabId
-                          AND w2.Browser = WebSessions.Browser
-                          AND w2.Id <> WebSessions.Id
-                    )";
-                await markLegacy.ExecuteNonQueryAsync();
-            }
-            
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "KeyFrequency", "TEXT");
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "KeyCategoryFrequency", "TEXT");
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "Shortcuts", "TEXT");
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "TypingBursts", "TEXT");
-            
-            using (var updateCmd = connection.CreateCommand())
-            {
-                updateCmd.CommandText = "UPDATE KeyboardSessions SET KeyFrequency = '{}' WHERE KeyFrequency IS NULL OR KeyFrequency = ''";
-                await updateCmd.ExecuteNonQueryAsync();
-            }
-            using (var updateCmd = connection.CreateCommand())
-            {
-                updateCmd.CommandText = "UPDATE KeyboardSessions SET KeyCategoryFrequency = '{}' WHERE KeyCategoryFrequency IS NULL OR KeyCategoryFrequency = ''";
-                await updateCmd.ExecuteNonQueryAsync();
-            }
-            using (var updateCmd = connection.CreateCommand())
-            {
-                updateCmd.CommandText = "UPDATE KeyboardSessions SET Shortcuts = '[]' WHERE Shortcuts IS NULL OR Shortcuts = ''";
-                await updateCmd.ExecuteNonQueryAsync();
-            }
-            using (var updateCmd = connection.CreateCommand())
-            {
-                updateCmd.CommandText = "UPDATE KeyboardSessions SET TypingBursts = '[]' WHERE TypingBursts IS NULL OR TypingBursts = ''";
-                await updateCmd.ExecuteNonQueryAsync();
-            }
-            
-            using (var updateCmd = connection.CreateCommand())
-            {
-                updateCmd.CommandText = @"
-                    UPDATE AppSessions 
-                    SET Duration = CAST((julianday(EndTime) - julianday(StartTime)) * 864000000000 AS INTEGER)
-                    WHERE Duration = 0 AND EndTime IS NOT NULL";
-                var rowsUpdated = await updateCmd.ExecuteNonQueryAsync();
-                Log.Information("修复 AppSessions Duration 数据，更新了 {Count} 条记录", rowsUpdated);
-            }
-            
-            using (var updateCmd = connection.CreateCommand())
-            {
-                updateCmd.CommandText = @"
-                    UPDATE WebSessions 
-                    SET Duration = CAST((julianday(EndTime) - julianday(StartTime)) * 864000000000 AS INTEGER)
-                    WHERE Duration = 0 AND EndTime IS NOT NULL";
-                var rowsUpdated = await updateCmd.ExecuteNonQueryAsync();
-                Log.Information("修复 WebSessions Duration 数据，更新了 {Count} 条记录", rowsUpdated);
-            }
-            
-            await MigrateProgramCategoryTablesAsync(connection);
-            await MigrateWebsiteCategoryTablesAsync(connection);
-            await MigrateGuidTablesAsync(connection);
-            await MigrateBackupTablesAsync(connection);
-            await MigrateAnalysisTablesAsync(connection);
-            
+
+            // 跳过全表 UPDATE 修复（历史数据已处理过；与数据收集写锁竞争会导致启动假死）
+
+            await SafeMigrateAsync(connection, MigrateProgramCategoryTablesAsync, "ProgramCategory");
+            await SafeMigrateAsync(connection, MigrateWebsiteCategoryTablesAsync, "WebsiteCategory");
+            await SafeMigrateAsync(connection, MigrateGuidTablesAsync, "GuidTables");
+            await SafeMigrateAsync(connection, MigrateBackupTablesAsync, "BackupTables");
+            await SafeMigrateAsync(connection, MigrateAnalysisTablesAsync, "AnalysisTables");
+
             await connection.CloseAsync();
             Log.Information("数据库架构迁移完成");
         }
@@ -112,6 +101,34 @@ public static class DatabaseInitializer
         {
             Log.Error(ex, "数据库架构迁移失败");
             throw;
+        }
+    }
+
+    private static async Task SafeMigrateAsync(System.Data.Common.DbConnection connection, Func<System.Data.Common.DbConnection, Task> action, string name)
+    {
+        try
+        {
+            Log.Information("迁移步骤开始: {Name}", name);
+            await action(connection);
+            Log.Information("迁移步骤完成: {Name}", name);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "迁移步骤失败（继续）: {Name}", name);
+        }
+    }
+
+    private static async Task TryExecuteSqlAsync(System.Data.Common.DbConnection connection, string sql)
+    {
+        try
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "SQL 修复语句跳过");
         }
     }
     
@@ -234,7 +251,7 @@ public static class DatabaseInitializer
     private static async Task MigrateTableColumnsAsync(System.Data.Common.DbConnection connection, string tableName, string columnName, string columnDefinition)
     {
         var columns = new HashSet<string>();
-        
+
         using (var command = connection.CreateCommand())
         {
             command.CommandText = $"PRAGMA table_info({tableName})";
@@ -244,7 +261,7 @@ public static class DatabaseInitializer
                 columns.Add(reader.GetString(1));
             }
         }
-        
+
         if (!columns.Contains(columnName))
         {
             Log.Information("添加列 {TableName}.{ColumnName}", tableName, columnName);
@@ -252,6 +269,32 @@ public static class DatabaseInitializer
             alterCmd.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition}";
             await alterCmd.ExecuteNonQueryAsync();
             Log.Information("列 {TableName}.{ColumnName} 添加成功", tableName, columnName);
+        }
+    }
+
+    /// <summary>表不存在时静默跳过，不中断整体迁移。</summary>
+    private static async Task TryMigrateTableColumnsAsync(System.Data.Common.DbConnection connection, string tableName, string columnName, string columnDefinition)
+    {
+        try
+        {
+            // 先确认表存在，避免对不存在的表发 ALTER（可能在锁等待上耗尽超时）
+            var exists = false;
+            using (var check = connection.CreateCommand())
+            {
+                check.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=@n LIMIT 1";
+                var p = check.CreateParameter();
+                p.ParameterName = "@n";
+                p.Value = tableName;
+                check.Parameters.Add(p);
+                exists = await check.ExecuteScalarAsync() != null;
+            }
+            if (!exists) return;
+
+            await MigrateTableColumnsAsync(connection, tableName, columnName, columnDefinition);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "跳过列迁移 {TableName}.{ColumnName}", tableName, columnName);
         }
     }
 
@@ -406,6 +449,145 @@ public static class DatabaseInitializer
                 CREATE UNIQUE INDEX IX_DailySummaries_Date ON DailySummaries (Date);";
             await createCmd.ExecuteNonQueryAsync();
             Log.Information("DailySummaries 表创建成功");
+        }
+
+        if (!tables.Contains("AppDailyStats"))
+        {
+            Log.Information("创建 AppDailyStats 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE AppDailyStats (
+                    Date TEXT NOT NULL,
+                    ProcessName TEXT NOT NULL,
+                    Minutes REAL NOT NULL DEFAULT 0,
+                    Sessions INTEGER NOT NULL DEFAULT 0,
+                    FocusMinutes REAL NOT NULL DEFAULT 0,
+                    HourlyJson TEXT NOT NULL DEFAULT '[]',
+                    LastUpdated TEXT NOT NULL,
+                    PRIMARY KEY (Date, ProcessName)
+                );
+                CREATE INDEX IX_AppDailyStats_Date ON AppDailyStats (Date);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("AppDailyStats 表创建成功");
+        }
+
+        // 分析升级 P0：硬件分钟样本表（列必须与 PChabitDbContext 模型产物一致，陷阱 12：双路径同改）
+        if (!tables.Contains("HardwareSamples"))
+        {
+            Log.Information("创建 HardwareSamples 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE HardwareSamples (
+                    Id TEXT NOT NULL CONSTRAINT PK_HardwareSamples PRIMARY KEY,
+                    Timestamp TEXT NOT NULL,
+                    CpuLoadAvg REAL,
+                    CpuLoadMax REAL,
+                    CpuTempMax REAL,
+                    GpuLoadAvg REAL,
+                    GpuLoadMax REAL,
+                    GpuTempMax REAL,
+                    VramUsedMax REAL,
+                    VramTotal REAL,
+                    MemLoadAvg REAL,
+                    MemLoadMax REAL,
+                    MemUsedMax REAL,
+                    DiskActivityAvg REAL,
+                    DiskReadMax REAL,
+                    DiskWriteMax REAL,
+                    NetUpAvg REAL,
+                    NetDownAvg REAL,
+                    SampleCount INTEGER NOT NULL,
+                    SensorFlags INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE UNIQUE INDEX IX_HardwareSamples_Timestamp ON HardwareSamples (Timestamp);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("HardwareSamples 表创建成功");
+        }
+    }
+
+    private static async Task MigrateBrowserBookmarkTablesAsync(System.Data.Common.DbConnection connection)
+    {
+        var tables = new HashSet<string>();
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                tables.Add(reader.GetString(0));
+            }
+        }
+
+        if (!tables.Contains("BrowserBookmarks"))
+        {
+            Log.Information("创建 BrowserBookmarks 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE BrowserBookmarks (
+                    Id TEXT NOT NULL PRIMARY KEY,
+                    Type TEXT NOT NULL,
+                    Title TEXT NOT NULL,
+                    Url TEXT,
+                    PathJson TEXT NOT NULL DEFAULT '[]',
+                    DateAdded INTEGER NOT NULL DEFAULT 0,
+                    DateModified INTEGER NOT NULL DEFAULT 0,
+                    SourceBrowser TEXT NOT NULL DEFAULT '',
+                    IsDeleted INTEGER NOT NULL DEFAULT 0,
+                    UpdatedAt INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IX_BrowserBookmarks_Url ON BrowserBookmarks (Url);
+                CREATE INDEX IX_BrowserBookmarks_IsDeleted ON BrowserBookmarks (IsDeleted);
+                CREATE INDEX IX_BrowserBookmarks_Type_Title ON BrowserBookmarks (Type, Title);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("BrowserBookmarks 表创建成功");
+        }
+
+        if (!tables.Contains("BookmarkSyncBaselines"))
+        {
+            Log.Information("创建 BookmarkSyncBaselines 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE BookmarkSyncBaselines (
+                    Id INTEGER NOT NULL PRIMARY KEY,
+                    SavedAt INTEGER NOT NULL DEFAULT 0,
+                    ItemsJson TEXT NOT NULL DEFAULT '[]'
+                );";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("BookmarkSyncBaselines 表创建成功");
+        }
+
+        if (!tables.Contains("BrowserSyncMetas"))
+        {
+            Log.Information("创建 BrowserSyncMetas 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE BrowserSyncMetas (
+                    Key TEXT NOT NULL PRIMARY KEY,
+                    Value TEXT NOT NULL DEFAULT ''
+                );";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("BrowserSyncMetas 表创建成功");
+        }
+
+        if (!tables.Contains("BrowserHistoryItems"))
+        {
+            Log.Information("创建 BrowserHistoryItems 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE BrowserHistoryItems (
+                    Id TEXT NOT NULL PRIMARY KEY,
+                    Url TEXT NOT NULL,
+                    Title TEXT NOT NULL DEFAULT '',
+                    VisitTime INTEGER NOT NULL DEFAULT 0,
+                    VisitCount INTEGER NOT NULL DEFAULT 0,
+                    SourceBrowser TEXT NOT NULL DEFAULT '',
+                    IngestedAt INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IX_BrowserHistoryItems_VisitTime ON BrowserHistoryItems (VisitTime);
+                CREATE INDEX IX_BrowserHistoryItems_Url ON BrowserHistoryItems (Url);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("BrowserHistoryItems 表创建成功");
         }
     }
 

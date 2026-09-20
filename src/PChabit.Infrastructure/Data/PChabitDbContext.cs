@@ -22,7 +22,15 @@ public class PChabitDbContext : DbContext
     public DbSet<WorkPattern> WorkPatterns { get; set; }
     public DbSet<InsightReport> InsightReports { get; set; }
     public DbSet<DailySummary> DailySummaries { get; set; }
-    
+    public DbSet<BrowserBookmark> BrowserBookmarks { get; set; }
+
+    public DbSet<PendingBookmarkChange> PendingBookmarkChanges { get; set; }
+    public DbSet<BookmarkSyncBaseline> BookmarkSyncBaselines { get; set; }
+    public DbSet<BrowserSyncMeta> BrowserSyncMetas { get; set; }
+    public DbSet<BrowserHistoryItem> BrowserHistoryItems { get; set; }
+    public DbSet<AppDailyStats> AppDailyStats { get; set; }
+    public DbSet<HardwareSample> HardwareSamples { get; set; }
+
     public PChabitDbContext(DbContextOptions<PChabitDbContext> options) : base(options)
     {
     }
@@ -52,6 +60,15 @@ public class PChabitDbContext : DbContext
         ConfigureWorkPattern(modelBuilder);
         ConfigureInsightReport(modelBuilder);
         ConfigureDailySummary(modelBuilder);
+            ConfigureBrowserBookmark(modelBuilder);
+            modelBuilder.Entity<PendingBookmarkChange>(entity =>
+            {
+                entity.ToTable("PendingBookmarkChanges");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            });
+            ConfigureAppDailyStats(modelBuilder);
+            ConfigureHardwareSample(modelBuilder);
     }
     
     private static void ConfigureAppSession(ModelBuilder modelBuilder)
@@ -334,6 +351,68 @@ public class PChabitDbContext : DbContext
                 .HasConversion(
                     v => v.ToString("yyyy-MM-dd HH:mm:ss"),
                     v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
+        });
+    }
+
+    private static void ConfigureAppDailyStats(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AppDailyStats>(entity =>
+        {
+            entity.HasKey(e => new { e.Date, e.ProcessName });
+            entity.HasIndex(e => e.Date);
+
+            entity.Property(e => e.LastUpdated)
+                .HasConversion(
+                    v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                    v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
+        });
+    }
+
+    private static void ConfigureHardwareSample(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<HardwareSample>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.Timestamp).IsUnique();
+        });
+    }
+
+    private static void ConfigureBrowserBookmark(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BrowserBookmark>(entity =>
+        {
+            entity.ToTable("BrowserBookmarks");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(500);
+            entity.HasIndex(e => e.Url);
+            entity.HasIndex(e => e.IsDeleted);
+            entity.HasIndex(e => new { e.Type, e.Title });
+        });
+
+        modelBuilder.Entity<BookmarkSyncBaseline>(entity =>
+        {
+            entity.ToTable("BookmarkSyncBaselines");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<BrowserSyncMeta>(entity =>
+        {
+            entity.ToTable("BrowserSyncMetas");
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.Key).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<BrowserHistoryItem>(entity =>
+        {
+            entity.ToTable("BrowserHistoryItems");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasMaxLength(500);
+            entity.HasIndex(e => e.VisitTime);
+            entity.HasIndex(e => e.Url);
         });
     }
 }

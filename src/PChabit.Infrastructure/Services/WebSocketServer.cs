@@ -9,25 +9,54 @@ namespace PChabit.Infrastructure.Services;
 public class WebSocketServer : IDisposable
 {
     private readonly HttpListener _listener;
-    private readonly List<WebSocket> _clients;
+    private readonly Dictionary<string, WebSocket> _clients = new();
+    private readonly Dictionary<string, string> _clientBrowserNames = new();
     private readonly CancellationTokenSource _cts;
     private bool _isRunning;
     private readonly object _lock = new();
-    
+
     public int Port { get; }
     public bool IsRunning => _isRunning;
     public int ClientCount { get { lock (_lock) { return _clients.Count; } } }
-    
+
+    /// <summary>按 clientId 取进程识别的浏览器名；未知返回 null。</summary>
+    public string? GetClientBrowserName(string clientId)
+    {
+        lock (_lock)
+        {
+            return _clientBrowserNames.TryGetValue(clientId, out var n) ? n : null;
+        }
+    }
+
+    public IReadOnlyDictionary<string, string> GetClientBrowserNames()
+    {
+        lock (_lock)
+        {
+            return new Dictionary<string, string>(_clientBrowserNames);
+        }
+    }
+
+    /// <summary>当前已连接的 clientId 列表。</summary>
+    public IReadOnlyList<string> GetClientIds()
+    {
+        lock (_lock)
+        {
+            return _clients.Keys.ToList();
+        }
+    }
+
     public event EventHandler<WebSocketMessageEventArgs>? MessageReceived;
     public event EventHandler<WebSocketClientEventArgs>? ClientConnected;
     public event EventHandler<WebSocketClientEventArgs>? ClientDisconnected;
-    
+
+    /// <summary>供 Moq/设计时使用。</summary>
+    public WebSocketServer() : this(8765) { }
+
     public WebSocketServer(int port = 8765)
     {
         Port = port;
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://localhost:{port}/");
-        _clients = new List<WebSocket>();
         _cts = new CancellationTokenSource();
     }
     
@@ -59,7 +88,7 @@ public class WebSocketServer : IDisposable
         
         lock (_lock)
         {
-            foreach (var client in _clients.ToList())
+            foreach (var client in _clients.Values.ToList())
             {
                 try
                 {
@@ -68,6 +97,7 @@ public class WebSocketServer : IDisposable
                 catch { }
             }
             _clients.Clear();
+            _clientBrowserNames.Clear();
         }
         
         _listener.Stop();
@@ -113,37 +143,68 @@ public class WebSocketServer : IDisposable
     {
         WebSocket? webSocket = null;
         var clientId = Guid.NewGuid().ToString("N")[..8];
-        
+
         try
         {
+            // 连接建立前先记下客户端源端口，用于进程识别
+            var remoteEp = context.Request.RemoteEndPoint as System.Net.IPEndPoint;
+            var clientSourcePort = remoteEp?.Port ?? 0;
+
             var wsContext = await context.AcceptWebSocketAsync(null);
             webSocket = wsContext.WebSocket;
-            
+
             lock (_lock)
             {
-                _clients.Add(webSocket);
+                _clients[clientId] = webSocket;
             }
-            
+
+            // 精准识别：TCP 连接 → PID → 进程名（不依赖 UA/内核版本）
+            var processBrowser = BrowserProcessResolver.ResolveClientBrowser(clientSourcePort, Port);
+            lock (_lock)
+            {
+                _clientBrowserNames[clientId] = processBrowser;
+            }
+
             var clientInfo = GetClientInfo(context);
-            ClientConnected?.Invoke(this, new WebSocketClientEventArgs(clientId, clientInfo));
-            Log.Information("WebSocket 客户端已连接: {ClientId} ({ClientInfo})", clientId, clientInfo);
+            ClientConnected?.Invoke(this, new WebSocketClientEventArgs(clientId, clientInfo, processBrowser));
+            Log.Information("WebSocket 客户端已连接: {ClientId} 浏览器={Browser} ({ClientInfo})",
+                clientId, processBrowser, clientInfo);
             
-            var buffer = new byte[4096];
-            
+            var buffer = new byte[64 * 1024];
+
             while (webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
-                var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
-                
+                // 大消息分片：累积到 EndOfMessage 再投递
+                var messageBuffer = new MemoryStream();
+                WebSocketReceiveResult result;
+                do
+                {
+                    result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), cancellationToken);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        break;
+                    }
+                    if (result.MessageType == WebSocketMessageType.Text && result.Count > 0)
+                    {
+                        messageBuffer.Write(buffer, 0, result.Count);
+                    }
+                    // 空帧且未结束：避免死循环
+                    if (result.Count == 0 && !result.EndOfMessage)
+                    {
+                        break;
+                    }
+                } while (!result.EndOfMessage && webSocket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested);
+
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     break;
                 }
-                
-                if (result.MessageType == WebSocketMessageType.Text)
+
+                if (result.MessageType == WebSocketMessageType.Text && messageBuffer.Length > 0)
                 {
-                    var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    Log.Debug("WebSocket 收到消息: {ClientId}, 长度: {Length}, 内容: {Message}, 订阅者数量: {Count}", 
-                        clientId, result.Count, message, MessageReceived?.GetInvocationList().Length ?? 0);
+                    var message = Encoding.UTF8.GetString(messageBuffer.ToArray());
+                    Log.Debug("WebSocket 收到消息: {ClientId}, 长度: {Length}, 订阅者数量: {Count}",
+                        clientId, message.Length, MessageReceived?.GetInvocationList().Length ?? 0);
                     MessageReceived?.Invoke(this, new WebSocketMessageEventArgs(clientId, message));
                 }
             }
@@ -165,12 +226,13 @@ public class WebSocketServer : IDisposable
             {
                 lock (_lock)
                 {
-                    _clients.Remove(webSocket);
+                    _clients.Remove(clientId);
+                    _clientBrowserNames.Remove(clientId);
                 }
-                
+
                 ClientDisconnected?.Invoke(this, new WebSocketClientEventArgs(clientId, ""));
                 Log.Information("WebSocket 客户端已断开: {ClientId}", clientId);
-                
+
                 webSocket.Dispose();
             }
         }
@@ -180,13 +242,13 @@ public class WebSocketServer : IDisposable
     {
         var json = JsonSerializer.Serialize(data);
         var bytes = Encoding.UTF8.GetBytes(json);
-        
+
         List<WebSocket> clientsCopy;
         lock (_lock)
         {
-            clientsCopy = _clients.Where(c => c.State == WebSocketState.Open).ToList();
+            clientsCopy = _clients.Values.Where(c => c.State == WebSocketState.Open).ToList();
         }
-        
+
         var tasks = clientsCopy.Select(async client =>
         {
             try
@@ -198,24 +260,45 @@ public class WebSocketServer : IDisposable
                 Log.Warning(ex, "发送消息到客户端失败");
             }
         });
-        
+
         await Task.WhenAll(tasks);
     }
-    
+
+    /// <summary>向指定 clientId 发送；clientId 无效或未连接时直接返回。</summary>
     public async Task SendAsync<T>(string clientId, T data)
     {
         WebSocket? client;
         lock (_lock)
         {
-            client = _clients.FirstOrDefault(c => c.State == WebSocketState.Open);
+            _clients.TryGetValue(clientId, out client);
         }
-        
-        if (client == null) return;
-        
+
+        if (client == null || client.State != WebSocketState.Open) return;
+
         var json = JsonSerializer.Serialize(data);
         var bytes = Encoding.UTF8.GetBytes(json);
-        
-        await client.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+
+        try
+        {
+            await client.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "SendAsync 失败 clientId={ClientId}", clientId);
+        }
+    }
+
+    /// <summary>按进程识别的浏览器名筛选 clientId（可能为空或多个）。</summary>
+    public IReadOnlyList<string> GetClientIdsByBrowserName(string browserName)
+    {
+        if (string.IsNullOrWhiteSpace(browserName)) return Array.Empty<string>();
+        lock (_lock)
+        {
+            return _clientBrowserNames
+                .Where(kv => string.Equals(kv.Value, browserName, StringComparison.OrdinalIgnoreCase))
+                .Select(kv => kv.Key)
+                .ToList();
+        }
     }
     
     private static string GetClientInfo(HttpListenerContext context)
@@ -300,10 +383,10 @@ public class WebSocketServer : IDisposable
     public void Dispose()
     {
         _cts.Cancel();
-        
+
         lock (_lock)
         {
-            foreach (var client in _clients)
+            foreach (var client in _clients.Values)
             {
                 client.Dispose();
             }
@@ -331,10 +414,13 @@ public class WebSocketClientEventArgs : EventArgs
 {
     public string ClientId { get; }
     public string ClientInfo { get; }
-    
-    public WebSocketClientEventArgs(string clientId, string clientInfo)
+    /// <summary>由进程名解析出的浏览器显示名（Chrome/Edge/豆包浏览器…）</summary>
+    public string? BrowserName { get; }
+
+    public WebSocketClientEventArgs(string clientId, string clientInfo, string? browserName = null)
     {
         ClientId = clientId;
         ClientInfo = clientInfo;
+        BrowserName = browserName;
     }
 }

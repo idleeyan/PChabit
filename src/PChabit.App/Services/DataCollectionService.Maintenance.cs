@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 
@@ -36,14 +37,150 @@ public partial class DataCollectionService : IDisposable
             {
                 await AggregateDailySummaryAsync(dbContext, yesterday, dateKey);
 
-                // 聚合后进行数据清理
-                await CleanupOldDataAsync(dbContext);
+                // 应用统计日预聚合（AppDailyStats），与 DailySummaries 同源
+                await AggregateAppDailyStatsAsync(dbContext, yesterday, dateKey);
+
+                // 聚合后进行数据清理（保留天数读设置，钳制到 1-3650 天）
+                var retentionDays = Math.Clamp(_settingsService.DataRetentionDays, 1, 3650);
+                await CleanupOldDataAsync(dbContext, retentionDays);
             }
+
+            // 首次升级回填：AppDailyStats 为空且存在历史 AppSessions 时，回填最近 30 天
+            await EnsureAppDailyStatsBackfillAsync();
+
+            // 分析升级 P0：最近 30 天 DailySummaries 扩展指标（硬件日指标/WebMinutes）回填
+            await EnsureHardwareMetricsBackfillAsync();
         }
         catch (Exception ex)
         {
             Log.Error(ex, "每日聚合检查失败");
         }
+    }
+
+    /// <summary>首次升级回填：AppDailyStats 无行且 AppSessions 有历史数据时，聚合最近 30 天。</summary>
+    private async Task EnsureAppDailyStatsBackfillAsync()
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+
+            var hasAny = await dbContext.AppDailyStats.AnyAsync();
+            if (hasAny) return;
+
+            var hasHistory = await dbContext.AppSessions.AnyAsync(s => s.StartTime < DateTime.Today);
+            if (!hasHistory) return;
+
+            Log.Information("AppDailyStats 为空，开始回填最近 30 天应用统计…");
+            for (var i = 1; i <= 30; i++)
+            {
+                var day = DateTime.Today.AddDays(-i);
+                await AggregateAppDailyStatsAsync(dbContext, day, day.ToString("yyyy-MM-dd"));
+            }
+            Log.Information("AppDailyStats 回填完成");
+        }
+        catch (Exception ex)
+        {
+            // 表缺失/写锁竞争等异常不阻断主流程，后续每日聚合会自动补齐
+            Log.Error(ex, "AppDailyStats 回填失败（将由每日聚合自动补齐）");
+        }
+    }
+
+    /// <summary>聚合某日 AppSessions 到 AppDailyStats（Date + 规范化进程名 Upsert）。</summary>
+    private static async Task AggregateAppDailyStatsAsync(PChabitDbContext dbContext, DateTime date, string dateKey)
+    {
+        var nextDay = date.AddDays(1);
+
+        var appSessions = await dbContext.AppSessions
+            .AsNoTracking()
+            .Where(s => s.StartTime >= date && s.StartTime < nextDay)
+            .ToListAsync();
+
+        // 分类映射（专注判断需要生产力分类）
+        var categories = await dbContext.ProgramCategories
+            .AsNoTracking()
+            .Include(c => c.ProgramMappings)
+            .Where(c => c.IsActive)
+            .ToListAsync();
+        var categoryMap = AppStatsEngine.BuildCategoryMap(categories);
+
+        var groups = appSessions
+            .GroupBy(s => AppStatsEngine.NormalizeProcessName(s.ProcessName ?? ""))
+            .Where(g => g.Key.Length > 0)
+            .Select(g =>
+            {
+                var first = g.First();
+                var (catName, _) = AppStatsEngine.ResolveCategory(first, categoryMap);
+                var minutes = g.Where(s => s.EndTime.HasValue)
+                    .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+                var focusMinutes = g.Where(s => s.EndTime.HasValue &&
+                        (s.EndTime!.Value - s.StartTime).TotalMinutes >= 25 &&
+                        AnalyticsEngine.IsProductiveCategory(catName))
+                    .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+
+                // 小时分布：跨小时会话按重叠裁剪（与 AppStats 现状口径一致）
+                var hourly = new double[24];
+                foreach (var s in g.Where(x => x.EndTime.HasValue))
+                {
+                    var sStart = s.StartTime;
+                    var sEnd = s.EndTime!.Value;
+                    for (var h = 0; h < 24; h++)
+                    {
+                        var hs = date.AddHours(h);
+                        var he = hs.AddHours(1);
+                        if (sStart < he && sEnd > hs)
+                        {
+                            var st = sStart < hs ? hs : sStart;
+                            var en = sEnd > he ? he : sEnd;
+                            hourly[h] += (en - st).TotalMinutes;
+                        }
+                    }
+                }
+
+                return new
+                {
+                    Key = g.Key,
+                    Minutes = minutes,
+                    Sessions = g.Count(),
+                    FocusMinutes = focusMinutes,
+                    Hourly = hourly
+                };
+            })
+            .ToList();
+
+        foreach (var g in groups)
+        {
+            var row = await dbContext.AppDailyStats
+                .FirstOrDefaultAsync(x => x.Date == dateKey && x.ProcessName == g.Key);
+
+            var hourlyJson = System.Text.Json.JsonSerializer.Serialize(
+                g.Hourly.Select(m => Math.Round(m, 1)).ToArray());
+
+            if (row == null)
+            {
+                dbContext.AppDailyStats.Add(new AppDailyStats
+                {
+                    Date = dateKey,
+                    ProcessName = g.Key,
+                    Minutes = g.Minutes,
+                    Sessions = g.Sessions,
+                    FocusMinutes = g.FocusMinutes,
+                    HourlyJson = hourlyJson,
+                    LastUpdated = DateTime.Now
+                });
+            }
+            else
+            {
+                row.Minutes = g.Minutes;
+                row.Sessions = g.Sessions;
+                row.FocusMinutes = g.FocusMinutes;
+                row.HourlyJson = hourlyJson;
+                row.LastUpdated = DateTime.Now;
+            }
+        }
+
+        await dbContext.SaveChangesAsync();
+        Log.Information("应用统计日预聚合完成: {Date}, 应用数={Count}", dateKey, groups.Count);
     }
 
     private static async Task AggregateDailySummaryAsync(PChabitDbContext dbContext, DateTime date, string dateKey)
@@ -107,6 +244,12 @@ public partial class DataCollectionService : IDisposable
         var topAppsJson = System.Text.Json.JsonSerializer.Serialize(topApps);
         var hourlyKeysJson = System.Text.Json.JsonSerializer.Serialize(hourlyKeys);
 
+        // 分析升级 P0：硬件分钟样本二次聚合 + 网页有效浏览分钟
+        var hardware = await AggregateHardwareDayAsync(dbContext, date, dateKey);
+        var webMinutes = webActiveTicks > 0
+            ? Math.Round(webActiveTicks / (double)TimeSpan.TicksPerMinute, 1)
+            : 0;
+
         // Upsert DailySummary
         var summary = await dbContext.DailySummaries
             .FirstOrDefaultAsync(s => s.Date == dateKey);
@@ -125,6 +268,13 @@ public partial class DataCollectionService : IDisposable
                 WebPages = webPages,
                 WebDurationTicks = webDurationTicks,
                 WebActiveDurationTicks = webActiveTicks,
+                WebMinutes = webMinutes,
+                CpuLoadAvg = hardware?.CpuLoadAvg,
+                CpuLoadP95 = hardware?.CpuLoadP95,
+                GpuLoadAvg = hardware?.GpuLoadAvg,
+                GpuTempMax = hardware?.GpuTempMax,
+                MemLoadAvg = hardware?.MemLoadAvg,
+                MetricsVersion = 2,
                 LastUpdated = DateTime.Now
             };
             await dbContext.DailySummaries.AddAsync(summary);
@@ -139,6 +289,13 @@ public partial class DataCollectionService : IDisposable
             summary.WebPages = webPages;
             summary.WebDurationTicks = webDurationTicks;
             summary.WebActiveDurationTicks = webActiveTicks;
+            summary.WebMinutes = webMinutes;
+            summary.CpuLoadAvg = hardware?.CpuLoadAvg;
+            summary.CpuLoadP95 = hardware?.CpuLoadP95;
+            summary.GpuLoadAvg = hardware?.GpuLoadAvg;
+            summary.GpuTempMax = hardware?.GpuTempMax;
+            summary.MemLoadAvg = hardware?.MemLoadAvg;
+            summary.MetricsVersion = 2;
             summary.LastUpdated = DateTime.Now;
         }
 
@@ -150,21 +307,14 @@ public partial class DataCollectionService : IDisposable
 
     private static async Task CleanupOldDataAsync(PChabitDbContext dbContext, int retentionDays = 90)
     {
-        // 尝试从设置读取保留天数
-        try
-        {
-            var settings = dbContext.Set<DailySummary>().AsNoTracking().FirstOrDefault();
-            // 默认使用 90 天，实际从 ISettingsService 读取
-        }
-        catch { /* 忽略 */ }
-
         var cutoff = DateTime.Today.AddDays(-retentionDays);
         var cutoffStr = cutoff.ToString("yyyy-MM-dd");
+        // HardwareSamples.Timestamp 为 "yyyy-MM-dd HH:mm"，按字典序与当日 00:00 比较
+        var sampleCutoff = cutoffStr + " 00:00";
         var deletedCount = 0;
 
         Log.Information("开始数据清理，截止日期: {Cutoff}，保留 {Days} 天", cutoffStr, retentionDays);
 
-        // 清理前确保对应日期的 DailySummary 已存在
         // 清理 KeyboardSession
         var oldKeySessions = await dbContext.KeyboardSessions
             .Where(s => s.Date < cutoff)
@@ -172,10 +322,9 @@ public partial class DataCollectionService : IDisposable
 
         if (oldKeySessions > 0)
         {
-            await dbContext.KeyboardSessions
+            deletedCount += await dbContext.KeyboardSessions
                 .Where(s => s.Date < cutoff)
                 .ExecuteDeleteAsync();
-            deletedCount += oldKeySessions;
         }
 
         // 清理 MouseSession
@@ -185,10 +334,9 @@ public partial class DataCollectionService : IDisposable
 
         if (oldMouseSessions > 0)
         {
-            await dbContext.MouseSessions
+            deletedCount += await dbContext.MouseSessions
                 .Where(s => s.Date < cutoff)
                 .ExecuteDeleteAsync();
-            deletedCount += oldMouseSessions;
         }
 
         // 清理 WebSession
@@ -198,10 +346,9 @@ public partial class DataCollectionService : IDisposable
 
         if (oldWebSessions > 0)
         {
-            await dbContext.WebSessions
+            deletedCount += await dbContext.WebSessions
                 .Where(s => s.StartTime < cutoff)
                 .ExecuteDeleteAsync();
-            deletedCount += oldWebSessions;
         }
 
         // 清理 AppSession
@@ -211,11 +358,20 @@ public partial class DataCollectionService : IDisposable
 
         if (oldAppSessions > 0)
         {
-            await dbContext.AppSessions
+            deletedCount += await dbContext.AppSessions
                 .Where(s => s.StartTime < cutoff)
                 .ExecuteDeleteAsync();
-            deletedCount += oldAppSessions;
         }
+
+        // 清理 AppDailyStats 预聚合（与 AppSessions 同一保留口径）
+        // 注意：EF Core SQLite 不翻译 string.CompareOrdinal（历史上此处导致"每日聚合检查失败"），
+        // 定长日期键可直接用 SQL 字符串字典序比较，参数化一条完成删除并取回影响行数
+        deletedCount += await dbContext.Database
+            .ExecuteSqlInterpolatedAsync($"DELETE FROM AppDailyStats WHERE Date < {cutoffStr}");
+
+        // 分析升级 P0：清理过期硬件分钟样本（分钟粒度原始数据，跟随保留天数）
+        deletedCount += await dbContext.Database
+            .ExecuteSqlInterpolatedAsync($"DELETE FROM HardwareSamples WHERE Timestamp < {sampleCutoff}");
 
         if (deletedCount > 0)
         {
@@ -229,4 +385,3 @@ public partial class DataCollectionService : IDisposable
     }
 
 }
-

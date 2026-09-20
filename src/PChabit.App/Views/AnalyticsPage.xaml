@@ -5,305 +5,694 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    xmlns:viewModel="using:PChabit.App.ViewModels"
     xmlns:local="using:PChabit.App.Views"
     mc:Ignorable="d">
-    
+
     <Grid>
-        <Pivot>
-            <PivotItem Header="周统计">
-                <ScrollViewer Padding="24">
-                    <StackPanel Spacing="24">
-                        <TextBlock
-                            FontSize="24"
-                            FontWeight="SemiBold"
-                            Text="数据分析" />
-                        
-                        <Grid ColumnSpacing="16" RowSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            
-                            <Border
-                                Grid.Column="0"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="4">
+        <!--
+          WinUI Pivot 内容按子项横向排布测量，ScrollViewer/StackPanel 直接塞进 PivotItem
+          时，Selected 内容区可能整体右偏、MaxWidth 内容显示不全（分析-构成页问题）。
+          统一：外层 Grid 锁宽到 Pivot 可视宽 + Stretch，内层 StackPanel 左对齐 MaxWidth。
+        -->
+        <Pivot x:Name="RootPivot" Padding="0">
+
+            <!-- 总览：周期 + 多源 KPI + 多源摘要 + 洞察 -->
+            <PivotItem Header="总览" Tag="overview">
+                <Grid
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Width="{Binding ActualWidth, ElementName=RootPivot}">
+                    <ScrollViewer
+                        Padding="20,12,20,24"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalAlignment="Stretch">
+                        <StackPanel
+                            Spacing="16"
+                            MaxWidth="1100"
+                            HorizontalAlignment="Left">
+
+                            <Grid HorizontalAlignment="Stretch">
+                                <StackPanel Spacing="2" HorizontalAlignment="Left">
+                                    <TextBlock Style="{StaticResource PageTitleStyle}" Text="分析" />
                                     <TextBlock
                                         FontSize="12"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="总活跃时间" />
-                                    <TextBlock
-                                        FontSize="20"
-                                        FontWeight="SemiBold"
-                                        Text="{x:Bind ViewModel.TotalActiveTime, Mode=OneWay}" />
+                                        Text="{x:Bind ViewModel.PeriodRangeText, Mode=OneWay}" />
                                 </StackPanel>
-                            </Border>
-                            
-                            <Border
-                                Grid.Column="1"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="4">
-                                    <TextBlock
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="日均时间" />
-                                    <TextBlock
-                                        FontSize="20"
-                                        FontWeight="SemiBold"
-                                        Text="{x:Bind ViewModel.AverageDailyTime, Mode=OneWay}" />
+                                <StackPanel
+                                    HorizontalAlignment="Right"
+                                    Orientation="Horizontal"
+                                    Spacing="8">
+                                    <ComboBox
+                                        MinWidth="110"
+                                        ItemsSource="{x:Bind ViewModel.PeriodOptions}"
+                                        SelectedItem="{x:Bind ViewModel.SelectedPeriodKey, Mode=TwoWay}" />
+                                    <Button Padding="12,6" Click="Refresh_Click" Content="刷新" />
+                                    <Button
+                                        Padding="12,6"
+                                        Command="{x:Bind ViewModel.CopySummaryCommand}"
+                                        Content="复制周报" />
+                                    <Button
+                                        Padding="12,6"
+                                        Click="ExportExcel_Click"
+                                        Content="导出 Excel" />
+                                    <Button
+                                        Padding="12,6"
+                                        Command="{x:Bind ViewModel.OpenHistoryReportCommand}"
+                                        Content="历史分析" />
+                                    <Button
+                                        Padding="12,6"
+                                        Command="{x:Bind ViewModel.RunAiInsightCommand}"
+                                        Content="AI 深度解读" />
                                 </StackPanel>
-                            </Border>
-                            
-                            <Border
-                                Grid.Column="2"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="4">
-                                    <TextBlock
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="平均效率" />
-                                    <TextBlock
-                                        FontSize="20"
-                                        FontWeight="SemiBold"
-                                        Text="{x:Bind ViewModel.AverageProductivity, Mode=OneWay, Converter={StaticResource DoubleToScoreConverter}}" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                        
-                        <Border
-                            Padding="16"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12">
-                            <StackPanel Spacing="16">
-                                <TextBlock
-                                    FontSize="16"
-                                    FontWeight="SemiBold"
-                                    Text="每周活动统计" />
-                                
-                                <ItemsControl ItemsSource="{x:Bind ViewModel.WeeklyData, Mode=OneWay}">
+                            </Grid>
+
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Text="{x:Bind ViewModel.DataQualityDetail, Mode=OneWay}" />
+
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Text="{x:Bind ViewModel.DataQualityText, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.ShowLowDataBanner, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{x:Bind ViewModel.Kpis, Mode=OneWay}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="viewModel:WeeklyDataItem">
-                                            <Grid Margin="0,4">
-                                                <TextBlock Text="{x:Bind Day}" Width="50" />
-                                                <ProgressBar 
-                                                    Margin="60,0,40,0" 
-                                                    Maximum="12" 
-                                                    Value="{x:Bind Hours}" />
-                                                <TextBlock 
-                                                    HorizontalAlignment="Right" 
-                                                    Text="{x:Bind Hours, Converter={StaticResource HoursToStringConverter}}" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Border>
-                        
-                        <Grid ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            
-                            <Border
-                                Grid.Column="0"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="16">
-                                    <TextBlock
-                                        FontSize="16"
-                                        FontWeight="SemiBold"
-                                        Text="趋势变化" />
-                                    
-                                    <ItemsControl ItemsSource="{x:Bind ViewModel.Trends, Mode=OneWay}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="viewModel:TrendItem">
-                                                <Grid Margin="0,8">
-                                                    <StackPanel Spacing="2">
-                                                        <TextBlock FontWeight="Medium" Text="{x:Bind Name}" />
-                                                        <TextBlock
-                                                            FontSize="12"
-                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                            Text="{x:Bind Description}" />
-                                                    </StackPanel>
-                                                    <TextBlock
-                                                        HorizontalAlignment="Right"
-                                                        FontWeight="SemiBold"
-                                                        Foreground="{x:Bind Direction, Converter={StaticResource TrendColorConverter}}"
-                                                        Text="{x:Bind Change}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-                            
-                            <Border
-                                Grid.Column="1"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="16">
-                                    <TextBlock
-                                        FontSize="16"
-                                        FontWeight="SemiBold"
-                                        Text="行为模式" />
-                                    
-                                    <ItemsControl ItemsSource="{x:Bind ViewModel.Patterns, Mode=OneWay}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="viewModel:PatternItem">
-                                                <Grid Margin="0,8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="40" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    
-                                                    <FontIcon
-                                                        FontSize="20"
-                                                        Foreground="{StaticResource PrimaryBrush}"
-                                                        Glyph="{x:Bind Icon}" />
-                                                    
-                                                    <StackPanel Grid.Column="1" Spacing="2">
-                                                        <TextBlock FontWeight="Medium" Text="{x:Bind Title}" />
-                                                        <TextBlock
-                                                            FontSize="12"
-                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                            Text="{x:Bind Description}" />
-                                                    </StackPanel>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                        
-                        <Border
-                            Padding="16"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12">
-                            <StackPanel Spacing="16">
-                                <TextBlock
-                                    FontSize="16"
-                                    FontWeight="SemiBold"
-                                    Text="洞察建议" />
-                                
-                                <ItemsControl ItemsSource="{x:Bind ViewModel.Insights, Mode=OneWay}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="viewModel:InsightItem">
+                                        <DataTemplate>
                                             <Border
-                                                Margin="0,4"
+                                                Width="168"
+                                                Margin="0,0,8,0"
                                                 Padding="12"
-                                                Background="{x:Bind Type, Converter={StaticResource InsightBackgroundConverter}}"
-                                                CornerRadius="8">
+                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="10">
                                                 <StackPanel Spacing="4">
-                                                    <TextBlock FontWeight="Medium" Text="{x:Bind Title}" />
                                                     <TextBlock
                                                         FontSize="12"
-                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                        Text="{x:Bind Message}"
-                                                        TextWrapping="Wrap" />
+                                                        Text="{Binding Name}"
+                                                        TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock
+                                                        FontSize="18"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding Value}"
+                                                        TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{Binding Direction, Converter={StaticResource TrendColorConverter}}"
+                                                        Text="{Binding DeltaText}" />
+                                                    <TextBlock
+                                                        FontSize="11"
+                                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                        Text="{Binding Hint}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        ToolTipService.ToolTip="{Binding Hint}" />
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                            </StackPanel>
-                        </Border>
-                        
-                        <Grid ColumnSpacing="16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            
+                            </ScrollViewer>
+
                             <Border
-                                Grid.Column="0"
                                 Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasExtraMetrics, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock FontWeight="SemiBold" Text="多源数据摘要（键鼠 · 网页 · 硬件）" />
+                                    <TextBlock
+                                        FontSize="13"
+                                        TextWrapping="Wrap"
+                                        Text="{x:Bind ViewModel.ExtraSummaryText, Mode=OneWay}" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="来自 DailySummaries / HardwareSamples 日汇总；无采集的日期不计入。" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasWebData, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="6">
+                                    <Grid>
+                                        <TextBlock FontWeight="SemiBold" Text="网页与浏览历史" />
+                                        <Button
+                                            HorizontalAlignment="Right"
+                                            Padding="10,4"
+                                            Command="{x:Bind ViewModel.OpenHistoryReportCommand}"
+                                            Content="打开历史分析 →" />
+                                    </Grid>
+                                    <TextBlock
+                                        FontSize="13"
+                                        TextWrapping="Wrap"
+                                        Text="{x:Bind ViewModel.WebSummaryText, Mode=OneWay}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasAiResult, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock FontWeight="SemiBold" Text="AI 深度解读（仅供参考）" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="由你配置的 API 生成；规则洞察仍以本地为准。" />
+                                    <TextBlock
+                                        FontSize="14"
+                                        FontWeight="SemiBold"
+                                        TextWrapping="Wrap"
+                                        Text="{x:Bind ViewModel.AiSummary, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ItemsControl
+                                        ItemsSource="{x:Bind ViewModel.AiFindings, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Spacing="2" Margin="0,4">
+                                                    <TextBlock FontSize="13" FontWeight="SemiBold" Text="{Binding Title}" />
+                                                    <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="建议"
+                                        Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ItemsControl
+                                        ItemsSource="{x:Bind ViewModel.AiSuggestions, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="0,4"
+                                                    Padding="10"
+                                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="6"
+                                                    IsTapEnabled="True"
+                                                    Tapped="AiSuggestion_Tapped">
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock FontSize="13" FontWeight="SemiBold" Text="{Binding Title}" />
+                                                        <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding Detail}" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                            Text="跳转分析 →"
+                                                            Visibility="{Binding ActionKey, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl
+                                        ItemsSource="{x:Bind ViewModel.AiRisks, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    TextWrapping="Wrap"
+                                                    Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        TextWrapping="Wrap"
+                                        Text="{x:Bind ViewModel.AiResultText, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
                                 CornerRadius="12">
-                                <StackPanel Spacing="4">
-                                    <TextBlock
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="总按键次数" />
-                                    <TextBlock
-                                        FontSize="20"
-                                        FontWeight="SemiBold"
-                                        Text="{x:Bind ViewModel.TotalKeyPresses, Mode=OneWay}" />
+                                <StackPanel Spacing="10">
+                                    <TextBlock FontWeight="SemiBold" Text="洞察" />
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.Insights, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border
+                                                    Margin="0,4"
+                                                    Padding="12"
+                                                    HorizontalAlignment="Stretch"
+                                                    Background="{Binding Severity, Converter={StaticResource InsightBackgroundConverter}}"
+                                                    CornerRadius="8"
+                                                    IsTapEnabled="True"
+                                                    Tapped="InsightCard_Tapped">
+                                                    <StackPanel Spacing="4">
+                                                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                                                        <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding Message}" />
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                            Text="查看相关分析 →"
+                                                            Visibility="{Binding ActionKey, Converter={StaticResource NullToVisibilityConverter}}" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                             </Border>
-                            
-                            <Border
-                                Grid.Column="1"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="4">
-                                    <TextBlock
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="总鼠标点击" />
-                                    <TextBlock
-                                        FontSize="20"
-                                        FontWeight="SemiBold"
-                                        Text="{x:Bind ViewModel.TotalMouseClicks, Mode=OneWay}" />
-                                </StackPanel>
-                            </Border>
-                            
-                            <Border
-                                Grid.Column="2"
-                                Padding="16"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12">
-                                <StackPanel Spacing="4">
-                                    <TextBlock
-                                        FontSize="12"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="访问网页数" />
-                                    <TextBlock
-                                        FontSize="20"
-                                        FontWeight="SemiBold"
-                                        Text="{x:Bind ViewModel.TotalWebPages, Mode=OneWay}" />
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </StackPanel>
-                </ScrollViewer>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </PivotItem>
-            
-            <PivotItem Header="应用流向">
-                <local:SankeyView />
+
+            <!-- 节奏：日历热力 + 24h 分布 -->
+            <PivotItem Header="节奏" Tag="rhythm">
+                <Grid
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Width="{Binding ActualWidth, ElementName=RootPivot}">
+                    <ScrollViewer
+                        Padding="20,12,20,24"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalAlignment="Stretch">
+                        <StackPanel
+                            Spacing="16"
+                            MaxWidth="1100"
+                            HorizontalAlignment="Left">
+                            <TextBlock Style="{StaticResource PageTitleStyle}" Text="使用节奏" />
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.PeriodRangeText, Mode=OneWay}" />
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12">
+                                <StackPanel Spacing="10">
+                                    <TextBlock FontWeight="SemiBold" Text="近 14 天活跃热力" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="点击某天可跳转时间线" />
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.CalendarDays, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Width="62"
+                                                        Height="54"
+                                                        Margin="0,0,6,0"
+                                                        Tapped="DayHeat_Tapped"
+                                                        Tag="{Binding Date}"
+                                                        ToolTipService.ToolTip="{Binding DateLabel}">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="#1E40AF" Opacity="{Binding IntensityLevel, Converter={StaticResource HeatLevelToOpacityConverter}}" />
+                                                        </Border.Background>
+                                                        <StackPanel
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center"
+                                                            Spacing="1">
+                                                            <TextBlock HorizontalAlignment="Center" FontSize="10" Text="{Binding DayLabel}" />
+                                                            <TextBlock HorizontalAlignment="Center" FontSize="11" FontWeight="SemiBold" Text="{Binding DateLabel}" />
+                                                            <TextBlock HorizontalAlignment="Center" FontSize="10" Text="{Binding HoursText}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                x:Name="RhythmCard"
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12">
+                                <StackPanel Spacing="10">
+                                    <TextBlock FontWeight="SemiBold" Text="24 小时活跃分布" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="观察高峰与夜间使用；洞察中的「高效时段 / 夜间使用」指向本页" />
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourHeat, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Width="26"
+                                                        Height="34"
+                                                        Margin="0,0,3,0"
+                                                        ToolTipService.ToolTip="{Binding Label}">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="#10B981" Opacity="{Binding IntensityLevel, Converter={StaticResource HeatLevelToOpacityConverter}}" />
+                                                        </Border.Background>
+                                                        <TextBlock
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center"
+                                                            FontSize="9"
+                                                            Text="{Binding Label}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </PivotItem>
+
+            <!-- 构成：分类占比 + 应用变化（修复右偏：锁宽 + 左对齐 + 行内 Grid 拉伸） -->
+            <PivotItem Header="构成" Tag="compose">
+                <Grid
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Width="{Binding ActualWidth, ElementName=RootPivot}">
+                    <ScrollViewer
+                        Padding="20,12,20,24"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalAlignment="Stretch">
+                        <StackPanel
+                            Spacing="16"
+                            MaxWidth="1100"
+                            HorizontalAlignment="Left">
+                            <TextBlock Style="{StaticResource PageTitleStyle}" Text="时间构成" />
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.PeriodRangeText, Mode=OneWay}" />
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasCategories, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="10" HorizontalAlignment="Stretch">
+                                    <TextBlock FontWeight="SemiBold" Text="分类构成（本周期）" />
+                                    <ItemsControl
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        ItemsSource="{x:Bind ViewModel.CategoryShares, Mode=OneWay}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid
+                                                    Margin="0,6"
+                                                    HorizontalAlignment="Stretch"
+                                                    ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" MinWidth="88" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" MinWidth="48" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock
+                                                        MaxWidth="140"
+                                                        VerticalAlignment="Center"
+                                                        Text="{Binding Category}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        ToolTipService.ToolTip="{Binding Category}" />
+                                                    <ProgressBar
+                                                        Grid.Column="1"
+                                                        Height="8"
+                                                        Maximum="100"
+                                                        VerticalAlignment="Center"
+                                                        Value="{Binding Percentage}" />
+                                                    <TextBlock
+                                                        Grid.Column="2"
+                                                        Margin="8,0,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Text="{Binding MinutesText}" />
+                                                    <TextBlock
+                                                        Grid.Column="3"
+                                                        Margin="8,0,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding PercentText}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                x:Name="ComposeCard"
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasTopChanges, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="8" HorizontalAlignment="Stretch">
+                                    <TextBlock FontWeight="SemiBold" Text="应用变化（对比上一周期）" />
+                                    <ItemsControl
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        ItemsSource="{x:Bind ViewModel.TopChanges, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4" HorizontalAlignment="Stretch">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" MinWidth="64" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock
+                                                        Grid.Column="1"
+                                                        Margin="12,0,0,0"
+                                                        Text="{Binding DurationText}" />
+                                                    <TextBlock
+                                                        Grid.Column="2"
+                                                        Margin="12,0,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        FontWeight="SemiBold"
+                                                        Foreground="{Binding Direction, Converter={StaticResource TrendColorConverter}}"
+                                                        Text="{Binding DeltaText}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </PivotItem>
+
+            <!-- 硬件：应用×样本画像 + 小时负载 -->
+            <PivotItem Header="硬件" Tag="hardware">
+                <Grid
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Width="{Binding ActualWidth, ElementName=RootPivot}">
+                    <ScrollViewer
+                        Padding="20,12,20,24"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalAlignment="Stretch">
+                        <StackPanel
+                            Spacing="16"
+                            MaxWidth="1100"
+                            HorizontalAlignment="Left">
+                            <TextBlock Style="{StaticResource PageTitleStyle}" Text="硬件画像" />
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.PeriodRangeText, Mode=OneWay}" />
+
+                            <Border
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasHardwareProfile, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="6">
+                                    <TextBlock FontWeight="SemiBold" Text="周期汇总" />
+                                    <TextBlock
+                                        FontSize="13"
+                                        TextWrapping="Wrap"
+                                        Text="{x:Bind ViewModel.HardwareSummaryText, Mode=OneWay}" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="来自 HardwareSamples 分钟样本与 AppSession 对齐；重叠分钟=会话与样本交集。" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasHardwareProfile, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock FontWeight="SemiBold" Text="应用负载 Top（按 GPU 均值）" />
+                                    <Grid Margin="0,0,0,4" ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="应用" />
+                                        <TextBlock Grid.Column="1" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="CPU" />
+                                        <TextBlock Grid.Column="2" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="GPU" />
+                                        <TextBlock Grid.Column="3" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="峰温" />
+                                        <TextBlock Grid.Column="4" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="重叠" />
+                                    </Grid>
+                                    <ItemsControl
+                                        HorizontalAlignment="Stretch"
+                                        ItemsSource="{x:Bind ViewModel.HardwareAppLoads, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4" HorizontalAlignment="Stretch" ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1" FontSize="12" Text="{Binding CpuText}" />
+                                                    <TextBlock Grid.Column="2" FontSize="12" FontWeight="SemiBold" Text="{Binding GpuText}" />
+                                                    <TextBlock Grid.Column="3" FontSize="12" Text="{Binding TempText}" />
+                                                    <TextBlock Grid.Column="4" FontSize="12" Text="{Binding MinutesText}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasHardwareProfile, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="10">
+                                    <TextBlock FontWeight="SemiBold" Text="小时 CPU / GPU 负载（有样本时段）" />
+                                    <local:HardwareTrendView
+                                        x:Name="HardwareTrend"
+                                        ChartJson="{x:Bind ViewModel.HardwareChartJson, Mode=OneWay}"
+                                        MinHeight="250" />
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="绿 CPU% · 蓝 GPU% · 橙 GPU 温度（右轴估算）" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasHardwareProfile, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <TextBlock
+                                    FontSize="13"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    Text="说明：对齐将每个硬件分钟归属到该分钟内重叠最长的前台会话进程；多开/后台高负载不会全部记到前台应用上。实时数值仍在「硬件监控」页。" />
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasHardwareProfile, Mode=OneWay, Converter={StaticResource InverseBooleanToVisibilityConverter}}">
+                                <TextBlock
+                                    FontSize="13"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    Text="本周期尚无硬件分钟样本。请确认硬件监控已开启并运行一段时间（3.9.3+ 会自动落库）；历史日期无法回填。" />
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </PivotItem>
+
+            <PivotItem Header="应用流向" Tag="flow">
+                <Grid
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Width="{Binding ActualWidth, ElementName=RootPivot}">
+                    <local:SankeyView HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                </Grid>
             </PivotItem>
         </Pivot>
     </Grid>

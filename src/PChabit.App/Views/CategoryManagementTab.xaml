@@ -53,6 +53,7 @@
 
                 <ListView
                     Grid.Row="2"
+                    ScrollViewer.VerticalScrollBarVisibility="Visible"
                     Margin="0,16,0,0"
                     ItemsSource="{x:Bind ViewModel.Categories, Mode=OneWay}"
                     SelectedItem="{x:Bind ViewModel.SelectedCategory, Mode=TwoWay}"
@@ -114,10 +115,10 @@
             </Grid>
         </Border>
 
-        <!-- 右侧映射管理 -->
+        <!-- 右侧映射管理（右距 24 与网页访问-网站分类页面对齐，避免按钮贴窗边） -->
         <Border
             Grid.Column="1"
-            Margin="16,0,0,0"
+            Margin="16,0,24,0"
             Padding="16"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -130,16 +131,18 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- 标题和操作 -->
+                <!-- 标题和操作：与网页访问-网站分类页面(WebsiteCategoryTab)完全一致的写法，单 Grid + 按钮右对齐 -->
                 <Grid Grid.Row="0">
                     <StackPanel Spacing="4">
                         <TextBlock
                             FontSize="20"
                             FontWeight="SemiBold"
+                            TextTrimming="CharacterEllipsis"
                             Text="{x:Bind ViewModel.SelectedCategory.Name, Mode=OneWay, FallbackValue='选择分类查看映射'}" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            TextTrimming="CharacterEllipsis"
                             Text="{x:Bind ViewModel.SelectedCategory.Description, Mode=OneWay, FallbackValue=''}" />
                     </StackPanel>
 
@@ -187,6 +190,7 @@
                     <!-- 有分类选中时显示 -->
                     <ListView
                         ItemsSource="{x:Bind ViewModel.FilteredMappings, Mode=OneWay}"
+                        ScrollViewer.VerticalScrollBarVisibility="Visible"
                         Visibility="{x:Bind ViewModel.IsCategorySelected, Mode=OneWay}">
                         <ListView.ItemTemplate>
                             <DataTemplate>

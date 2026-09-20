@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFramework>net9.0-windows10.0.22621.0</TargetFramework>
+        <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
         <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
         <OutputType>WinExe</OutputType>
         <UseWinUI>true</UseWinUI>
@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>3.1.10</Version>
+        <Version>3.15.15</Version>
         <Platforms>x64</Platforms>
         <PlatformTarget>x64</PlatformTarget>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -21,19 +21,19 @@
         <EnableMsixTooling>false</EnableMsixTooling>
         <WindowsPackageType>None</WindowsPackageType>
         <!--
-            完全自包含部署：所有 WinAppSDK 原生 DLL 复制到输出目录，不依赖系统 framework package。
-            之前 WindowsAppSDKSelfContained=false 依赖系统 WindowsAppRuntime framework package，
-            但系统存在 2.2.0/2.3.0/2.3.1 多个版本，与 NuGet 解析的 WinUI 2.2.1 不匹配，
-            导致 XAML 解析器在 MeasureOverride 阶段创建 TextBox（控件 ControlTemplate 内嵌元素）时
-            抛 COMException 0x80004005 "Cannot create instance of type 'TextBox'"。
+            閻庣懓鑻崣蹇涙嚊椤忓嫬鐦堕柛姘煎亰閸庡绱旂拠褏绐楅柟纰樺亾闁?WinAppSDK 闁告鍠撻弫?DLL 濠㈣泛绉撮崺妤呭礆閹峰瞼缈婚柛鎴ｆ濞叉媽銇愰弴顏嗙濞戞挸绉崇欢椋庢導閺嶎偊鍏囩紓?framework package闁?
+            濞戞柨顑呮晶?WindowsAppSDKSelfContained=false 濞撴碍绻嗙粋鍡欏寲閼姐倗鍩?WindowsAppRuntime framework package闁?
+            濞达絽妫涢柈瀵哥磼閻旈鎽犻柛?2.2.0/2.3.0/2.3.1 濠㈣埖鐭柌婊堟偋閸喐鎷遍柨娑樺缁?NuGet 閻熸瑱绲鹃悗浠嬫儍?WinUI 2.2.1 濞戞挸绉寸亸顕€鏌婂蹇曠
+            閻庝絻澹堥崵?XAML 閻熸瑱绲鹃悗浠嬪闯閵娿儲韬?MeasureOverride 闂傚啳鍩栭宀勫礆濞戞绱?TextBox闁挎稑鐗婄敮鑸电?ControlTemplate 闁告劕鎳庣粊鐢稿礂閸愵亞顦遍柨娑橆槹濡?
+            闁?COMException 0x80004005 "Cannot create instance of type 'TextBox'"闁?
         -->
         <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
         <WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>true</WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>
         <!--
-            关键：在 self-contained 模式下，必须初始化 Bootstrap 才能加载 WindowsAppRuntime。
-            否则 WinUI 控件（TextBox/NumberBox 等）在 MeasureOverride 阶段创建时
-            抛 COMException 0x80004005 "Cannot create instance of type 'TextBox'"。
-            Bootstrap.Initialize() 会查找并加载同目录下的 WindowsAppRuntime DLL。
+            闁稿繑濞婇弫顓㈡晬濮橆剚韬?self-contained 婵☆垪鈧磭纭€濞戞挸顑戠槐婵婄疀閸涙番鈧繘宕氬┑鍡╂綏闁?Bootstrap 闁归潧绉烽崗姗€宕濋悩鐑樼グ WindowsAppRuntime闁?
+            闁告熬绠戦崹?WinUI 闁硅矇鍌涱偨闁挎稑婀礶xtBox/NumberBox 缂佹稑顧€缁辨岸宕?MeasureOverride 闂傚啳鍩栭宀勫礆濞戞绱﹂柡?
+            闁?COMException 0x80004005 "Cannot create instance of type 'TextBox'"闁?
+            Bootstrap.Initialize() 濞村吋纰嶉悡锟犲箥閹嗗珯闁告梻濮惧ù鍥触瀹€鈧ú鎷屻亹閺囨氨鐟撻柣?WindowsAppRuntime DLL闁?
         -->
         <WindowsAppSDKBootstrapInitializeAtStartup>true</WindowsAppSDKBootstrapInitializeAtStartup>
         <EnableMrtTargets>false</EnableMrtTargets>
@@ -45,12 +45,12 @@
 
     <!--
         ============================================================
-        WinUI 内置控件多语言资源白名单（只保留简体中文 + 英语）
+        WinUI 闁告劕鎳愰悿鍡涘箳瑜屽▎銏″緞濮樻剚鍤旈悷灏佸亾閻犙冨缁噣鎯傞挊澶嬪€抽柛妤佹穿缁辨瑩宕ｉ鍐闁伙絾鐟ч悾婵囨媴閹捐尪鍘柡?+ 闁兼槒绮鹃銏ゆ晬?
 
-        保留项：
-          - zh-CN：简体中文
-          - en-us：英语（同时是 WinUI 的中性回退语言）
-        需要英式英语时改为：zh-CN;en-us;en-GB
+        濞ｅ洦绻勯弳鈧銈囨缁?
+          - zh-CN闁挎稒姘ㄩ悾婵囨媴閹捐尪鍘柡?
+          - en-us闁挎稒淇虹€氬磭鎷犻銊х闁告艾鏈鍌炲及?WinUI 闁汇劌瀚懙鎴﹀箑瑜嶅ú鏍焻閳ь剛鎷犻鈾€鏋呴柨?
+        闂傚洠鍋撻悷鏇氭祰鐎氬啿顕ｈ箛姘伆閻犲浂鍘藉鍌炲绩闁稖绀嬮柨娑欘劮h-CN;en-us;en-GB
         ============================================================
     -->
     <PropertyGroup>
@@ -59,15 +59,15 @@
 
     <!--
         ============================================================
-        关键修复：dotnet publish 不会自动复制 Microsoft.UI.Xaml 目录到
-        publish 目录，而该目录下的 Assets\NoiseAsset_256x256_PNG.png 是
-        TextBox/NumberBox 等 WinUI 控件 ControlTemplate 必需的资源。
-        缺失会导致 COMException 0x8007007E (ERROR_MOD_NOT_FOUND) 和
-        0x80004005 (E_FAIL)，在 MeasureOverride 阶段创建 TextBox 时崩溃。
+        闁稿繑濞婇弫顓熺┍椤旂⒈妲婚柨娑欑摪otnet publish 濞戞挸绉崇槐浼存嚊椤忓嫬袟濠㈣泛绉撮崺?Microsoft.UI.Xaml 闁烩晩鍠栫紞宥夊礆?
+        publish 闁烩晩鍠栫紞宥夋晬瀹€鍐ｅ亾瀹€鍐惧殙闁烩晩鍠栫紞宥嗙▔鐎ｎ剚鐣?Assets\NoiseAsset_256x256_PNG.png 闁?
+        TextBox/NumberBox 缂?WinUI 闁硅矇鍌涱偨 ControlTemplate 闊洤鎳樺〒鍫曟儍閸曨喚銈繝褎鍔戦埀?
+        缂傚倸鎼妵鎴炲濮橆剦鍤ら柤?COMException 0x8007007E (ERROR_MOD_NOT_FOUND) 闁?
+        0x80004005 (E_FAIL)闁挎稑鑻﹢?MeasureOverride 闂傚啳鍩栭宀勫礆濞戞绱?TextBox 闁哄啳娉涚粚鍨攦閸愶腹鍋?
 
-        此 Target 在 Publish 后强制从 bin 复制 Microsoft.UI.Xaml 整个目录
-        到 PublishDir，确保运行时能找到 NoiseAsset 资源。
-        （Build 阶段 WindowsAppSDK 自带的 targets 会自动复制到 bin，无需干预。）
+        婵?Target 闁?Publish 闁告艾楠稿閬嶅礆閺堢數鐭?bin 濠㈣泛绉撮崺?Microsoft.UI.Xaml 闁轰胶绻濋柌婊堟儎椤旇偐绉?
+        闁?PublishDir闁挎稑鐬奸垾妯荤┍濠靛﹦绠ラ悶娑樻湰濡炲倿鎳楅懞銉ヮ棟闁?NoiseAsset 閻犙冨缁噣濡?
+        闁挎稑婀恥ild 闂傚啳鍩栭?WindowsAppSDK 闁煎浜滈悽顐︽儍?targets 濞村吋淇洪崵婊堝礉閵娿儺妲婚柛鎺曟硾閸?bin闁挎稑鏈Λ銈夋閳ь剟鐛弻銉殨闁靛棗鍋婄槐?
         ============================================================
     -->
     <Target Name="EnsureMicrosoftUIXamlInPublish" AfterTargets="Publish">
@@ -79,44 +79,44 @@
               DestinationFiles="$(PublishDir)Microsoft.UI.Xaml\%(RecursiveDir)%(Filename)%(Extension)"
               SkipUnchangedFiles="true"
               Condition="'@(_MuxFilesForPublish)' != '' And Exists('$(PublishDir)')" />
-        <Message Text="已强制复制 Microsoft.UI.Xaml 到 $(PublishDir) (@(_MuxFilesForPublish->Count()) 个文件)" Importance="high" />
+        <Message Text="鐎瑰憡褰冨閬嶅礆鐠轰警妲婚柛?Microsoft.UI.Xaml 闁?$(PublishDir) (@(_MuxFilesForPublish->Count()) 濞戞搩浜濋弸鍐╃?" Importance="high" />
     </Target>
 
     <!--
         ============================================================
-        清理输出目录中多余的 WinUI 语言资源（.mui）
+        婵炴挸鎳愰幃濠冩綇閹惧啿姣夐柣鈺婂枛缂嶅秵绋夐鐑嗘▼濞达絾鐟у▓?WinUI 閻犲浂鍙€閳诲牏鎸ч崟顒傜埍闁?mui闁?
 
-        根因：Microsoft.WindowsAppSDK.WinUI 包在
-          runtimes-framework\win-x64\native\<语言代码>\
-        下携带 30+ 种语言（af-ZA / de-DE / ja-JP / zh-TW ...）的
+        闁哄秶鎳撳ú婊堟晬濮濅巩crosoft.WindowsAppSDK.WinUI 闁告牕鎳庡﹢?
+          runtimes-framework\win-x64\native\<閻犲浂鍙€閳诲牊绂掗敐鍥╁灣>\
+        濞戞挸顑嗛幆锛勬暜?30+ 缂佸绉烽銏㈡嚊閳ь剟鏁嶉崸鍗?ZA / de-DE / ja-JP / zh-TW ...闁挎稑顦卞▓?
           Microsoft.ui.xaml.dll.mui
           Microsoft.UI.Xaml.Phone.dll.mui
-        自包含部署（WindowsAppSDKSelfContained=true）时，
-        Microsoft.WindowsAppSDK.SelfContained.targets 用
+        闁煎浜滅€垫﹢宕ラ锕€鍔ョ紓鍐嚋缁辨┒indowsAppSDKSelfContained=true闁挎稑顦板鍌炴晬?
+        Microsoft.WindowsAppSDK.SelfContained.targets 闁?
           <MicrosoftWindowsAppSDKFiles Include="...\**\*.mui" />
-        全量 glob 复制，不做语言过滤；而 <SatelliteResourceLanguages>
-        只作用于 NuGet 托管附属程序集，对这类原生 .mui 无效。
-        因此 en-GB / zh-TW 会被一并输出到 bin 与 publish。
+        闁稿繈鍔戦崳?glob 濠㈣泛绉撮崺妤呮晬鐏炶偐鐟濋柛瀣亢椤曘垻鎳涢埀顒佹交閸ャ劍濮㈤柨娑欑閳?<SatelliteResourceLanguages>
+        闁告瑯浜欑紞鏃堟偨閵娿倗鑹?NuGet 闁瑰灚顭囬鎼佹⒔閸曨偆娼ｇ紒瀣儏缁參姊块崱顓犵閻庣數顢婄换鏍尵鐠囨彃鏂ч柣?.mui 闁哄啰濮甸弲銉╁Υ?
+        闁搞儳濮甸?en-GB / zh-TW 濞村吋淇洪～锔界▔閳ь剟鐛幆鎵炕闁告垵鎼崺?bin 濞?publish闁?
 
-        策略：白名单 + 标记文件判定
-          1) 只有「目录内存在 Microsoft.ui.xaml.dll.mui」的目录才被视为
-             WinUI 语言目录，其余目录（Assets / Views / extensions /
-             Microsoft.UI.Xaml / runtimes ...）一律不参与匹配；
-          2) 命中标记但不在 $(KeepLanguageFolders) 内的目录才删除。
+        缂佹稒鐗滈弳鎰版晬濮樿鲸顏ら柛姘Т瀹?+ 闁哄秴娲╅鍥棘閸ワ附顐介柛鎺嬪€曢悾?
+          1) 闁告瑯浜濆﹢渚€濡村畝鈧ú鎷屻亹閺囩偛鏁堕悗娑櫭﹢?Microsoft.ui.xaml.dll.mui闁靛棗绉跺▓鎴︽儎椤旇偐绉块柟闈涚Х椤妇鎲撮崱鏇＄
+             WinUI 閻犲浂鍙€閳诲牓鎯勯鑲╃Э闁挎稑鑻崣鐐媴濞嗘垶绐楃憸鐗堟穿缁辨ssets / Views / extensions /
+             Microsoft.UI.Xaml / runtimes ...闁挎稑顦粩鏉戭嚗鐎ｂ晝鐟濋柛娆忓€风粭宀勫礌瑜版帒甯抽柨?
+          2) 闁告稒鍨濋懙鎴﹀冀閸ヮ亶鍞跺ù锝呮缁楀宕?$(KeepLanguageFolders) 闁告劕鎳愬▓鎴︽儎椤旇偐绉块柟闈涚Т閸ㄥ綊姊介妶鍐ｅ亾?
 
-        ⚠️ 必须用「完整路径 + Exclude」做白名单匹配，有以下两条实测教训：
-          - 禁止把目录名写进元数据再用它判断（例如在 ItemGroup 里定义
-            <DirLower>$([System.String]::Copy('%(Filename)').ToLowerInvariant())</DirLower>）：
-            MSBuild 在元数据定义位置不展开 %(Identity)/%(Filename)，会静默得到空串，
-            导致白名单判断恒为 false，把该保留的 zh-CN / en-us 一起删掉（无报错、无警告）；
-          - 禁止用字符串 Contains 做白名单匹配：真实目录名大小写不统一
-            （en-GB 大写、en-us 小写、zh-CN 混合），字符串比较会漏判。
-            MSBuild 的 Exclude 走路径匹配，大小写不敏感，可容忍该差异
-            （实测：白名单写成 ZH-cn;EN-US 仍能正确保留 zh-CN / en-us）。
+        闁宠法濯寸粭?闊洤鎳橀妴蹇涙偨閵婏絺鍋撶仦鐣屾殮闁轰胶顥愰惌鎯ь嚗?+ Exclude闁靛棗绉存禒娑㈡儌閽樺鍊抽柛妤佹礀鐏忣噣鏌婂蹇曠闁哄牆顦禍鎺撶▔鐎ｂ晞鈷堥柡澶嗏偓宕囨澖婵炴潙顑嗛弳鈧悹渚囧弿缁?
+          - 缂佸倷鐒﹂娑㈠箮婵犲嫭绐楃憸鐗堟礀閹洟宕樺▎鎺旂闁稿繐鍟弳鐔煎箲椤旂厧鏅欓柣顫妼閻ｇ娀宕氶妶鍡樼劷闁挎稑鐗呯欢銉︿繆閸屾碍韬?ItemGroup 闂佹彃鑻悾鐐▕?
+            <DirLower>$([System.String]::Copy('%(Filename)').ToLowerInvariant())</DirLower>闁挎稑顧€缁?
+            MSBuild 闁革负鍔岄崢鎾诲极閻楀牆绁﹂悗瑙勭煯缁犵喐鎷呭鍥╂瀭濞戞挸绉撮惈宥咁嚕閳?%(Identity)/%(Filename)闁挎稑濂旂槐浼存濞嗘挾甯涚€电増顨呴崺宀€绮氭潪鎷岊洬闁?
+            閻庝絻澹堥崵褔鎯傞挊澶嬪€抽柛妤佹礀閸ㄤ粙寮鐔惰埅濞?false闁挎稑鏈俊鍝ユ嫚閵夈倗绠介柣锝嗙懅濞?zh-CN / en-us 濞戞挴鍋撻悹褍鍢查崹褰掑箳婢舵稓绀勯柡鍐У婵倝鏌ㄥ▎宥佸亾娴ｈ锟ラ悹鈧敃鈧幉锟犳晬婢舵稓骞?
+          - 缂佸倷鐒﹂娑㈡偨閵娿儳鎽熺紒妤嬬細鐟?Contains 闁稿姘ㄥ▍褔宕ュ鍛闁告牕缍婇崢銈夋晬濮樿鲸鍩傞悗鍦仧濞叉媽銇愰弴鐐村€冲鍫嗗啰姣堥柛鎰懁缁楀绱掗悢鍓侇伇
+            闁挎稑娼抧-GB 濠㈠爢鍐ㄦ櫢闁靛棔韬琻-us 閻忓繐绻愰崯鎾诲Υ娴滃儶-CN 婵烇絽鍢查幃搴ㄦ晬婢舵稓绀夐悗娑欘殘椤戜焦绋夐崣澶屾Х閺夊牆鍟╃槐鏉款煶韫囨挸鐏查柕?
+            MSBuild 闁?Exclude 閻犙勫閻儳顕ラ崟顐㈢埍闂佹澘绋勭槐婵囧緞瑜嶉惃顒勫礃濞嗗海鐟濋柡浣哥箲閸斿懘鏁嶇仦钘夎閻庡湱鎳撶换濠勬嫚閵夈儲鈻曠€?
+            闁挎稑鐗嗛悿鍕圭€ｅ墎绐楅柣褑妫勯幃鏇㈠础閺囩偛鏅搁柟?ZH-cn;EN-US 濞寸姴绉烽崗妯侯潰閿濆洠鈧ɑ绌卞┑鍫熸畬 zh-CN / en-us闁挎稑顦埀?
 
-        ⚠️ 曾存在的缺陷：旧实现用「目录名不以 en-/zh- 开头就删除，
-        仅豁免 Assets/Views/Microsoft.UI.Xaml」的反向过滤，
-        会误删 extensions 等业务目录。新实现不再触碰任何非语言目录。
+        闁宠法濯寸粭?闁哄洦鍎抽悺銊╁捶閵娧勭暠缂傚倹妞藉▍锟犳晬濮橆厽锛嬮悗鍦仧楠炲洭鎮介妸锝傚亾瀹€鈧ú鎷屻亹閺囩偞鍊冲☉鎾崇С娴?en-/zh- 鐎殿喒鍋撳鑸垫綑濮樸劑宕氶悩缁樼彑闁?
+        濞寸姴鎳撻惇顕€宕?Assets/Views/Microsoft.UI.Xaml闁靛棗绉跺▓鎴﹀矗瀹ュ懏鍊婚弶鈺佹处閹躲倝鏁?
+        濞村吋淇洪銈夊礆?extensions 缂佹稑顦粭鐔煎礉閿涘嫭绐楃憸鐗堟磸閳ь剙鍊归弻濠勨偓鍦仧楠炲洦绋夊鍛櫃閻熸瑱濡囬～顐ｇ鐠佸磭绉块梻鍫㈠仩椤曘垻鎳涢埀顒勬儎椤旇偐绉块柕?
         ============================================================
     -->
     <Target Name="RemoveUnusedMuiLanguageFolders" AfterTargets="Build" Condition="Exists('$(OutDir)')">
@@ -126,7 +126,7 @@
                              Condition="Exists('%(Identity)\Microsoft.ui.xaml.dll.mui')" />
             <_KeepLangEntry Include="$(KeepLanguageFolders.Split(';'))" />
             <_KeepLangDirFull Include="@(_KeepLangEntry->'$(OutDir)%(Identity)\')" />
-            <!-- 冗余保险：即使这些目录里将来出现同名 .mui，也不参与清理 -->
+            <!-- 闁告劖銇炵紞鎴炵┍濠靛鐝﹂柨娑欒壘瀹撳棙鎷呴懗顖滅濞存粍绋撳ú鎷屻亹閺囥垹娅￠悘蹇撴濞肩敻宕欓搹鐟扮疀闁告艾鑻幃?.mui闁挎稑濂旂弧鍐╃▔瀹ュ懎妫樺☉鎾冲缁斿鎮?-->
             <_ProtectedDirName Include="Assets;Views;extensions;Microsoft.UI.Xaml;runtimes" />
             <_ProtectedDirFull Include="@(_ProtectedDirName->'$(OutDir)%(Identity)\')" />
         </ItemGroup>
@@ -134,14 +134,14 @@
             <_MuiLanguageDirToDelete Include="@(_MuiLanguageDir)"
                                      Exclude="@(_KeepLangDirFull);@(_ProtectedDirFull)" />
         </ItemGroup>
-        <!-- 诊断用（-v:d 可见）：排查语言目录判定为何未命中 -->
+        <!-- 閻犲洤锕ラ弻鍥偨椤帞绀?v:d 闁告瑯鍨甸～鍡涙晬婢舵稓绐楅柟鐑樺笚閻擄紕鎷犻鈾€鏋呴柣鈺婂枛缂嶅秹宕氶妶鍛毎濞戞捁妗ㄧ紞宥夊嫉椤忓嫭鍤掑☉?-->
         <Message Text="[PCH-LANG][Build] OutDir=$(OutDir)" Importance="low" />
         <Message Text="[PCH-LANG][Build] candidates=@(_MuiLanguageDir)" Importance="low" />
         <Message Text="[PCH-LANG][Build] keep=@(_KeepLangDirFull)" Importance="low" />
         <Message Text="[PCH-LANG][Build] delete=@(_MuiLanguageDirToDelete)" Importance="low" />
         <RemoveDir Directories="@(_MuiLanguageDirToDelete)"
                    Condition="'@(_MuiLanguageDirToDelete)' != ''" />
-        <Message Text="已从 $(OutDir) 清理 @(_MuiLanguageDirToDelete->Count()) 个多余语言目录（保留 $(KeepLanguageFolders)）" Importance="high" />
+        <Message Text="mui-clean" Importance="low" />
     </Target>
 
     <Target Name="RemoveUnusedMuiLanguageFoldersForPublish" AfterTargets="Publish" Condition="Exists('$(PublishDir)')">
@@ -160,7 +160,7 @@
         </ItemGroup>
         <RemoveDir Directories="@(_MuiLanguageDirToDeleteForPublish)"
                    Condition="'@(_MuiLanguageDirToDeleteForPublish)' != ''" />
-        <Message Text="已从 $(PublishDir) 清理 @(_MuiLanguageDirToDeleteForPublish->Count()) 个多余语言目录（保留 $(KeepLanguageFolders)）" Importance="high" />
+        <Message Text="mui-clean" Importance="low" />
     </Target>
 
     <!-- WinUI 3 unpacked publish fix: dotnet publish may miss XBF/PRI files -->
@@ -174,29 +174,32 @@
             <WinUIBuildXbf Include="$(WinUIBuildOutput)Views\**\*.xbf" />
         </ItemGroup>
         <Copy SourceFiles="@(WinUIBuildXbf)" DestinationFolder="$(PublishDir)Views\%(RecursiveDir)" SkipUnchangedFiles="true" />
-        <Message Text="已复制 WinUI 资源文件到发布目录" Importance="high" />
+        <Message Text="mui-clean" Importance="low" />
     </Target>
 
     <!--
-        框架依赖模式（SelfContained=false）+ 无 RuntimeIdentifier 时，
-        NuGet 的 runtimes\<rid>\native\ 原生库不会被自动复制到输出目录，
-        但 deps.json 仍引用 runtimes\win-x64\native\e_sqlite3.dll。
-        此 Target 从 NuGet 包缓存中复制 SQLite 原生库到输出目录的 runtimes\win-x64\native\ 子目录，
-        让 .NET 运行时能按 deps.json 的 runtimeTargets 正确加载。
+        婵℃妫欓悘锔界瑹濠靛﹦顩俊顖椻偓宕囩闁挎稑婀痚lfContained=false闁? 闁?RuntimeIdentifier 闁哄啳顔愮槐?
+        NuGet 闁?runtimes\<rid>\native\ 闁告鍠撻弫鎾存償閹捐尙鐟濆ù鍏间亢椤箓鎳涢鍕楀璺虹Т閸╂宕氶幏宀€缈婚柛鎴ｆ濞叉媽銇愰弴顏嗙
+        濞?deps.json 濞寸姴绉寸槐鈺呮偨?runtimes\win-x64\native\e_sqlite3.dll闁?
+        婵?Target 濞?NuGet 闁告牕鎳愮槐锔锯偓娑櫭奸懙鎴炲緞瀹ュ懎鐓?SQLite 闁告鍠撻弫鎾存償閹惧啿鐓傞弶鍫熸尭閸ゎ參鎯勯鑲╃Э闁?runtimes\win-x64\native\ 閻庢稒鍔楀ú鎷屻亹閺囶亞绀?
+        閻?.NET 閺夆晜鍔橀、鎴﹀籍閹澘鍘撮柟?deps.json 闁?runtimeTargets 婵繐绲块垾姗€宕濋悩鐑樼グ闁?
     -->
     <Target Name="CopyNativeSqliteToOutput" AfterTargets="Build">
+        <ItemGroup>
+            <_SqliteNativeCandidate Include="$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\**\runtimes\win-x64\native\e_sqlite3.dll" />
+        </ItemGroup>
         <PropertyGroup>
-            <SqliteNativeSrc>$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\2.1.10\runtimes\win-x64\native\e_sqlite3.dll</SqliteNativeSrc>
             <SqliteNativeDestDir>$(OutDir)runtimes\win-x64\native</SqliteNativeDestDir>
         </PropertyGroup>
-        <Copy SourceFiles="$(SqliteNativeSrc)" DestinationFolder="$(SqliteNativeDestDir)" SkipUnchangedFiles="true" Condition="Exists('$(SqliteNativeSrc)')" />
-        <Message Text="已复制 e_sqlite3.dll 到 $(SqliteNativeDestDir)" Importance="normal" Condition="Exists('$(SqliteNativeSrc)')" />
+        <Copy SourceFiles="@(_SqliteNativeCandidate)" DestinationFolder="$(SqliteNativeDestDir)" SkipUnchangedFiles="true" Condition="'@(_SqliteNativeCandidate)' != ''" />
+        <Message Text="鐎瑰憡褰冮ˇ鏌ュ礆?e_sqlite3.dll 闁?$(SqliteNativeDestDir)" Importance="normal" Condition="'@(_SqliteNativeCandidate)' != ''" />
     </Target>
 
     <ItemGroup>
         <ProjectReference Include="..\PChabit.Application\PChabit.Application.csproj" />
         <ProjectReference Include="..\PChabit.Infrastructure\PChabit.Infrastructure.csproj" />
         <ProjectReference Include="..\PChabit.Core\PChabit.Core.csproj" />
+        <ProjectReference Include="..\PChabit.HardwareMonitor\PChabit.HardwareMonitor.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -213,6 +216,12 @@
         <Content Include="Assets\PieChart\**\*">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="Assets\HistoryReport\**\*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Assets\Analytics\**\*">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Content Include="pchabit.ico">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
@@ -223,12 +232,15 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.2.0" />
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.*" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
         <PackageReference Include="Serilog" Version="4.*" />
         <PackageReference Include="Serilog.Sinks.Async" Version="2.*" />
         <PackageReference Include="Serilog.Sinks.File" Version="6.*" />
-        <PackageReference Include="System.Drawing.Common" Version="9.*" />
+        <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     </ItemGroup>
 </Project>
+
+
+

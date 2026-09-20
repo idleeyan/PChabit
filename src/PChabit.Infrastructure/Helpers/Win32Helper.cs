@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace PChabit.Infrastructure.Helpers;
@@ -99,6 +99,17 @@ public static class Win32Helper
         public int Y;
     }
     
+    /// <summary>WH_MOUSE_LL 回调结构体（正确名称应为 MSLLHOOKSTRUCT）。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSLLHOOKSTRUCT
+    {
+        public POINT pt;
+        public uint mouseData;
+        public uint flags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEHOOKSTRUCT
     {

@@ -141,8 +141,10 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         
         if (m.TotalClicks > 1)
         {
-            var totalMinutes = mouseSessions.Count * 60;
-            var avgSeconds = (totalMinutes * 60.0) / m.TotalClicks;
+            // 按有数据的小时数估算活跃分钟（每行 = 1 小时桶），比固定 60 分钟/会话更合理
+            var hoursWithData = mouseSessions.Count;
+            var totalMinutes = hoursWithData * 60.0;
+            var avgSeconds = totalMinutes > 0 ? (totalMinutes * 60.0) / m.TotalClicks : 0;
             m.AverageClickInterval = $"{avgSeconds:F1} 秒";
         }
         

@@ -150,6 +150,96 @@
             </Border>
 
             <!-- ======================================== -->
+            <!-- ======================================== -->
+            <!-- 任务栏与托盘                                    -->
+            <!-- ======================================== -->
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border
+                                Width="32"
+                                Height="32"
+                                Background="{StaticResource WarningSoftBrush}"
+                                CornerRadius="6">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Foreground="{StaticResource WarningBrush}"
+                                    Glyph="&#xE792;" />
+                            </Border>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="任务栏与托盘" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="44,0,0,0"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="在任务栏上显示实时硬件信息"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Margin="44,0,0,0" Spacing="4">
+                        <TextBlock FontWeight="Medium" Text="任务栏显示" />
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            CornerRadius="8"
+                            Margin="0,8,0,0"
+                            Padding="16,4">
+                            <StackPanel>
+                                <ToggleSwitch
+                                    x:Name="TaskbarEnabledSwitch"
+                                    Header="在任务栏左侧显示两行实时信息"
+                                    OffContent="关闭"
+                                    OnContent="开启" />
+                                <TextBlock
+                                    Margin="0,4,0,0"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="信息显示在任务栏最左侧（与左边缘对齐），勾选下方项目选择显示内容"
+                                    TextWrapping="Wrap" />
+                                <Grid Margin="0,12,0,0" ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <ToggleSwitch x:Name="TaskbarCpuSwitch" Header="CPU 占用" />
+                                        <ToggleSwitch x:Name="TaskbarMemorySwitch" Header="内存占用" />
+                                        <ToggleSwitch x:Name="TaskbarGpuSwitch" Header="GPU 占用" />
+                                        <ToggleSwitch x:Name="TaskbarNetSwitch" Header="网速" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <ToggleSwitch x:Name="TaskbarDiskSwitch" Header="磁盘活动" />
+                                        <ToggleSwitch x:Name="TaskbarTempSwitch" Header="温度" />
+                                        <ToggleSwitch x:Name="TaskbarUsageSwitch" Header="今日使用统计" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    Margin="0,8,0,0"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="显示项目：CPU/内存/GPU（含显存）第一行，网速/磁盘/温度/今日第二行"
+                                    TextWrapping="Wrap" />
+                                <StackPanel Margin="0,12,0,0" Spacing="8">
+                                    <TextBlock Text="每日目标 (小时)" />
+                                    <NumberBox
+                                        x:Name="DailyUsageGoalHoursBox"
+                                        Minimum="0.5"
+                                        Maximum="24"
+                                        SmallChange="0.5"
+                                        SpinButtonPlacementMode="Compact" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <!-- 外观设置                                    -->
             <!-- ======================================== -->
             <Border Style="{StaticResource CardStyle}">
@@ -281,6 +371,81 @@
             </Border>
 
             <!-- ======================================== -->
+            <!-- 分析 AI（可选，默认关闭）                    -->
+            <!-- ======================================== -->
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border
+                                Width="32"
+                                Height="32"
+                                Background="{StaticResource PrimarySoftBrush}"
+                                CornerRadius="6">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Foreground="{StaticResource PrimaryBrush}"
+                                    Glyph="&#xE945;" />
+                            </Border>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="分析 AI 深度解读" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="44,0,0,0"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="默认关闭。启用后，分析页可将聚合 KPI/构成/硬件摘要发给你配置的 OpenAI 兼容端点；不上传窗口标题、URL 与完整会话。密钥仅存本机。本地模型请把超时调到 300 秒以上。"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border
+                        Margin="44,0,0,0"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        CornerRadius="8"
+                        Padding="16,4">
+                        <StackPanel Spacing="8">
+                            <ToggleSwitch
+                                x:Name="AiInsightsEnabledSwitch"
+                                Header="启用 AI 深度解读"
+                                IsOn="False" />
+                            <TextBox
+                                x:Name="AiBaseUrlBox"
+                                Header="Base URL（OpenAI 兼容）"
+                                PlaceholderText="https://api.openai.com/v1 或 http://127.0.0.1:11434/v1"
+                                Text="" />
+                            <PasswordBox
+                                x:Name="AiApiKeyBox"
+                                Header="API Key"
+                                PlaceholderText="sk-...（本地服务可填任意非空字符）" />
+                            <TextBox
+                                x:Name="AiModelBox"
+                                Header="模型"
+                                PlaceholderText="glm-4-flash 或 qwen2.5 等"
+                                Text="" />
+                            <ComboBox
+                                x:Name="AiProviderBox"
+                                Header="Provider"
+                                HorizontalAlignment="Stretch"
+                                SelectedItem="智谱" />
+                            <NumberBox
+                                x:Name="AiTimeoutSecondsBox"
+                                Header="请求超时（秒）"
+                                Minimum="30"
+                                Maximum="900"
+                                SmallChange="30"
+                                LargeChange="60"
+                                Value="300" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ======================================== -->
             <!-- 关于卡片                                    -->
             <!-- ======================================== -->
             <Border Style="{StaticResource CardStyle}">
@@ -382,6 +547,22 @@
                             <TextBlock
                                 FontSize="13"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="构建信息" />
+                            <TextBlock
+                                x:Name="BuildInfoText"
+                                Grid.Column="1"
+                                FontSize="13"
+                                TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                FontSize="13"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="项目地址" />
                             <HyperlinkButton
                                 Grid.Column="1"
@@ -400,11 +581,80 @@
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="技术栈" />
                             <TextBlock
+                                x:Name="TechStackText"
                                 Grid.Column="1"
                                 FontSize="13"
-                                Text="WinUI 3 + .NET 9 + SQLite (WinAppSDK 2.2.1)" />
+                                TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                FontSize="13"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="运行时" />
+                            <TextBlock
+                                x:Name="RuntimeInfoText"
+                                Grid.Column="1"
+                                FontSize="13"
+                                TextWrapping="Wrap" />
+                        </Grid>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                FontSize="13"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="数据目录" />
+                            <TextBlock
+                                x:Name="DataPathText"
+                                Grid.Column="1"
+                                FontSize="12"
+                                TextWrapping="Wrap"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </Grid>
                     </StackPanel>
+
+                    <!-- 最新更新摘要 -->
+                    <Border
+                        Margin="44,0,0,0"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon
+                                    FontSize="14"
+                                    Foreground="{StaticResource PrimaryBrush}"
+                                    Glyph="&#xE8A5;" />
+                                <TextBlock
+                                    x:Name="LatestChangelogTitleText"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    Text="最新更新" />
+                            </StackPanel>
+                            <TextBlock
+                                x:Name="LatestChangelogBodyText"
+                                FontSize="12"
+                                LineHeight="18"
+                                MaxHeight="120"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                TextWrapping="Wrap"
+                                TextTrimming="CharacterEllipsis" />
+                            <Button
+                                x:Name="ExpandChangelogButton"
+                                Padding="8,4"
+                                FontSize="12"
+                                Content="展开完整日志"
+                                Click="OnViewChangelogClick" />
+                        </StackPanel>
+                    </Border>
 
                     <!-- 使用说明 -->
                     <Border

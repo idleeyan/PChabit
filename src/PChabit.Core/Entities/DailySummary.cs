@@ -29,6 +29,35 @@ public class DailySummary : EntityBase
     /// <summary>当日网页有效浏览总时长（Ticks）</summary>
     public long WebActiveDurationTicks { get; set; }
 
+    // ===== 分析升级 P0 扩展列（均可空；null = 尚未按 v2 口径产出）=====
+
+    /// <summary>当日应用切换次数（P1 v2 引擎填充）</summary>
+    public int? AppSwitches { get; set; }
+
+    /// <summary>v2 口径专注总分钟 / 专注段数 / 平均专注质量 0-100（P1 填充）</summary>
+    public double? FocusMinutesV2 { get; set; }
+    public int? FocusCountV2 { get; set; }
+    public double? FocusQualityAvg { get; set; }
+
+    /// <summary>当日网页有效浏览分钟数（P0 即可由 WebActiveDurationTicks 换算填充）</summary>
+    public double? WebMinutes { get; set; }
+
+    // ----- 硬件日汇总（P0：由 HardwareSamples 分钟样本聚合）-----
+    /// <summary>CPU 日均负载 % / 日 P95 负载 %</summary>
+    public double? CpuLoadAvg { get; set; }
+    public double? CpuLoadP95 { get; set; }
+    /// <summary>GPU 日均负载 % / 日最高温度 ℃</summary>
+    public double? GpuLoadAvg { get; set; }
+    public double? GpuTempMax { get; set; }
+    /// <summary>内存日均负载 %</summary>
+    public double? MemLoadAvg { get; set; }
+    /// <summary>当日网络上下行总字节（预留；分钟样本仅存速率均值，P1 接入会话累计口径后填充）</summary>
+    public long? NetBytesUp { get; set; }
+    public long? NetBytesDown { get; set; }
+
+    /// <summary>指标口径版本：null/1 = v1 行为数据；2 = 已含 P0+ 扩展口径</summary>
+    public int? MetricsVersion { get; set; }
+
     /// <summary>最后更新时间</summary>
     public DateTime LastUpdated { get; set; }
 }

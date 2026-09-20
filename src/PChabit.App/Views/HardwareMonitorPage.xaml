@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="PChabit.App.Views.HardwareMonitorPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:PChabit.App.Converters"
+    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <converters:StringToBrushConverter x:Key="StringToBrushConverter" />
+        <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+        <Style x:Key="MetricValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="MetricBarStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="5" />
+            <Setter Property="Minimum" Value="0" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="24">
+
+            <Grid>
+                <TextBlock
+                    Style="{StaticResource PageTitleStyle}"
+                    Text="硬件监控" />
+                <StackPanel
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Orientation="Horizontal"
+                    Spacing="12">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.UpdatedTimeText, Mode=OneWay}" />
+                    <Button
+                        Padding="12,6"
+                        Click="OpenHistoryAnalysis_Click"
+                        Content="历史分析 →" />
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnSpacing="20" RowSpacing="20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- CPU：使用率大字+条；温度独立色条（0-100°C） -->
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Width="36" Height="36" Background="{StaticResource PrimarySoftBrush}" CornerRadius="8">
+                                <FontIcon FontSize="16" Foreground="{StaticResource PrimaryBrush}" Glyph="&#xE950;" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="CPU" />
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="30"
+                            FontWeight="Bold"
+                            Foreground="{x:Bind ViewModel.CpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Text="{x:Bind ViewModel.CpuUsageText, Mode=OneWay}" />
+                        <ProgressBar
+                            Style="{StaticResource MetricBarStyle}"
+                            Maximum="100"
+                            Foreground="{x:Bind ViewModel.CpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Value="{x:Bind ViewModel.CpuUsage, Mode=OneWay}" />
+                        <StackPanel Spacing="4">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="使用率" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Style="{StaticResource MetricValueStyle}"
+                                    Foreground="{x:Bind ViewModel.CpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Text="{x:Bind ViewModel.CpuUsageText, Mode=OneWay}" />
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="温度" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Style="{StaticResource MetricValueStyle}"
+                                    Foreground="{x:Bind ViewModel.CpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Text="{x:Bind ViewModel.CpuTempText, Mode=OneWay}" />
+                            </Grid>
+                            <ProgressBar
+                                Style="{StaticResource MetricBarStyle}"
+                                Maximum="{x:Bind ViewModel.TempBarMax, Mode=OneWay}"
+                                Foreground="{x:Bind ViewModel.CpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                Value="{x:Bind ViewModel.CpuTemp, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- GPU：使用率 / 温度 / 显存 三条独立视觉 -->
+                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Width="36" Height="36" Background="{StaticResource InsightSoftBrush}" CornerRadius="8">
+                                <FontIcon FontSize="16" Foreground="{StaticResource InsightBrush}" Glyph="&#xE94F;" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="GPU" />
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="30"
+                            FontWeight="Bold"
+                            Foreground="{x:Bind ViewModel.GpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Text="{x:Bind ViewModel.GpuUsageText, Mode=OneWay}" />
+                        <ProgressBar
+                            Style="{StaticResource MetricBarStyle}"
+                            Maximum="100"
+                            Foreground="{x:Bind ViewModel.GpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Value="{x:Bind ViewModel.GpuUsage, Mode=OneWay}" />
+                        <StackPanel Spacing="6">
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="使用率" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.GpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.GpuUsageText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="100"
+                                    Foreground="{x:Bind ViewModel.GpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Value="{x:Bind ViewModel.GpuUsage, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="温度" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.GpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.GpuTempText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="{x:Bind ViewModel.TempBarMax, Mode=OneWay}"
+                                    Foreground="{x:Bind ViewModel.GpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Value="{x:Bind ViewModel.GpuTemp, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="显存" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.GpuVramColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.GpuVramText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="100"
+                                    Foreground="{x:Bind ViewModel.GpuVramColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Value="{x:Bind ViewModel.GpuVramPercent, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 内存 -->
+                <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Width="36" Height="36" Background="{StaticResource SuccessSoftBrush}" CornerRadius="8">
+                                <FontIcon FontSize="16" Foreground="{StaticResource SuccessBrush}" Glyph="&#xE7F8;" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="内存" />
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="30"
+                            FontWeight="Bold"
+                            Foreground="{x:Bind ViewModel.MemColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Text="{x:Bind ViewModel.MemLoadText, Mode=OneWay}" />
+                        <ProgressBar
+                            Style="{StaticResource MetricBarStyle}"
+                            Maximum="100"
+                            Foreground="{x:Bind ViewModel.MemColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Value="{x:Bind ViewModel.MemLoad, Mode=OneWay}" />
+                        <StackPanel Spacing="4">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="占用" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Style="{StaticResource MetricValueStyle}"
+                                    Foreground="{x:Bind ViewModel.MemColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Text="{x:Bind ViewModel.MemLoadText, Mode=OneWay}" />
+                            </Grid>
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="容量" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    Style="{StaticResource MetricValueStyle}"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind ViewModel.MemUsageText, Mode=OneWay}" />
+                            </Grid>
+                            <ProgressBar
+                                Style="{StaticResource MetricBarStyle}"
+                                Maximum="100"
+                                Foreground="{x:Bind ViewModel.MemColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                Value="{x:Bind ViewModel.MemLoad, Mode=OneWay}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 磁盘：活动率 + 读/写 速度条 -->
+                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Width="36" Height="36" Background="{StaticResource WarningSoftBrush}" CornerRadius="8">
+                                <FontIcon FontSize="16" Foreground="{StaticResource WarningBrush}" Glyph="&#xE7B8;" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="磁盘" />
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="24"
+                            FontWeight="Bold"
+                            Foreground="{x:Bind ViewModel.DiskActivityColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Text="{x:Bind ViewModel.DiskActivityText, Mode=OneWay}" />
+                        <ProgressBar
+                            Style="{StaticResource MetricBarStyle}"
+                            Maximum="100"
+                            Foreground="{x:Bind ViewModel.DiskActivityColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                            Value="{x:Bind ViewModel.DiskActivity, Mode=OneWay}" />
+                        <StackPanel Spacing="6">
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="活动率" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.DiskActivityColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.DiskActivityText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="100"
+                                    Foreground="{x:Bind ViewModel.DiskActivityColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Value="{x:Bind ViewModel.DiskActivity, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="读取" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.DiskReadColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.DiskReadText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="{x:Bind ViewModel.DiskSpeedBarMax, Mode=OneWay}"
+                                    Foreground="{x:Bind ViewModel.DiskReadColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Value="{x:Bind ViewModel.DiskReadMbps, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="写入" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.DiskWriteColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.DiskWriteText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="{x:Bind ViewModel.DiskSpeedBarMax, Mode=OneWay}"
+                                    Foreground="{x:Bind ViewModel.DiskWriteColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                    Value="{x:Bind ViewModel.DiskWriteMbps, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 网络：上下行速度条 + 会话流量 / IP -->
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Width="36" Height="36" Background="{StaticResource StatWebColor}" Opacity="0.15" CornerRadius="8">
+                                <FontIcon FontSize="16" Foreground="{StaticResource StatWebBrush}" Glyph="&#xE8F2;" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="网络" />
+                        </StackPanel>
+                        <StackPanel Spacing="6">
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="下行 ↓" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        FontSize="18"
+                                        FontWeight="Bold"
+                                        Foreground="{StaticResource StatWebBrush}"
+                                        Text="{x:Bind ViewModel.NetDownText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="{x:Bind ViewModel.NetSpeedBarMax, Mode=OneWay}"
+                                    Foreground="{StaticResource StatWebBrush}"
+                                    Value="{x:Bind ViewModel.NetDownMbps, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="2">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="上行 ↑" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        FontSize="18"
+                                        FontWeight="Bold"
+                                        Foreground="{StaticResource PrimaryBrush}"
+                                        Text="{x:Bind ViewModel.NetUpText, Mode=OneWay}" />
+                                </Grid>
+                                <ProgressBar
+                                    Style="{StaticResource MetricBarStyle}"
+                                    Maximum="{x:Bind ViewModel.NetSpeedBarMax, Mode=OneWay}"
+                                    Foreground="{StaticResource PrimaryBrush}"
+                                    Value="{x:Bind ViewModel.NetUpMbps, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.NetSessionText, Mode=OneWay}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource MetricLabelStyle}" Text="IP" />
+                            <TextBlock
+                                Grid.Column="2"
+                                Style="{StaticResource MetricValueStyle}"
+                                Text="{x:Bind ViewModel.NetIpText, Mode=OneWay}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 说明 -->
+                <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource CardStyle}">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Border Width="36" Height="36" Background="{StaticResource PrimarySoftBrush}" CornerRadius="8">
+                                <FontIcon FontSize="16" Foreground="{StaticResource PrimaryBrush}" Glyph="&#xE946;" />
+                            </Border>
+                            <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="说明" />
+                        </StackPanel>
+                        <TextBlock
+                            FontSize="13"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="采集引擎移植自开源项目 LiteMonitor（LibreHardwareMonitor），数据每秒刷新。主指标与副指标（温度/显存/读写/网速）均带色条：绿正常、黄偏高、红过高；无读数时为灰色且进度条为空。"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="阈值：负载 70%/90%，CPU 温度 70/85°C，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。温度依赖主板/驱动，可能显示 --。"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

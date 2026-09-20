@@ -3,8 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Web.WebView2.Core;
 using PChabit.App.ViewModels;
 using PChabit.Core.Entities;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 using Serilog;
 
@@ -42,8 +44,16 @@ public sealed partial class AppStatsTab : UserControl
     private async void AppStatsTab_Loaded(object sender, RoutedEventArgs e)
     {
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+        // 同步周期下拉初始选中
+        if (RangeCombo.SelectedItem == null)
+        {
+            RangeCombo.SelectedItem = ViewModel.PeriodOptions.FirstOrDefault(p => p.Kind == ViewModel.SelectedRange);
+        }
+
+        // 数据加载与 WebView2 初始化并行（陷阱 13：数据加载不依赖 UI 组件生命周期）
+        _ = ViewModel.LoadDataAsync();
         await InitializePieChartAsync();
-        await ViewModel.LoadDataAsync();
     }
 
     private async void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -66,6 +76,16 @@ public sealed partial class AppStatsTab : UserControl
             {
                 Log.Warning("[AppStatsTab] CoreWebView2 初始化失败");
                 return;
+            }
+
+            // 图表跟随应用/系统主题（修复 piechart.html 写死白底）
+            try
+            {
+                PieChartWebView.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Auto;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "[AppStatsTab] 设置 WebView2 配色方案失败，回退默认");
             }
 
             var htmlPath = System.IO.Path.Combine(
@@ -125,26 +145,84 @@ public sealed partial class AppStatsTab : UserControl
         }
     }
 
-    private void TodayButton_Click(object sender, RoutedEventArgs e)
+    // === 工具栏 ===
+
+    private void RangeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        ViewModel.SelectedDate = DateTime.Today;
+        if (RangeCombo.SelectedItem is PeriodOption opt && opt.Kind != ViewModel.SelectedRange)
+        {
+            ViewModel.SelectedRange = opt.Kind;
+        }
     }
 
-    private void YesterdayButton_Click(object sender, RoutedEventArgs e)
+    private void CategoryChip_Click(object sender, RoutedEventArgs e)
     {
-        ViewModel.SelectedDate = DateTime.Today.AddDays(-1);
+        if (sender is Button button && button.Tag is string category)
+        {
+            ViewModel.SelectedCategoryFilter = category == "全部分类" ? null : category;
+        }
     }
 
-    private void WeekButton_Click(object sender, RoutedEventArgs e)
+    private void SearchBox_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        ViewModel.SelectedDate = DateTime.Today.AddDays(-7);
+        ViewModel.SearchText = sender.Text;
     }
+
+    private async void RefreshButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.LoadDataAsync();
+    }
+
+    private async void CopySummaryButton_Click(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.CopySummaryCommand.ExecuteAsync(null);
+        CopyFeedback.Visibility = Visibility.Visible;
+        await Task.Delay(2000);
+        CopyFeedback.Visibility = Visibility.Collapsed;
+    }
+
+    // === 排行行交互 ===
 
     private void BackgroundMode_Toggled(object sender, RoutedEventArgs e)
     {
         if (sender is ToggleSwitch toggleSwitch && toggleSwitch.DataContext is AppStatItem item)
         {
             ViewModel.ToggleBackgroundModeCommand.Execute(item);
+        }
+    }
+
+    private void DetailButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: AppStatItem item })
+            _ = OpenAppDetailAsync(item);
+    }
+
+    private void AppRank_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is AppStatItem item)
+            _ = OpenAppDetailAsync(item);
+    }
+
+    private async Task OpenAppDetailAsync(AppStatItem item)
+    {
+        try
+        {
+            var period = ViewModel.LastPeriod ?? AnalyticsPeriod.FromKind(ViewModel.SelectedRange);
+            var scope = App.Services.CreateScope();
+            var vm = scope.ServiceProvider.GetRequiredService<AppDetailViewModel>();
+            vm.Configure(period, item.ProcessName, item.AppName, item.Category, item.CategoryColorHex, ViewModel.LastTotalMinutes);
+            var dialog = new AppDetailDialog(vm, process => { _ = ShowCategoryPickerAsync(process); })
+            {
+                XamlRoot = XamlRoot
+            };
+            _ = vm.LoadReportAsync();
+            await dialog.ShowAsync();
+            // 若详情里改了分类，刷新排行
+            await ViewModel.LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "打开应用详情失败 {App}", item.AppName);
         }
     }
 
@@ -248,10 +326,7 @@ public sealed partial class AppStatsTab : UserControl
                         Log.Information("已修改应用 {ProcessName} 的分类为 CategoryId={CategoryId}", processName, newCategoryId);
 
                         // 刷新数据
-                        await ViewModel.LoadInBackgroundAsync(async () =>
-                        {
-                            await ViewModel.LoadDataAsync();
-                        });
+                        await ViewModel.LoadDataAsync();
                     }
                 }
             }

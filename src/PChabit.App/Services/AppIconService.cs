@@ -234,27 +234,50 @@ public class AppIconService : IAppIconService
     
     private string? GetProcessPath(string processName)
     {
-        var processNameWithoutExt = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) 
-            ? processName[..^4] 
+        var processNameWithoutExt = processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            ? processName[..^4]
             : processName;
-        
-        // 优先从注册表查找路径（比 Process.GetProcessesByName 快得多）
+
+        // 1) 注册表 App Paths（系统安装的软件）
         var appPaths = GetAppPathsFromRegistry(processNameWithoutExt);
         if (appPaths.Count > 0)
             return appPaths[0];
-        
+
+        // 2) 正在运行的进程（最准确）
         try
         {
             var processes = System.Diagnostics.Process.GetProcessesByName(processNameWithoutExt);
+            if (processes.Length == 0 && processNameWithoutExt.Contains(' '))
+            {
+                // 进程名含空格时 GetProcessesByName 常失败，改用快照扫描
+                processes = System.Diagnostics.Process.GetProcesses()
+                    .Where(p =>
+                    {
+                        try { return string.Equals(p.ProcessName, processNameWithoutExt, StringComparison.OrdinalIgnoreCase); }
+                        catch { return false; }
+                    })
+                    .ToArray();
+            }
+
             if (processes.Length > 0)
             {
                 try
                 {
-                    var path = processes[0].MainModule?.FileName;
-                    if (!string.IsNullOrEmpty(path))
+                    foreach (var p in processes)
                     {
-                        Log.Debug("[AppIconService] 从运行进程获取路径: {ProcessName} -> {Path}", processName, path);
-                        return path;
+                        try
+                        {
+                            var path = p.MainModule?.FileName;
+                            if (!string.IsNullOrEmpty(path))
+                            {
+                                Log.Debug("[AppIconService] 从运行进程获取路径: {ProcessName} -> {Path}", processName, path);
+                                return path;
+                            }
+                        }
+                        catch
+                        {
+                            // 访问被拒绝时继续尝试下一个实例
+                        }
                     }
                 }
                 finally
@@ -268,31 +291,138 @@ public class AppIconService : IAppIconService
         {
             Log.Debug("[AppIconService] 获取运行进程路径失败: {ProcessName}, 错误: {Error}", processName, ex.Message);
         }
-        
-        var systemPath = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        
-        var possiblePaths = new List<string>
+
+        // 3) 注册表 Uninstall DisplayIcon（很多 Electron/绿色软件不在 App Paths）
+        var uninstallIcon = GetPathFromUninstallKeys(processNameWithoutExt);
+        if (!string.IsNullOrEmpty(uninstallIcon) && File.Exists(uninstallIcon))
+            return uninstallIcon;
+
+        // 4) 常见安装位置扫描（含 D:\Tool、LocalAppData\Programs）
+        var found = SearchCommonInstallPaths(processNameWithoutExt);
+        if (found != null)
+            return found;
+
+        return null;
+    }
+
+    private string? SearchCommonInstallPaths(string processNameWithoutExt)
+    {
+        var exeName = processNameWithoutExt + ".exe";
+        var roots = new List<string>
         {
-            Path.Combine(systemPath, $"{processNameWithoutExt}.exe"),
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Programs"),
+            @"D:\Tool",
+            @"D:\Program Files",
+            @"D:\Program Files (x86)",
+            @"E:\Tool",
         };
-        
-        possiblePaths.AddRange(new[]
+
+        foreach (var root in roots)
         {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), processNameWithoutExt, $"{processNameWithoutExt}.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), processNameWithoutExt, $"{processNameWithoutExt}.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", processNameWithoutExt, $"{processNameWithoutExt}.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), processNameWithoutExt, $"{processNameWithoutExt}.exe"),
-        });
-        
-        foreach (var path in possiblePaths)
-        {
-            if (File.Exists(path))
+            if (string.IsNullOrEmpty(root) || !Directory.Exists(root)) continue;
+
+            // 直接子目录：root\App\App.exe
+            try
             {
-                Log.Debug("[AppIconService] 从路径查找获取: {ProcessName} -> {Path}", processName, path);
-                return path;
+                var direct = Path.Combine(root, processNameWithoutExt, exeName);
+                if (File.Exists(direct)) return direct;
+
+                // 名称大小写/连字符变体
+                foreach (var variant in new[] { processNameWithoutExt, processNameWithoutExt.Replace(' ', '-'), processNameWithoutExt.Replace(" ", "") })
+                {
+                    var p = Path.Combine(root, variant, exeName);
+                    if (File.Exists(p)) return p;
+                    p = Path.Combine(root, variant, variant + ".exe");
+                    if (File.Exists(p)) return p;
+                }
+            }
+            catch { }
+
+            // 深度 2 的有限扫描（避免全盘）
+            try
+            {
+                foreach (var dir in Directory.EnumerateDirectories(root))
+                {
+                    var candidate = Path.Combine(dir, exeName);
+                    if (File.Exists(candidate)) return candidate;
+
+                    try
+                    {
+                        foreach (var sub in Directory.EnumerateDirectories(dir))
+                        {
+                            candidate = Path.Combine(sub, exeName);
+                            if (File.Exists(candidate)) return candidate;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
+    private static string? GetPathFromUninstallKeys(string processNameWithoutExt)
+    {
+        var hives = new[]
+        {
+            Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+            Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+        };
+
+        foreach (var hive in hives)
+        {
+            if (hive == null) continue;
+            try
+            {
+                foreach (var subName in hive.GetSubKeyNames())
+                {
+                    try
+                    {
+                        using var sub = hive.OpenSubKey(subName);
+                        if (sub == null) continue;
+
+                        var displayName = sub.GetValue("DisplayName") as string ?? "";
+                        var displayIcon = sub.GetValue("DisplayIcon") as string;
+                        var installLocation = sub.GetValue("InstallLocation") as string;
+
+                        var nameMatch =
+                            displayName.Contains(processNameWithoutExt, StringComparison.OrdinalIgnoreCase) ||
+                            processNameWithoutExt.Contains(displayName, StringComparison.OrdinalIgnoreCase) &&
+                            displayName.Length >= 3;
+
+                        if (!nameMatch) continue;
+
+                        if (!string.IsNullOrEmpty(displayIcon))
+                        {
+                            // DisplayIcon 可能是 "C:\path\app.exe,0"
+                            var iconPath = displayIcon.Split(',')[0].Trim().Trim('"');
+                            if (File.Exists(iconPath)) return iconPath;
+                        }
+
+                        if (!string.IsNullOrEmpty(installLocation))
+                        {
+                            var candidate = Path.Combine(installLocation.TrimEnd('\\'), processNameWithoutExt + ".exe");
+                            if (File.Exists(candidate)) return candidate;
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            finally
+            {
+                hive.Dispose();
             }
         }
-        
+
         return null;
     }
     

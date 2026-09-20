@@ -505,65 +505,6 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 5. 操作日志 -->
-                <Border
-                    Padding="20"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="12">
-                        <Grid>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon
-                                    FontFamily="Segoe Fluent Icons"
-                                    FontSize="18"
-                                    Glyph="&#xE756;"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                                <TextBlock
-                                    FontSize="16"
-                                    FontWeight="SemiBold"
-                                    Text="操作日志" />
-                            </StackPanel>
-                            <Button
-                                HorizontalAlignment="Right"
-                                Content="清空"
-                                Command="{x:Bind ViewModel.ClearLogsCommand}" />
-                        </Grid>
-                        <ListView
-                            MaxHeight="200"
-                            SelectionMode="None"
-                            ItemsSource="{x:Bind ViewModel.OperationLogs, Mode=OneWay}">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Padding="4" ColumnSpacing="12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="60" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock
-                                            FontSize="11"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding FormattedTime}" />
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            FontSize="11"
-                                            FontWeight="SemiBold"
-                                            Foreground="{ThemeResource SystemAccentColor}"
-                                            Text="{Binding Type}" />
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            FontSize="12"
-                                            TextWrapping="Wrap"
-                                            Text="{Binding Message}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </StackPanel>
-                </Border>
-
             </StackPanel>
         </ScrollViewer>
     </Grid>

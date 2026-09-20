@@ -28,6 +28,10 @@ public partial class DataCollectionService : IDisposable
 {
     private readonly Dictionary<string, WebSessionRuntime> _webRuntime = new();
 
+    // 实时浏览历史：与 WebSessions 同源，队列批量落库（避免每条页面一个 Task.Run 打 SQLite）
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(string Browser, HistoryEntry Entry)> _historyQueue = new();
+    private int _historyQueuedCount;
+
     private void OnWebActivityReceived(object? sender, WebActivityEventArgs e)
     {
         var sessionKey = $"{e.ClientId}_{e.TabId}";
@@ -40,6 +44,11 @@ public partial class DataCollectionService : IDisposable
 
             case WebActivityType.TabSwitch:
                 HandleTabSwitch(e, sessionKey);
+                break;
+
+            case WebActivityType.Navigation:
+                // webNavigation 完成：补记历史（部分页面可能没有 pageView）
+                HandleNavigation(e, sessionKey);
                 break;
 
             case WebActivityType.PageClose:
@@ -79,15 +88,18 @@ public partial class DataCollectionService : IDisposable
 
     private void HandlePageView(WebActivityEventArgs e, string sessionKey)
     {
+        DateTime timestamp;
         lock (_lock)
         {
             CloseActiveSessionLocked(sessionKey);
 
-            var timestamp = NormalizeTimestamp(e.Timestamp);
+            timestamp = NormalizeTimestamp(e.Timestamp);
             var session = CreateSession(e, sessionKey, timestamp);
             _activeWebSessions[sessionKey] = session;
             _webRuntime[sessionKey] = CreateRuntime(timestamp, e);
         }
+
+        EnqueueBrowserHistory(e, timestamp);
     }
 
     private void HandleTabSwitch(WebActivityEventArgs e, string sessionKey)
@@ -118,6 +130,90 @@ public partial class DataCollectionService : IDisposable
             var session = CreateSession(e, sessionKey, timestamp);
             _activeWebSessions[sessionKey] = session;
             _webRuntime[sessionKey] = CreateRuntime(timestamp, e);
+
+            EnqueueBrowserHistory(e, timestamp);
+        }
+    }
+
+    /// <summary>navigation 事件：只记浏览历史，不打断当前会话计时（pageView 已建会话时会重复，靠 Url|VisitTime 去重）。</summary>
+    private void HandleNavigation(WebActivityEventArgs e, string sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(e.Url)) return;
+        var timestamp = NormalizeTimestamp(e.Timestamp);
+        EnqueueBrowserHistory(e, timestamp);
+
+        // 若该 tab 尚无会话（扩展只发了 navigation），补建会话
+        lock (_lock)
+        {
+            if (!_activeWebSessions.ContainsKey(sessionKey))
+            {
+                var session = CreateSession(e, sessionKey, timestamp);
+                _activeWebSessions[sessionKey] = session;
+                _webRuntime[sessionKey] = CreateRuntime(timestamp, e);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 实时浏览历史入队。与「网页访问」同一事件源；批量由 FlushBrowserHistoryQueue 落库。
+    /// 与 HistorySyncService 的 History API 补录/云合并共用 BrowserHistoryItems 表。
+    /// </summary>
+    private void EnqueueBrowserHistory(WebActivityEventArgs e, DateTime timestamp)
+    {
+        if (string.IsNullOrWhiteSpace(e.Url)) return;
+        if (_historyQueuedCount > 5000) return; // 防堆积
+
+        var browser = string.IsNullOrWhiteSpace(e.Browser) ? "unknown" : e.Browser;
+        var entry = new HistoryEntry
+        {
+            Url = e.Url.Trim(),
+            Title = e.Title ?? "",
+            VisitTime = new DateTimeOffset(timestamp).ToUnixTimeMilliseconds(),
+            VisitCount = 1
+        };
+        _historyQueue.Enqueue((browser, entry));
+        System.Threading.Interlocked.Increment(ref _historyQueuedCount);
+    }
+
+    /// <summary>周期定时器调用：把队列里的实时浏览历史批量入库。</summary>
+    private async Task FlushBrowserHistoryQueueAsync()
+    {
+        if (_historyQueue.IsEmpty) return;
+
+        var byBrowser = new Dictionary<string, List<HistoryEntry>>(StringComparer.OrdinalIgnoreCase);
+        while (_historyQueue.TryDequeue(out var item))
+        {
+            System.Threading.Interlocked.Decrement(ref _historyQueuedCount);
+            if (!byBrowser.TryGetValue(item.Browser, out var list))
+            {
+                list = new List<HistoryEntry>();
+                byBrowser[item.Browser] = list;
+            }
+            list.Add(item.Entry);
+        }
+
+        if (byBrowser.Count == 0) return;
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var ingest = scope.ServiceProvider.GetService<IHistoryIngestService>();
+            if (ingest == null) return;
+
+            var total = 0;
+            foreach (var kv in byBrowser)
+            {
+                total += await ingest.IngestAsync(kv.Key, kv.Value);
+            }
+            if (total > 0)
+            {
+                Log.Information("实时浏览历史入库：{Added} 条（{Browsers}）", total,
+                    string.Join(",", byBrowser.Keys));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "实时浏览历史批量入库失败");
         }
     }
 

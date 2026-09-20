@@ -24,6 +24,9 @@ public interface IWebsiteCategoryService
     Task<string?> GetCategoryForDomainAsync(string domain);
     Task InitializeDefaultCategoriesAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>把域名指到分类；categoryId 为 null 则删除映射。返回是否成功。</summary>
+    Task<bool> AssignDomainToCategoryAsync(string domain, int? categoryId);
+
     List<WebsiteCategory> GetAllCategoriesSync();
     List<WebsiteDomainMapping> GetAllMappingsSync();
 }
@@ -215,6 +218,47 @@ public class WebsiteCategoryService : IWebsiteCategoryService
         }
 
         return GetDefaultCategory(domain);
+    }
+
+    public async Task<bool> AssignDomainToCategoryAsync(string domain, int? categoryId)
+    {
+        if (string.IsNullOrWhiteSpace(domain)) return false;
+        domain = domain.Trim().ToLowerInvariant();
+
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        var existing = await dbContext.WebsiteDomainMappings
+            .FirstOrDefaultAsync(m => m.DomainPattern.ToLower() == domain);
+
+        if (categoryId is null or <= 0)
+        {
+            if (existing == null) return true;
+            dbContext.WebsiteDomainMappings.Remove(existing);
+            await dbContext.SaveChangesAsync();
+            Log.Information("清除域名分类映射: {Domain}", domain);
+            return true;
+        }
+
+        var category = await dbContext.WebsiteCategories.FindAsync(categoryId.Value);
+        if (category == null) return false;
+
+        if (existing == null)
+        {
+            dbContext.WebsiteDomainMappings.Add(new WebsiteDomainMapping
+            {
+                DomainPattern = domain,
+                CategoryId = categoryId.Value,
+                CreatedAt = DateTime.Now
+            });
+        }
+        else
+        {
+            existing.CategoryId = categoryId.Value;
+            existing.UpdatedAt = DateTime.Now;
+        }
+
+        await dbContext.SaveChangesAsync();
+        Log.Information("域名分类映射: {Domain} → {Category}", domain, category.Name);
+        return true;
     }
 
     public async Task InitializeDefaultCategoriesAsync(CancellationToken cancellationToken = default)

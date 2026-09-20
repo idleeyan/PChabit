@@ -1,117 +1,407 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Formatters;
+using PChabit.Infrastructure.Services;
 
 namespace PChabit.App.ViewModels;
 
+/// <summary>AI 解读中的条目（标题+说明，可带 ActionKey）。</summary>
+public sealed class AiItemViewModel
+{
+    public string Title { get; init; } = "";
+    public string Detail { get; init; } = "";
+    public string? ActionKey { get; init; }
+}
+
+/// <summary>
+/// 分析页：周期选择 + KPI 环比 + 日历/小时热力 + Top 变化 + 可行动洞察。
+/// 计算逻辑在 AnalyticsEngine，本类只负责绑定与交互。
+/// </summary>
 public partial class AnalyticsViewModel : ViewModelBase
 {
     private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
-    
+    private readonly IAnalyticsAiService _aiService;
+    private readonly ISettingsService _settings;
+    private AnalyticsPeriodReport? _lastReport;
+
     [ObservableProperty]
-    private string _selectedPeriod = "本周";
-    
+    private string _selectedPeriodKey = "本周";
+
+    public string[] PeriodOptions { get; } =
+        { "本周", "上周", "近 7 天", "近 30 天", "本月" };
+
     [ObservableProperty]
-    private string _totalActiveTime = "0小时 0分钟";
-    
+    private string _periodLabel = "本周";
+
     [ObservableProperty]
-    private string _averageDailyTime = "0小时 0分钟";
-    
+    private string _periodRangeText = "";
+
     [ObservableProperty]
-    private double _averageProductivity = 0;
-    
+    private string _dataQualityText = "";
+
     [ObservableProperty]
-    private string _mostProductiveDay = "无数据";
-    
+    private bool _showLowDataBanner;
+
     [ObservableProperty]
-    private string _mostProductiveHour = "无数据";
-    
+    private bool _hasTopChanges;
+
     [ObservableProperty]
-    private int _totalKeyPresses = 0;
-    
+    private bool _hasCategories;
+
     [ObservableProperty]
-    private int _totalMouseClicks = 0;
-    
+    private bool _hasExtraMetrics;
+
     [ObservableProperty]
-    private int _totalWebPages = 0;
-    
+    private string _extraSummaryText = "";
+
+    [ObservableProperty]
+    private bool _hasHardwareProfile;
+
+    [ObservableProperty]
+    private string _hardwareSummaryText = "";
+
+    [ObservableProperty]
+    private string _dataQualityDetail = "";
+
+    [ObservableProperty]
+    private string _aiResultText = "";
+
+    [ObservableProperty]
+    private bool _hasAiResult;
+
+    [ObservableProperty]
+    private bool _isAiRunning;
+
+    [ObservableProperty]
+    private string _aiSummary = "";
+
+    [ObservableProperty]
+    private bool _hasAiParsed;
+
+    [ObservableProperty]
+    private string _webSummaryText = "";
+
+    [ObservableProperty]
+    private bool _hasWebData;
+
+    /// <summary>硬件页 WebView2 图表数据 JSON。</summary>
+    [ObservableProperty]
+    private string _hardwareChartJson = "{}";
+
+    public ObservableCollection<AiItemViewModel> AiFindings { get; } = new();
+    public ObservableCollection<AiItemViewModel> AiSuggestions { get; } = new();
+    public ObservableCollection<string> AiRisks { get; } = new();
+
+    public bool AiConfigured => _aiService.IsConfigured;
+
+    public ObservableCollection<KpiCard> Kpis { get; } = new();
+    public ObservableCollection<DayHeatItem> CalendarDays { get; } = new();
+    public ObservableCollection<HourHeatItem> HourHeat { get; } = new();
+    public ObservableCollection<TopChangeItem> TopChanges { get; } = new();
+    public ObservableCollection<CategoryShareItem> CategoryShares { get; } = new();
+    public ObservableCollection<AnalyticsInsight> Insights { get; } = new();
+    public ObservableCollection<AppHardwareLoad> HardwareAppLoads { get; } = new();
+    public ObservableCollection<HardwareHourPoint> HardwareHours { get; } = new();
+    public AnalyticsExtraMetrics? ExtraMetrics { get; private set; }
+    public HardwareAnalyticsReport? HardwareReport { get; private set; }
+
+    // 兼容旧 XAML 引用（若仍有绑定）
     public ObservableCollection<WeeklyDataItem> WeeklyData { get; } = new();
     public ObservableCollection<TrendItem> Trends { get; } = new();
     public ObservableCollection<PatternItem> Patterns { get; } = new();
-    public ObservableCollection<InsightItem> Insights { get; } = new();
-    
-    public AnalyticsViewModel(IDbContextFactory<PChabitDbContext> dbContextFactory) : base()
+    public ObservableCollection<InsightItem> InsightsLegacy { get; } = new();
+    public string TotalActiveTime { get; private set; } = "—";
+    public string AverageDailyTime { get; private set; } = "—";
+    public double AverageProductivity { get; private set; }
+    public int TotalKeyPresses { get; private set; }
+    public int TotalMouseClicks { get; private set; }
+    public int TotalWebPages { get; private set; }
+
+    public AnalyticsViewModel(
+        IDbContextFactory<PChabitDbContext> dbContextFactory,
+        IAnalyticsAiService aiService,
+        ISettingsService settings) : base()
     {
         _dbContextFactory = dbContextFactory;
-        Title = "数据分析";
+        _aiService = aiService;
+        _settings = settings;
+        Title = "分析";
     }
-    
-    private sealed class WeeklyStats
+
+    partial void OnSelectedPeriodKeyChanged(string value)
     {
-        public List<Core.Entities.AppSession> AppSessions = new();
-        public List<Core.Entities.WebSession> WebSessions = new();
-        public List<Core.Entities.KeyboardSession> KeyboardSessions = new();
-        public List<Core.Entities.MouseSession> MouseSessions = new();
-        
-        public int TotalHours;
-        public int TotalMins;
-        public int AvgHours;
-        public int AvgMins;
-        public double AvgProductivity;
-        public string MostProductiveDay = "无数据";
-        public string MostProductiveHour = "无数据";
-        public int TotalKeyPresses;
-        public int TotalClicks;
-        public int TotalWebPages;
-        
-        public List<WeeklyDataItem> WeeklyDataItems = new();
-        public List<TrendItem> TrendItems = new();
-        public List<PatternItem> PatternItems = new();
-        public List<InsightItem> InsightItems = new();
+        _ = LoadDataAsync();
     }
-    
+
+    [RelayCommand]
+    private Task RefreshAsync() => LoadDataAsync();
+
+    /// <summary>
+    /// 页内导航请求（参数为 ActionKey：compose/rhythm 等）。
+    /// 由 AnalyticsPage 订阅并切换 Pivot/锚点；跨页调用方则用 AnalyticsNavArgs 走 NavigationService。
+    /// </summary>
+    public event Action<string>? PivotNavigationRequested;
+
+    [RelayCommand]
+    private void NavigateInsight(AnalyticsInsight? insight)
+    {
+        if (insight?.ActionKey is null) return;
+        Log.Information("洞察行动: {Action} — {Title}", insight.ActionKey, insight.Title);
+        PivotNavigationRequested?.Invoke(insight.ActionKey);
+    }
+
+    [RelayCommand]
+    private async Task CopySummaryAsync()
+    {
+        try
+        {
+            var text = _lastReport is null
+                ? "暂无分析数据"
+                : AnalysisReportBuilder.BuildMarkdown(_lastReport);
+
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            Log.Information("分析深度报告已复制到剪贴板");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "复制分析深度报告失败");
+        }
+    }
+
+    [RelayCommand]
+    private async Task RunAiInsightAsync()
+    {
+        if (_lastReport is null) return;
+        if (!_aiService.IsConfigured)
+        {
+            AiResultText = "AI 深度解读未启用。请到「设置 → 分析 AI 深度解读」打开开关并填写 Base URL / API Key / 模型（本地模型可空 Key，超时建议 ≥300 秒）。";
+            HasAiResult = true;
+            HasAiParsed = false;
+            return;
+        }
+
+        IsAiRunning = true;
+        AiResultText = "正在请求 AI 解读…（仅发送聚合指标，可在设置调整超时）";
+        HasAiResult = true;
+        HasAiParsed = false;
+        try
+        {
+            var payload = AnalysisReportBuilder.BuildAiPayload(_lastReport);
+            var raw = await _aiService.InterpretAsync(AnalysisReportBuilder.SystemPrompt, payload);
+            var parsed = AnalyticsAiResponseParser.Parse(raw);
+            AiResultText = string.IsNullOrWhiteSpace(parsed.Raw) ? "AI 返回为空" : parsed.Raw;
+            ApplyParsedAi(parsed);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "AI 深度解读失败");
+            AiResultText = $"AI 解读失败：{ex.Message}";
+            HasAiParsed = false;
+        }
+        finally
+        {
+            IsAiRunning = false;
+        }
+    }
+
+    private void ApplyParsedAi(AnalyticsAiResponseParser.ParsedAiResult parsed)
+    {
+        AiFindings.Clear();
+        AiSuggestions.Clear();
+        AiRisks.Clear();
+        AiSummary = parsed.Summary;
+        if (!parsed.Parsed)
+        {
+            HasAiParsed = false;
+            return;
+        }
+        foreach (var f in parsed.Findings)
+            AiFindings.Add(new AiItemViewModel { Title = f.Title, Detail = f.Detail });
+        foreach (var s in parsed.Suggestions)
+            AiSuggestions.Add(new AiItemViewModel { Title = s.Title, Detail = s.Action, ActionKey = s.ActionKey });
+        foreach (var r in parsed.Risks)
+            AiRisks.Add(r);
+        HasAiParsed = true;
+    }
+
+    [RelayCommand]
+    private void NavigateAiAction(AiItemViewModel? item)
+    {
+        var key = item?.ActionKey;
+        if (string.IsNullOrWhiteSpace(key)) return;
+        try
+        {
+            if (string.Equals(key, "HistoryReport", StringComparison.OrdinalIgnoreCase))
+            {
+                var ok = App.GetService<NavigationService>().NavigateTo("HistoryReport");
+                Log.Information("AI 行动导航 HistoryReport: {Ok}", ok);
+                return;
+            }
+            PivotNavigationRequested?.Invoke(key);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "AI 行动导航失败: {Key}", key);
+        }
+    }
+
+    [RelayCommand]
+    private void OpenHistoryReport()
+    {
+        try
+        {
+            var ok = App.GetService<NavigationService>().NavigateTo("HistoryReport");
+            Log.Information("打开历史分析: {Ok}", ok);
+            if (!ok)
+            {
+                AiResultText = "无法打开历史分析：导航服务未初始化";
+                HasAiResult = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "打开历史分析失败");
+            AiResultText = $"打开历史分析失败：{ex.Message}";
+            HasAiResult = true;
+        }
+    }
+
+    public byte[]? BuildExcelBytes()
+        => _lastReport is null ? null : AnalysisExcelExporter.Export(_lastReport);
+
+    public AnalyticsPeriodReport? LastReport => _lastReport;
+
+    private static string BuildHardwareChartJson(AnalyticsPeriodReport report)
+    {
+        if (report.Hardware is not { HasData: true } hw) return "{}";
+        var hours = hw.Hours
+            .Where(h => h.SampleCount > 0)
+            .Select(h => new
+            {
+                label = h.Label,
+                cpu = h.CpuLoadAvg,
+                gpu = h.GpuLoadAvg,
+                temp = h.GpuTempAvg,
+                n = h.SampleCount
+            })
+            .ToList();
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            hours,
+            summary = hw.SummaryText
+        });
+    }
+
     public async Task LoadDataAsync()
     {
         IsLoading = true;
-        
         try
         {
-            var stats = await Task.Run(ComputeWeeklyStatsAsync);
-            if (stats == null) return;
-            
-            await RunOnUIThreadAsync(async () =>
+            var kind = SelectedPeriodKey switch
             {
-                TotalActiveTime = $"{stats.TotalHours}小时 {stats.TotalMins}分钟";
-                AverageDailyTime = $"{stats.AvgHours}小时 {stats.AvgMins}分钟";
-                AverageProductivity = stats.AvgProductivity;
-                MostProductiveDay = stats.MostProductiveDay;
-                MostProductiveHour = stats.MostProductiveHour;
-                TotalKeyPresses = stats.TotalKeyPresses;
-                TotalMouseClicks = stats.TotalClicks;
-                TotalWebPages = stats.TotalWebPages;
-                
-                WeeklyData.Clear();
-                foreach (var item in stats.WeeklyDataItems)
-                    WeeklyData.Add(item);
-                
-                Trends.Clear();
-                foreach (var item in stats.TrendItems)
-                    Trends.Add(item);
-                
-                Patterns.Clear();
-                foreach (var item in stats.PatternItems)
-                    Patterns.Add(item);
-                
+                "上周" => AnalyticsPeriodKind.LastWeek,
+                "近 7 天" => AnalyticsPeriodKind.Last7Days,
+                "近 30 天" => AnalyticsPeriodKind.Last30Days,
+                "本月" => AnalyticsPeriodKind.ThisMonth,
+                _ => AnalyticsPeriodKind.ThisWeek
+            };
+
+            var period = AnalyticsPeriod.FromKind(kind);
+            var report = await AnalyticsEngine.BuildAsync(_dbContextFactory, period);
+            _lastReport = report;
+
+            await RunOnUIThreadAsync(() =>
+            {
+                PeriodLabel = report.Period.Label;
+                PeriodRangeText = $"{report.Period.Start:yyyy-MM-dd} ~ {report.Period.EndExclusive.AddDays(-1):yyyy-MM-dd}" +
+                                  (report.Previous != null
+                                      ? $"　对比 {report.Previous.Start:MM-dd} ~ {report.Previous.EndExclusive.AddDays(-1):MM-dd}"
+                                      : "");
+                DataQualityText = report.HasEnoughData
+                    ? $"有数据 {report.DayCountWithData} 天"
+                    : $"数据较少（{report.DayCountWithData} 天）";
+                DataQualityDetail = AnalysisReportBuilder.BuildQuality(report).Summary;
+                ShowLowDataBanner = !report.HasEnoughData;
+
+                Kpis.Clear();
+                foreach (var k in report.Kpis) Kpis.Add(k);
+
+                CalendarDays.Clear();
+                foreach (var d in report.CalendarDays) CalendarDays.Add(d);
+
+                HourHeat.Clear();
+                foreach (var h in report.HourHeat) HourHeat.Add(h);
+
+                TopChanges.Clear();
+                foreach (var t in report.TopChanges) TopChanges.Add(t);
+                HasTopChanges = TopChanges.Count > 0;
+
+                CategoryShares.Clear();
+                foreach (var c in report.CategoryShares) CategoryShares.Add(c);
+                HasCategories = CategoryShares.Count > 0;
+
+                ExtraMetrics = report.Extra;
+                ExtraSummaryText = BuildExtraSummary(report.Extra);
+                HasExtraMetrics = !string.IsNullOrEmpty(ExtraSummaryText);
+
+                HardwareReport = report.Hardware;
+                HardwareAppLoads.Clear();
+                HardwareHours.Clear();
+                if (report.Hardware is { HasData: true } hw)
+                {
+                    HardwareSummaryText = hw.SummaryText;
+                    foreach (var a in hw.AppLoads) HardwareAppLoads.Add(a);
+                    foreach (var h in hw.Hours.Where(x => x.SampleCount > 0)) HardwareHours.Add(h);
+                    HasHardwareProfile = HardwareAppLoads.Count > 0 || HardwareHours.Count > 0;
+                }
+                else
+                {
+                    HardwareSummaryText = "";
+                    HasHardwareProfile = false;
+                }
+
                 Insights.Clear();
-                foreach (var item in stats.InsightItems)
-                    Insights.Add(item);
+                foreach (var i in report.Insights) Insights.Add(i);
+
+                // 旧字段兼容
+                var active = report.Kpis.FirstOrDefault(k => k.Id == "active");
+                TotalActiveTime = active?.Value ?? "—";
+                AverageDailyTime = $"{report.Period.DayCount} 天周期";
+                AverageProductivity = report.Kpis.FirstOrDefault(k => k.Id == "prod") is { } p
+                    && double.TryParse(p.Value.TrimEnd('%'), out var pv) ? pv : 0;
+                if (report.Extra is { HasInputData: true } ex)
+                {
+                    TotalKeyPresses = (int)Math.Min(ex.TotalKeys, int.MaxValue);
+                    TotalMouseClicks = (int)Math.Min(ex.TotalClicks, int.MaxValue);
+                }
+                if (report.Extra is { HasWebData: true } exw)
+                {
+                    TotalWebPages = (int)Math.Min(exw.WebPages, int.MaxValue);
+                    WebSummaryText =
+                        $"网页 {Infrastructure.Analysis.AnalyticsEngine.FormatHours(exw.WebMinutes)} · {exw.WebPages:N0} 页 · 占比 {exw.WebSharePct:F0}%　可打开「历史分析」查看域名与访问趋势";
+                    HasWebData = true;
+                }
+                else
+                {
+                    WebSummaryText = "";
+                    HasWebData = false;
+                }
+
+                HardwareChartJson = BuildHardwareChartJson(report);
+                return Task.CompletedTask;
             });
-            
-            Log.Information("AnalyticsViewModel: Phase 2 完成, WeeklyData={W}, Trends={T}, Patterns={P}, Insights={I}",
-                stats.WeeklyDataItems.Count, stats.TrendItems.Count, stats.PatternItems.Count, stats.InsightItems.Count);
+
+            Log.Information("AnalyticsViewModel: 加载完成 period={Period} kpis={K} heat={H} insights={I}",
+                report.Period.Label, report.Kpis.Count, report.CalendarDays.Count, report.Insights.Count);
         }
         catch (Exception ex)
         {
@@ -122,402 +412,60 @@ public partial class AnalyticsViewModel : ViewModelBase
             IsLoading = false;
         }
     }
-    
-    private async Task<WeeklyStats> ComputeWeeklyStatsAsync()
+
+    private static string BuildExtraSummary(AnalyticsExtraMetrics? extra)
     {
-        var stats = new WeeklyStats();
-        
-        var today = DateTime.Today;
-        var diff = (int)today.DayOfWeek - (int)DayOfWeek.Monday;
-        if (diff < 0) diff += 7;
-        var weekStart = today.AddDays(-diff);
-        var weekEnd = weekStart.AddDays(7);
-        
-        Log.Information("AnalyticsViewModel: 今天={Today} ({DayOfWeek}), 周开始={WeekStart}, 周结束={WeekEnd}", 
-            today, today.DayOfWeek, weekStart, weekEnd);
-        
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
-        try
+        if (extra is null) return "";
+        var parts = new List<string>();
+        if (extra.HasInputData)
+            parts.Add($"按键 {extra.TotalKeys:N0} · 点击 {extra.TotalClicks:N0} · 密度 {extra.KeysPerActiveHour:F0}/时");
+        if (extra.HasWebData)
+            parts.Add($"网页 {Infrastructure.Analysis.AnalyticsEngine.FormatHours(extra.WebMinutes)} · 占比 {extra.WebSharePct:F0}%");
+        if (extra.HasHardwareData)
         {
-            stats.AppSessions = await dbContext.AppSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd)
-                .ToListAsync();
-            Log.Information("AnalyticsViewModel: 本周 AppSessions 数量={Count}", stats.AppSessions.Count);
+            var hw = new List<string>();
+            if (extra.CpuLoadAvg is { } c) hw.Add($"CPU均 {c:F0}%");
+            if (extra.GpuLoadAvg is { } g) hw.Add($"GPU均 {g:F0}%");
+            if (extra.GpuTempMax is { } t) hw.Add($"GPU峰温 {t:F0}°C");
+            if (hw.Count > 0) parts.Add(string.Join(" · ", hw));
         }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 AppSessions 失败");
-        }
-        
-        try
-        {
-            stats.KeyboardSessions = await dbContext.KeyboardSessions
-                .AsNoTracking()
-                .Where(s => s.Date >= weekStart && s.Date < weekEnd)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 KeyboardSessions 失败");
-        }
-        
-        try
-        {
-            stats.MouseSessions = await dbContext.MouseSessions
-                .AsNoTracking()
-                .Where(s => s.Date >= weekStart && s.Date < weekEnd)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 MouseSessions 失败");
-        }
-        
-        try
-        {
-            stats.WebSessions = await dbContext.WebSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= weekStart && s.StartTime < weekEnd && !s.IsLegacy)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 WebSessions 失败");
-        }
-        
-        var sessions = stats.AppSessions;
-        
-        var totalMinutes = sessions
-            .Where(s => s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-        
-        stats.TotalHours = (int)(totalMinutes / 60);
-        stats.TotalMins = (int)(totalMinutes % 60);
-        
-        var daysWithData = sessions
-            .Where(s => s.EndTime.HasValue)
-            .Select(s => s.StartTime.Date)
-            .Distinct()
-            .Count();
-        
-        var avgMinutes = daysWithData > 0 ? totalMinutes / daysWithData : 0;
-        stats.AvgHours = (int)(avgMinutes / 60);
-        stats.AvgMins = (int)(avgMinutes % 60);
-        
-        stats.TotalKeyPresses = stats.KeyboardSessions.Sum(s => s.TotalKeyPresses);
-        stats.TotalClicks = stats.MouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
-        stats.TotalWebPages = stats.WebSessions.Count;
-        
-        var productiveMinutes = sessions
-            .Where(s => IsProductiveCategory(s.Category))
-            .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
-        
-        stats.AvgProductivity = totalMinutes > 0 ? Math.Round(productiveMinutes / totalMinutes * 100, 1) : 0;
-        
-        Log.Information("AnalyticsViewModel: 总时间={TotalMinutes:F1}分钟, 有数据天数={DaysWithData}, 平均时间={AvgMinutes:F1}分钟", 
-            totalMinutes, daysWithData, avgMinutes);
-        Log.Information("AnalyticsViewModel: 生产力时间={ProductiveMinutes:F1}分钟, 平均效率={AvgProductivity}%", 
-            productiveMinutes, stats.AvgProductivity);
-        
-        var dayStats = sessions
-            .Where(s => s.EndTime.HasValue)
-            .GroupBy(s => s.StartTime.DayOfWeek)
-            .Select(g => new { Day = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
-            .OrderByDescending(x => x.Minutes)
-            .FirstOrDefault();
-        
-        stats.MostProductiveDay = dayStats != null ? GetDayName(dayStats.Day) : "无数据";
-        
-        var topHourStats = sessions
-            .Where(s => s.EndTime.HasValue)
-            .GroupBy(s => s.StartTime.Hour)
-            .Select(g => new { Hour = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
-            .OrderByDescending(x => x.Minutes)
-            .FirstOrDefault();
-        
-        stats.MostProductiveHour = topHourStats != null 
-            ? $"{topHourStats.Hour}:00 - {topHourStats.Hour + 1}:00" 
-            : "无数据";
-        
-        for (int i = 0; i < 7; i++)
-        {
-            var dayStart = weekStart.AddDays(i);
-            var dayEnd = dayStart.AddDays(1);
-            
-            var daySessions = sessions
-                .Where(s => s.StartTime >= dayStart && s.StartTime < dayEnd && s.EndTime.HasValue)
-                .ToList();
-            
-            var dayMinutes = daySessions.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-            var dayProductiveMinutes = daySessions
-                .Where(s => IsProductiveCategory(s.Category))
-                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-            var productivity = dayMinutes > 0 ? (int)(dayProductiveMinutes / dayMinutes * 100) : 0;
-            
-            stats.WeeklyDataItems.Add(new WeeklyDataItem
-            {
-                Day = GetDayName(dayStart.DayOfWeek),
-                Hours = (int)(dayMinutes / 60),
-                Productivity = productivity
-            });
-        }
-        
-        var currentWeekDevMinutes = sessions
-            .Where(s => s.StartTime >= weekStart && IsProductiveCategory(s.Category) && s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-        
-        var previousWeekStart = weekStart.AddDays(-7);
-        var previousWeekEnd = weekStart;
-        var previousWeekDevMinutes = 0.0;
-        
-        try
-        {
-            var prevSessions = await dbContext.AppSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= previousWeekStart && s.StartTime < previousWeekEnd)
-                .ToListAsync();
-            
-            previousWeekDevMinutes = prevSessions
-                .Where(s => IsProductiveCategory(s.Category) && s.EndTime.HasValue)
-                .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载上周 AppSessions 失败");
-        }
-        
-        Log.Information("LoadTrends: 本周开发时间={CurrentWeek:F1}分钟, 上周开发时间={PreviousWeek:F1}分钟", 
-            currentWeekDevMinutes, previousWeekDevMinutes);
-        
-        if (previousWeekDevMinutes > 0)
-        {
-            var change = (int)((currentWeekDevMinutes - previousWeekDevMinutes) / previousWeekDevMinutes * 100);
-            stats.TrendItems.Add(new TrendItem
-            {
-                Name = "开发时间",
-                Change = $"{(change >= 0 ? "+" : "")}{change}%",
-                Direction = change >= 0 ? "up" : "down",
-                Description = $"相比上周{(change >= 0 ? "增加" : "减少")}了 {Math.Abs(currentWeekDevMinutes - previousWeekDevMinutes) / 60:F1} 小时"
-            });
-        }
-        else
-        {
-            stats.TrendItems.Add(new TrendItem
-            {
-                Name = "开发时间",
-                Change = "新增",
-                Direction = "up",
-                Description = $"本周开发时间 {currentWeekDevMinutes / 60:F1} 小时"
-            });
-        }
-        
-        var socialMinutes = sessions
-            .Where(s => s.StartTime >= weekStart && s.Category == "社交" && s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-        
-        stats.TrendItems.Add(new TrendItem
-        {
-            Name = "社交媒体",
-            Change = socialMinutes > 0 ? $"{(int)(socialMinutes / 60)}h" : "0h",
-            Direction = socialMinutes > 120 ? "down" : "up",
-            Description = socialMinutes > 120 ? "建议减少社交媒体使用" : "社交媒体使用时间正常"
-        });
-        
-        var focusSessions = sessions
-            .Where(s => s.EndTime.HasValue && (s.EndTime!.Value - s.StartTime).TotalMinutes >= 25)
-            .Count();
-        
-        stats.TrendItems.Add(new TrendItem
-        {
-            Name = "专注时长",
-            Change = $"{focusSessions} 次",
-            Direction = focusSessions > 10 ? "up" : "down",
-            Description = focusSessions > 10 ? "深度工作状态良好" : "尝试增加专注时间"
-        });
-        
-        var hourStats = sessions
-            .Where(s => s.EndTime.HasValue)
-            .GroupBy(s => s.StartTime.Hour)
-            .Select(g => new { Hour = g.Key, Count = g.Count(), Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
-            .OrderByDescending(x => x.Minutes)
-            .ToList();
-        
-        if (hourStats.Any())
-        {
-            var topHour = hourStats.First();
-            stats.PatternItems.Add(new PatternItem
-            {
-                Title = "高效时段",
-                Description = $"{topHour.Hour}:00 - {topHour.Hour + 1}:00 是你最专注的时段",
-                Icon = "\uEC92"
-            });
-        }
-        else
-        {
-            stats.PatternItems.Add(new PatternItem
-            {
-                Title = "高效时段",
-                Description = "暂无足够数据",
-                Icon = "\uEC92"
-            });
-        }
-        
-        var appSwitches = sessions.Count;
-        var patternDaysWithData = sessions.Select(s => s.StartTime.Date).Distinct().Count();
-        var avgSwitchesPerHour = patternDaysWithData > 0 ? (double)appSwitches / (patternDaysWithData * 8) : 0;
-        
-        stats.PatternItems.Add(new PatternItem
-        {
-            Title = "应用切换",
-            Description = $"平均每小时切换 {avgSwitchesPerHour:F1} 次应用",
-            Icon = "\uE8FD"
-        });
-        
-        var breakHours = sessions
-            .Where(s => s.EndTime.HasValue)
-            .GroupBy(s => s.StartTime.Hour)
-            .Where(g => g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) < 5)
-            .Select(g => g.Key)
-            .OrderBy(h => h)
-            .ToList();
-        
-        if (breakHours.Any())
-        {
-            stats.PatternItems.Add(new PatternItem
-            {
-                Title = "休息模式",
-                Description = $"通常在 {string.Join(", ", breakHours.Take(2).Select(h => $"{h}:00"))} 休息",
-                Icon = "\uE708"
-            });
-        }
-        else
-        {
-            stats.PatternItems.Add(new PatternItem
-            {
-                Title = "休息模式",
-                Description = "暂无足够数据分析休息模式",
-                Icon = "\uE708"
-            });
-        }
-        
-        if (stats.AvgProductivity >= 70)
-        {
-            stats.InsightItems.Add(new InsightItem
-            {
-                Type = "success",
-                Title = "效率良好",
-                Message = $"本周你的平均生产力为 {stats.AvgProductivity:F1}%，继续保持！"
-            });
-        }
-        else if (stats.AvgProductivity >= 50)
-        {
-            stats.InsightItems.Add(new InsightItem
-            {
-                Type = "info",
-                Title = "效率一般",
-                Message = $"本周你的平均生产力为 {stats.AvgProductivity:F1}%，可以尝试减少干扰。"
-            });
-        }
-        else
-        {
-            stats.InsightItems.Add(new InsightItem
-            {
-                Type = "warning",
-                Title = "效率较低",
-                Message = $"本周你的平均生产力为 {stats.AvgProductivity:F1}%，建议专注时间管理。"
-            });
-        }
-        
-        var longSessions = sessions
-            .Where(s => s.EndTime.HasValue && (s.EndTime!.Value - s.StartTime).TotalHours >= 3)
-            .Count();
-        
-        if (longSessions > 0)
-        {
-            stats.InsightItems.Add(new InsightItem
-            {
-                Type = "warning",
-                Title = "注意休息",
-                Message = $"本周有 {longSessions} 次连续工作超过 3 小时，建议适当休息"
-            });
-        }
-        
-        var topApp = sessions
-            .GroupBy(s => s.ProcessName)
-            .OrderByDescending(g => g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0))
-            .FirstOrDefault();
-        
-        if (topApp != null)
-        {
-            stats.InsightItems.Add(new InsightItem
-            {
-                Type = "info",
-                Title = "最常用应用",
-                Message = $"你本周使用 {topApp.Key} 的时间最多"
-            });
-        }
-        
-        return stats;
+        return string.Join("　|　", parts);
     }
-    
-    private static bool IsProductiveCategory(string? category)
+
+    // 旧类型保留，避免其它 XAML/代码引用断裂
+    public class WeeklyDataItem
     {
-        if (string.IsNullOrEmpty(category))
-            return false;
-        
-        return category switch
-        {
-            "开发" => true,
-            "开发工具" => true,
-            "办公" => true,
-            "办公软件" => true,
-            _ => false
-        };
+        public string Day { get; set; } = "";
+        public int Hours { get; set; }
+        public int Productivity { get; set; }
     }
-    
-    private static string GetDayName(DayOfWeek day)
+
+    public class TrendItem
     {
-        return day switch
-        {
-            DayOfWeek.Monday => "周一",
-            DayOfWeek.Tuesday => "周二",
-            DayOfWeek.Wednesday => "周三",
-            DayOfWeek.Thursday => "周四",
-            DayOfWeek.Friday => "周五",
-            DayOfWeek.Saturday => "周六",
-            DayOfWeek.Sunday => "周日",
-            _ => "未知"
-        };
+        public string Name { get; set; } = "";
+        public string Change { get; set; } = "";
+        public string Direction { get; set; } = "";
+        public string Description { get; set; } = "";
+    }
+
+    public class PatternItem
+    {
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Icon { get; set; } = "";
+    }
+
+    public class InsightItem
+    {
+        public string Type { get; set; } = "info";
+        public string Title { get; set; } = "";
+        public string Message { get; set; } = "";
     }
 }
 
-public class WeeklyDataItem
-{
-    public string Day { get; init; } = string.Empty;
-    public int Hours { get; init; }
-    public int Productivity { get; init; }
-}
-
-public class TrendItem
-{
-    public string Name { get; init; } = string.Empty;
-    public string Change { get; init; } = string.Empty;
-    public string Direction { get; init; } = string.Empty;
-    public string Description { get; init; } = string.Empty;
-}
-
-public class PatternItem
-{
-    public string Title { get; init; } = string.Empty;
-    public string Description { get; init; } = string.Empty;
-    public string Icon { get; init; } = string.Empty;
-}
-
-public class InsightItem
-{
-    public string Type { get; init; } = string.Empty;
-    public string Title { get; init; } = string.Empty;
-    public string Message { get; init; } = string.Empty;
-}
+/// <summary>
+/// 分析页导航参数（NavigationService.NavigateTo("Analytics", new AnalyticsNavArgs(key))）。
+/// Pivot 取值：overview / rhythm / compose / flow。
+/// 3.10+ 分析页已具备节奏、构成页签，ActionKey 导航可直接命中。
+/// </summary>
+public sealed record AnalyticsNavArgs(string Pivot);

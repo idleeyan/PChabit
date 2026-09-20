@@ -23,9 +23,13 @@ public class MonitorManager : IDisposable
     private static readonly TimeSpan HookInactivityThreshold = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// UI 线程调度器。System.Timers.Timer 回调运行在线程池，而 WH_KEYBOARD_LL / WH_MOUSE_LL
-    /// 低级钩子必须安装在有消息泵的线程上。重启钩子时必须通过此调度器派发到 UI 线程。
-    /// 由 App.xaml.cs 在 UI 线程上设置: action => DispatcherQueue.TryEnqueue(() => action())
+    /// 专用输入钩子线程。低级钩子必须安装在有消息泵的线程上；
+    /// 安装在 UI 线程会因布局/渲染阻塞造成全系统鼠标卡顿。
+    /// </summary>
+    public InputHookThread? HookThread { get; set; }
+
+    /// <summary>
+    /// 兼容旧路径：未提供 HookThread 时回退到 UI 调度器。
     /// </summary>
     public Action<Action>? UIDispatcher { get; set; }
 
@@ -42,12 +46,69 @@ public class MonitorManager : IDisposable
         _webMonitor = webMonitor;
         _webSocketServer = webSocketServer;
 
-        _healthCheckTimer = new System.Timers.Timer(60000); // 每60秒检查一次
+        _healthCheckTimer = new System.Timers.Timer(60000);
         _healthCheckTimer.Elapsed += OnHealthCheck;
 
-        // 进程同步定时器：每秒将 AppMonitor 的当前进程同步到 KeyboardMonitor/MouseMonitor
         _processSyncTimer = new System.Timers.Timer(1000);
         _processSyncTimer.Elapsed += OnProcessSync;
+    }
+
+    private void OnHookThread(Action action)
+    {
+        if (HookThread is { IsRunning: true })
+        {
+            HookThread.Post(action);
+        }
+        else if (UIDispatcher != null)
+        {
+            UIDispatcher(action);
+        }
+        else
+        {
+            action();
+        }
+    }
+
+    private async Task RunOnHookThreadAsync(Action action)
+    {
+        if (HookThread is { IsRunning: true })
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            HookThread.Post(() =>
+            {
+                try
+                {
+                    action();
+                    tcs.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            });
+            await tcs.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        else if (UIDispatcher != null)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            UIDispatcher(() =>
+            {
+                try
+                {
+                    action();
+                    tcs.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    tcs.TrySetException(ex);
+                }
+            });
+            await tcs.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        }
+        else
+        {
+            action();
+        }
     }
 
     private void OnProcessSync(object? sender, System.Timers.ElapsedEventArgs e)
@@ -56,14 +117,12 @@ public class MonitorManager : IDisposable
         {
             if (!IsRunning) return;
 
-            // 键盘钩子已在回调中直接获取前台进程，无需定时器同步
-            // 仅同步鼠标钩子的进程归属
             var currentProcess = _appMonitor.GetCurrentProcess();
             _mouseMonitor.SetCurrentProcess(currentProcess);
+            _keyboardMonitor.SetCurrentProcess(currentProcess);
         }
         catch
         {
-            // 进程同步失败不应影响主流程
         }
     }
 
@@ -75,7 +134,6 @@ public class MonitorManager : IDisposable
 
             var now = DateTime.Now;
 
-            // 检查键盘钩子
             if (_keyboardMonitor.IsRunning)
             {
                 var kbInactive = now - _keyboardMonitor.LastActivityTime;
@@ -99,12 +157,10 @@ public class MonitorManager : IDisposable
             }
             else if (IsRunning)
             {
-                // 钩子标记为未运行但 MonitorManager 还在运行，尝试重启
                 Log.Warning("键盘钩子未运行，尝试重启");
                 RestartKeyboardMonitor();
             }
 
-            // 检查鼠标钩子
             if (_mouseMonitor.IsRunning)
             {
                 var msInactive = now - _mouseMonitor.LastActivityTime;
@@ -140,14 +196,7 @@ public class MonitorManager : IDisposable
 
     private void RestartKeyboardMonitor()
     {
-        if (UIDispatcher != null)
-        {
-            UIDispatcher(DoRestartKeyboard);
-        }
-        else
-        {
-            DoRestartKeyboard();
-        }
+        OnHookThread(DoRestartKeyboard);
     }
 
     private void DoRestartKeyboard()
@@ -166,14 +215,7 @@ public class MonitorManager : IDisposable
 
     private void RestartMouseMonitor()
     {
-        if (UIDispatcher != null)
-        {
-            UIDispatcher(DoRestartMouse);
-        }
-        else
-        {
-            DoRestartMouse();
-        }
+        OnHookThread(DoRestartMouse);
     }
 
     private void DoRestartMouse()
@@ -189,14 +231,17 @@ public class MonitorManager : IDisposable
             Log.Error(ex, "重启鼠标钩子失败");
         }
     }
-    
+
     public async Task StartAllAsync()
     {
         if (IsRunning) return;
 
-        _appMonitor.Start();
-        _keyboardMonitor.Start();
-        _mouseMonitor.Start();
+        await RunOnHookThreadAsync(() =>
+        {
+            _appMonitor.Start();
+            _keyboardMonitor.Start();
+            _mouseMonitor.Start();
+        });
 
         if (WebMonitoringEnabled)
         {
@@ -216,9 +261,12 @@ public class MonitorManager : IDisposable
         _healthCheckTimer.Stop();
         _processSyncTimer.Stop();
 
-        _appMonitor.Stop();
-        _keyboardMonitor.Stop();
-        _mouseMonitor.Stop();
+        await RunOnHookThreadAsync(() =>
+        {
+            _appMonitor.Stop();
+            _keyboardMonitor.Stop();
+            _mouseMonitor.Stop();
+        });
 
         if (WebMonitoringEnabled)
         {
@@ -228,28 +276,28 @@ public class MonitorManager : IDisposable
 
         IsRunning = false;
     }
-    
-    public void StartAppMonitor() => _appMonitor.Start();
-    public void StopAppMonitor() => _appMonitor.Stop();
-    
-    public void StartKeyboardMonitor() => _keyboardMonitor.Start();
-    public void StopKeyboardMonitor() => _keyboardMonitor.Stop();
-    
-    public void StartMouseMonitor() => _mouseMonitor.Start();
-    public void StopMouseMonitor() => _mouseMonitor.Stop();
-    
+
+    public void StartAppMonitor() => OnHookThread(() => _appMonitor.Start());
+    public void StopAppMonitor() => OnHookThread(() => _appMonitor.Stop());
+
+    public void StartKeyboardMonitor() => OnHookThread(() => _keyboardMonitor.Start());
+    public void StopKeyboardMonitor() => OnHookThread(() => _keyboardMonitor.Stop());
+
+    public void StartMouseMonitor() => OnHookThread(() => _mouseMonitor.Start());
+    public void StopMouseMonitor() => OnHookThread(() => _mouseMonitor.Stop());
+
     public async Task StartWebMonitorAsync()
     {
         await _webSocketServer.StartAsync();
         _webMonitor.Start();
     }
-    
+
     public async Task StopWebMonitorAsync()
     {
         _webMonitor.Stop();
         await _webSocketServer.StopAsync();
     }
-    
+
     public int GetConnectedBrowserCount() => _webSocketServer.ClientCount;
 
     public void Dispose()

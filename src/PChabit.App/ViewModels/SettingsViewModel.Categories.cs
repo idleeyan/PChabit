@@ -16,64 +16,13 @@ namespace PChabit.App.ViewModels;
 
 public partial class SettingsViewModel : ViewModelBase
 {
+    /// <summary>
+    /// 初始化/补齐默认分类与进程映射。
+    /// 已有用户自定义数据时不覆盖，只补缺失的系统分类与预设映射。
+    /// </summary>
     private static async Task InitializeDefaultCategoriesAsync(PChabitDbContext dbContext)
     {
-        if (await dbContext.ProgramCategories.AnyAsync())
-        {
-            return;
-        }
-
-        var now = DateTime.Now;
-        var defaultCategories = new List<ProgramCategory>
-        {
-            new() { Name = "开发", Description = "开发工具和IDE", Color = "#4A90E4", Icon = "💻", SortOrder = 1, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "浏览", Description = "浏览器", Color = "#50C878", Icon = "🌐", SortOrder = 2, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "沟通", Description = "即时通讯和邮件", Color = "#FF6B6B", Icon = "💬", SortOrder = 3, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "娱乐", Description = "游戏和娱乐", Color = "#9B59B6", Icon = "🎮", SortOrder = 4, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "办公", Description = "办公软件", Color = "#F39C12", Icon = "📊", SortOrder = 5, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "设计", Description = "设计工具", Color = "#E74C3C", Icon = "🎨", SortOrder = 6, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "其他", Description = "未分类程序", Color = "#95A5A6", Icon = "📁", SortOrder = 99, IsSystem = true, IsActive = true, CreatedAt = now }
-        };
-
-        var defaultMappings = new List<ProgramCategoryMapping>
-        {
-            new() { ProcessName = "code.exe", CategoryId = 1 },
-            new() { ProcessName = "devenv.exe", CategoryId = 1 },
-            new() { ProcessName = "idea64.exe", CategoryId = 1 },
-            new() { ProcessName = "pycharm64.exe", CategoryId = 1 },
-            new() { ProcessName = "chrome.exe", CategoryId = 2 },
-            new() { ProcessName = "msedge.exe", CategoryId = 2 },
-            new() { ProcessName = "firefox.exe", CategoryId = 2 },
-            new() { ProcessName = "slack.exe", CategoryId = 3 },
-            new() { ProcessName = "discord.exe", CategoryId = 3 },
-            new() { ProcessName = "teams.exe", CategoryId = 3 },
-            new() { ProcessName = "outlook.exe", CategoryId = 3 },
-            new() { ProcessName = "spotify.exe", CategoryId = 4 },
-            new() { ProcessName = "steam.exe", CategoryId = 4 },
-            new() { ProcessName = "wmplayer.exe", CategoryId = 4 },
-            new() { ProcessName = "WINWORD.EXE", CategoryId = 5 },
-            new() { ProcessName = "EXCEL.EXE", CategoryId = 5 },
-            new() { ProcessName = "POWERPNT.EXE", CategoryId = 5 },
-            new() { ProcessName = "Photoshop.exe", CategoryId = 6 },
-            new() { ProcessName = "Figma.exe", CategoryId = 6 }
-        };
-
-        dbContext.ProgramCategories.AddRange(defaultCategories);
-        await dbContext.SaveChangesAsync();
-
-        foreach (var mapping in defaultMappings)
-        {
-            var category = defaultCategories.FirstOrDefault(c => c.Id == mapping.CategoryId);
-            if (category != null)
-            {
-                mapping.ProcessAlias = category.Name;
-            }
-        }
-
-        dbContext.ProgramCategoryMappings.AddRange(defaultMappings);
-        await dbContext.SaveChangesAsync();
-
-        Log.Information("已初始化默认类别和映射");
+        await CategoryService.EnsureCatalogSeededAsync(dbContext);
     }
 
     public async Task LoadCategoriesAsync()

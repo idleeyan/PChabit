@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
@@ -360,130 +360,95 @@ public class CategoryService : ICategoryService
     public async Task InitializeDefaultCategoriesAsync(CancellationToken cancellationToken = default)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
-        if (await dbContext.ProgramCategories.AnyAsync(cancellationToken))
-        {
-            return;
-        }
-        
-        var defaultCategories = new List<ProgramCategory>
-        {
-            new() { Name = "开发", Description = "开发工具和IDE", Color = "#4A90E4", Icon = "💻", SortOrder = 1, IsSystem = true },
-            new() { Name = "浏览", Description = "浏览器", Color = "#50C878", Icon = "🌐", SortOrder = 2, IsSystem = true },
-            new() { Name = "沟通", Description = "即时通讯和邮件", Color = "#FF6B6B", Icon = "💬", SortOrder = 3, IsSystem = true },
-            new() { Name = "娱乐", Description = "游戏和娱乐", Color = "#9B59B6", Icon = "🎮", SortOrder = 4, IsSystem = true },
-            new() { Name = "办公", Description = "办公软件", Color = "#F39C12", Icon = "📊", SortOrder = 5, IsSystem = true },
-            new() { Name = "设计", Description = "设计工具", Color = "#E74C3C", Icon = "🎨", SortOrder = 6, IsSystem = true },
-            new() { Name = "其他", Description = "未分类程序", Color = "#95A5A6", Icon = "📁", SortOrder = 99, IsSystem = true }
-        };
-        
-        var defaultMappings = new List<ProgramCategoryMapping>
-        {
-            new() { ProcessName = "code.exe", CategoryId = 1 },
-            new() { ProcessName = "devenv.exe", CategoryId = 1 },
-            new() { ProcessName = "idea64.exe", CategoryId = 1 },
-            new() { ProcessName = "pycharm64.exe", CategoryId = 1 },
-            new() { ProcessName = "chrome.exe", CategoryId = 2 },
-            new() { ProcessName = "msedge.exe", CategoryId = 2 },
-            new() { ProcessName = "firefox.exe", CategoryId = 2 },
-            new() { ProcessName = "slack.exe", CategoryId = 3 },
-            new() { ProcessName = "discord.exe", CategoryId = 3 },
-            new() { ProcessName = "teams.exe", CategoryId = 3 },
-            new() { ProcessName = "outlook.exe", CategoryId = 3 },
-            new() { ProcessName = "spotify.exe", CategoryId = 4 },
-            new() { ProcessName = "steam.exe", CategoryId = 4 },
-            new() { ProcessName = "wmplayer.exe", CategoryId = 4 },
-            new() { ProcessName = "WINWORD.EXE", CategoryId = 5 },
-            new() { ProcessName = "EXCEL.EXE", CategoryId = 5 },
-            new() { ProcessName = "POWERPNT.EXE", CategoryId = 5 },
-            new() { ProcessName = "Photoshop.exe", CategoryId = 6 },
-            new() { ProcessName = "Figma.exe", CategoryId = 6 }
-        };
-        
-        dbContext.ProgramCategories.AddRange(defaultCategories);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        
-        foreach (var mapping in defaultMappings)
-        {
-            var category = defaultCategories.FirstOrDefault(c => c.Id == mapping.CategoryId);
-            if (category != null)
-            {
-                mapping.ProcessAlias = category.Name;
-            }
-        }
-        
-        dbContext.ProgramCategoryMappings.AddRange(defaultMappings);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        
-        Log.Information("已初始化默认类别和映射");
+        await EnsureCatalogSeededAsync(dbContext, cancellationToken);
     }
-    
+
     public void InitializeDefaultCategoriesSync()
     {
         Log.Information("InitializeDefaultCategoriesSync: 开始初始化");
         using var dbContext = _dbContextFactory.CreateDbContext();
-        Log.Information("InitializeDefaultCategoriesSync: DbContext 创建成功");
-        
-        if (dbContext.ProgramCategories.Any())
-        {
-            Log.Information("InitializeDefaultCategoriesSync: 分类已存在，跳过初始化");
-            return;
-        }
-        
-        Log.Information("InitializeDefaultCategoriesSync: 创建默认分类");
+        EnsureCatalogSeededAsync(dbContext, CancellationToken.None).GetAwaiter().GetResult();
+        Log.Information("InitializeDefaultCategoriesSync: 完成");
+    }
+
+    /// <summary>增量补齐分类/映射，不覆盖用户数据。</summary>
+    public static async Task EnsureCatalogSeededAsync(PChabitDbContext dbContext, CancellationToken cancellationToken = default)
+    {
         var now = DateTime.Now;
-        var defaultCategories = new List<ProgramCategory>
+        var changed = false;
+
+        var existingCats = await dbContext.ProgramCategories.ToListAsync(cancellationToken);
+        var catByName = existingCats
+            .Where(c => !string.IsNullOrEmpty(c.Name))
+            .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (name, description, color, icon, sortOrder) in DefaultAppCatalog.Categories)
         {
-            new() { Name = "开发", Description = "开发工具和IDE", Color = "#4A90E4", Icon = "💻", SortOrder = 1, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "浏览", Description = "浏览器", Color = "#50C878", Icon = "🌐", SortOrder = 2, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "沟通", Description = "即时通讯和邮件", Color = "#FF6B6B", Icon = "💬", SortOrder = 3, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "娱乐", Description = "游戏和娱乐", Color = "#9B59B6", Icon = "🎮", SortOrder = 4, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "办公", Description = "办公软件", Color = "#F39C12", Icon = "📊", SortOrder = 5, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "设计", Description = "设计工具", Color = "#E74C3C", Icon = "🎨", SortOrder = 6, IsSystem = true, IsActive = true, CreatedAt = now },
-            new() { Name = "其他", Description = "未分类程序", Color = "#95A5A6", Icon = "📁", SortOrder = 99, IsSystem = true, IsActive = true, CreatedAt = now }
-        };
-        
-        var defaultMappings = new List<ProgramCategoryMapping>
-        {
-            new() { ProcessName = "code.exe", CategoryId = 1 },
-            new() { ProcessName = "devenv.exe", CategoryId = 1 },
-            new() { ProcessName = "idea64.exe", CategoryId = 1 },
-            new() { ProcessName = "pycharm64.exe", CategoryId = 1 },
-            new() { ProcessName = "chrome.exe", CategoryId = 2 },
-            new() { ProcessName = "msedge.exe", CategoryId = 2 },
-            new() { ProcessName = "firefox.exe", CategoryId = 2 },
-            new() { ProcessName = "slack.exe", CategoryId = 3 },
-            new() { ProcessName = "discord.exe", CategoryId = 3 },
-            new() { ProcessName = "teams.exe", CategoryId = 3 },
-            new() { ProcessName = "outlook.exe", CategoryId = 3 },
-            new() { ProcessName = "spotify.exe", CategoryId = 4 },
-            new() { ProcessName = "steam.exe", CategoryId = 4 },
-            new() { ProcessName = "wmplayer.exe", CategoryId = 4 },
-            new() { ProcessName = "WINWORD.EXE", CategoryId = 5 },
-            new() { ProcessName = "EXCEL.EXE", CategoryId = 5 },
-            new() { ProcessName = "POWERPNT.EXE", CategoryId = 5 },
-            new() { ProcessName = "Photoshop.exe", CategoryId = 6 },
-            new() { ProcessName = "Figma.exe", CategoryId = 6 }
-        };
-        
-        dbContext.ProgramCategories.AddRange(defaultCategories);
-        dbContext.SaveChanges();
-        Log.Information("InitializeDefaultCategoriesSync: 默认分类已保存");
-        
-        foreach (var mapping in defaultMappings)
-        {
-            var category = defaultCategories.FirstOrDefault(c => c.Id == mapping.CategoryId);
-            if (category != null)
+            if (catByName.ContainsKey(name)) continue;
+            var cat = new ProgramCategory
             {
-                mapping.ProcessAlias = category.Name;
-            }
+                Name = name,
+                Description = description,
+                Color = color,
+                Icon = icon,
+                SortOrder = sortOrder,
+                IsSystem = true,
+                IsActive = true,
+                CreatedAt = now
+            };
+            dbContext.ProgramCategories.Add(cat);
+            catByName[name] = cat;
+            changed = true;
         }
-        
-        dbContext.ProgramCategoryMappings.AddRange(defaultMappings);
-        dbContext.SaveChanges();
-        Log.Information("InitializeDefaultCategoriesSync: 默认映射已保存");
-        
-        Log.Information("已初始化默认类别和映射(同步)");
+
+        if (changed)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            changed = false;
+        }
+
+        var existingMappings = await dbContext.ProgramCategoryMappings.ToListAsync(cancellationToken);
+        var mappedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in existingMappings)
+        {
+            if (string.IsNullOrEmpty(m.ProcessName)) continue;
+            mappedKeys.Add(m.ProcessName);
+            if (m.ProcessName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                mappedKeys.Add(m.ProcessName[..^4]);
+            else
+                mappedKeys.Add(m.ProcessName + ".exe");
+        }
+
+        foreach (var app in DefaultAppCatalog.Apps)
+        {
+            if (mappedKeys.Contains(app.ProcessKey) || mappedKeys.Contains(app.ProcessKey + ".exe"))
+                continue;
+            if (!catByName.TryGetValue(app.CategoryKey, out var category))
+                continue;
+
+            dbContext.ProgramCategoryMappings.Add(new ProgramCategoryMapping
+            {
+                ProcessName = app.ProcessKey.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+                    ? app.ProcessKey
+                    : app.ProcessKey + ".exe",
+                ProcessAlias = app.DisplayName,
+                CategoryId = category.Id
+            });
+            mappedKeys.Add(app.ProcessKey);
+            mappedKeys.Add(app.ProcessKey + ".exe");
+            changed = true;
+        }
+
+        if (changed)
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+            Log.Information("已初始化/补齐默认类别和映射（DefaultAppCatalog）");
+        }
+        else
+        {
+            Log.Information("默认类别和映射已是最新");
+        }
     }
     
     public async Task<string> ExportCategoriesAsync()

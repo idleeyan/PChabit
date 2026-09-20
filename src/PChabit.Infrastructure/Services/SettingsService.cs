@@ -243,10 +243,10 @@ public class SettingsService : ISettingsService
         }
     }
     
-    public DateTime? WebDAVLastSync 
-    { 
-        get => _settings.WebDAVLastSync; 
-        set 
+    public DateTime? WebDAVLastSync
+    {
+        get => _settings.WebDAVLastSync;
+        set
         {
             if (_settings.WebDAVLastSync != value)
             {
@@ -255,7 +255,268 @@ public class SettingsService : ISettingsService
             }
         }
     }
-    
+
+    public bool BrowserSyncEnabled
+    {
+        get => _settings.BrowserSyncEnabled;
+        set
+        {
+            if (_settings.BrowserSyncEnabled != value)
+            {
+                _settings.BrowserSyncEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BrowserSyncEnabled) });
+            }
+        }
+    }
+
+    public bool BrowserBookmarkSyncEnabled
+    {
+        get => _settings.BrowserBookmarkSyncEnabled;
+        set
+        {
+            if (_settings.BrowserBookmarkSyncEnabled != value)
+            {
+                _settings.BrowserBookmarkSyncEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BrowserBookmarkSyncEnabled) });
+            }
+        }
+    }
+
+    public bool BrowserHistoryIngestEnabled
+    {
+        get => _settings.BrowserHistoryIngestEnabled;
+        set
+        {
+            if (_settings.BrowserHistoryIngestEnabled != value)
+            {
+                _settings.BrowserHistoryIngestEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BrowserHistoryIngestEnabled) });
+            }
+        }
+    }
+
+    public int BrowserSyncIntervalMinutes
+    {
+        get => _settings.BrowserSyncIntervalMinutes;
+        set
+        {
+            if (_settings.BrowserSyncIntervalMinutes != value)
+            {
+                _settings.BrowserSyncIntervalMinutes = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BrowserSyncIntervalMinutes) });
+            }
+        }
+    }
+
+    public bool TaskbarEnabled
+    {
+        get => _settings.TaskbarEnabled;
+        set
+        {
+            if (_settings.TaskbarEnabled != value)
+            {
+                _settings.TaskbarEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarEnabled) });
+            }
+        }
+    }
+
+    public bool TaskbarShowCpu
+    {
+        get => _settings.TaskbarShowCpu;
+        set
+        {
+            if (_settings.TaskbarShowCpu != value)
+            {
+                _settings.TaskbarShowCpu = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowCpu) });
+            }
+        }
+    }
+
+    public bool TaskbarShowMemory
+    {
+        get => _settings.TaskbarShowMemory;
+        set
+        {
+            if (_settings.TaskbarShowMemory != value)
+            {
+                _settings.TaskbarShowMemory = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowMemory) });
+            }
+        }
+    }
+
+    public bool TaskbarShowGpu
+    {
+        get => _settings.TaskbarShowGpu;
+        set
+        {
+            if (_settings.TaskbarShowGpu != value)
+            {
+                _settings.TaskbarShowGpu = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowGpu) });
+            }
+        }
+    }
+
+    public bool TaskbarShowNet
+    {
+        get => _settings.TaskbarShowNet;
+        set
+        {
+            if (_settings.TaskbarShowNet != value)
+            {
+                _settings.TaskbarShowNet = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowNet) });
+            }
+        }
+    }
+
+    public bool TaskbarShowDisk
+    {
+        get => _settings.TaskbarShowDisk;
+        set
+        {
+            if (_settings.TaskbarShowDisk != value)
+            {
+                _settings.TaskbarShowDisk = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowDisk) });
+            }
+        }
+    }
+
+    public bool TaskbarShowTemp
+    {
+        get => _settings.TaskbarShowTemp;
+        set
+        {
+            if (_settings.TaskbarShowTemp != value)
+            {
+                _settings.TaskbarShowTemp = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowTemp) });
+            }
+        }
+    }
+
+    public bool TaskbarShowUsage
+    {
+        get => _settings.TaskbarShowUsage;
+        set
+        {
+            if (_settings.TaskbarShowUsage != value)
+            {
+                _settings.TaskbarShowUsage = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(TaskbarShowUsage) });
+            }
+        }
+    }
+
+    public double DailyUsageGoalHours
+    {
+        get => _settings.DailyUsageGoalHours;
+        set
+        {
+            if (_settings.DailyUsageGoalHours != value)
+            {
+                _settings.DailyUsageGoalHours = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(DailyUsageGoalHours) });
+            }
+        }
+    }
+
+    public bool AiInsightsEnabled
+    {
+        get => _settings.AiInsightsEnabled;
+        set
+        {
+            if (_settings.AiInsightsEnabled != value)
+            {
+                _settings.AiInsightsEnabled = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiInsightsEnabled) });
+            }
+        }
+    }
+
+    public string AiBaseUrl
+    {
+        get => _settings.AiBaseUrl;
+        set
+        {
+            if (_settings.AiBaseUrl != value)
+            {
+                _settings.AiBaseUrl = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiBaseUrl) });
+            }
+        }
+    }
+
+    public string AiApiKey
+    {
+        get => _settings.AiApiKey;
+        set
+        {
+            if (_settings.AiApiKey != value)
+            {
+                _settings.AiApiKey = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiApiKey) });
+            }
+        }
+    }
+
+    public string AiModel
+    {
+        get => _settings.AiModel;
+        set
+        {
+            if (_settings.AiModel != value)
+            {
+                _settings.AiModel = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiModel) });
+            }
+        }
+    }
+
+    public string AiProvider
+    {
+        get => _settings.AiProvider;
+        set
+        {
+            if (_settings.AiProvider != value)
+            {
+                _settings.AiProvider = value ?? "zhipu";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiProvider) });
+            }
+        }
+    }
+
+    public bool BrowserAutoPush
+    {
+        get => _settings.BrowserAutoPush;
+        set
+        {
+            if (_settings.BrowserAutoPush != value)
+            {
+                _settings.BrowserAutoPush = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BrowserAutoPush) });
+            }
+        }
+    }
+
+    public int AiTimeoutSeconds
+    {
+        get => _settings.AiTimeoutSeconds;
+        set
+        {
+            var clamped = Math.Clamp(value, 30, 900);
+            if (_settings.AiTimeoutSeconds != clamped)
+            {
+                _settings.AiTimeoutSeconds = clamped;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiTimeoutSeconds) });
+            }
+        }
+    }
+
     public string BackupPath 
     { 
         get => _settings.BackupPath; 
@@ -406,6 +667,9 @@ public class SettingsService : ISettingsService
                     Log.Information("设置已加载");
                 }
             }
+
+            // 启动时对齐快捷方式：若已开启自启动但快捷方式丢失/路径过期，补写
+            ApplySettings();
         }
         catch (Exception ex)
         {
@@ -474,26 +738,67 @@ public class SettingsService : ISettingsService
     private void ApplyStartupSetting()
     {
         var startupFolderPath = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-        var shortcutPath = Path.Combine(startupFolderPath, "Tai.lnk");
-        
+        if (string.IsNullOrEmpty(startupFolderPath) || !Directory.Exists(startupFolderPath))
+        {
+            Log.Warning("Startup 文件夹不可用: {Path}", startupFolderPath);
+            return;
+        }
+
+        var shortcutPath = Path.Combine(startupFolderPath, "PChabit.lnk");
+        var legacyShortcutPath = Path.Combine(startupFolderPath, "Tai.lnk");
+
+        try
+        {
+            if (File.Exists(legacyShortcutPath))
+            {
+                File.Delete(legacyShortcutPath);
+                Log.Information("已清理旧自启动快捷方式 Tai.lnk");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "清理旧自启动快捷方式失败");
+        }
+
         if (StartWithWindows)
         {
-            if (!File.Exists(shortcutPath))
+            var exePath = Environment.ProcessPath
+                ?? Path.Combine(AppContext.BaseDirectory, "PChabit.exe");
+            if (!File.Exists(exePath))
             {
-                var exePath = Environment.ProcessPath;
-                if (exePath != null)
+                Log.Warning("自启动目标不存在: {Path}", exePath);
+                return;
+            }
+
+            // 始终重建，避免发布路径变更后旧快捷方式指向失效 exe
+            try
+            {
+                if (File.Exists(shortcutPath))
                 {
-                    CreateShortcut(shortcutPath, exePath);
-                    Log.Information("已添加开机自启动");
+                    File.Delete(shortcutPath);
                 }
+
+                CreateShortcut(shortcutPath, exePath);
+                Log.Information("已写入开机自启动: {Shortcut} -> {Target}", shortcutPath, exePath);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "写入开机自启动快捷方式失败");
             }
         }
         else
         {
-            if (File.Exists(shortcutPath))
+            try
             {
-                File.Delete(shortcutPath);
-                Log.Information("已移除开机自启动");
+                if (File.Exists(shortcutPath))
+                {
+                    File.Delete(shortcutPath);
+                    Log.Information("已移除开机自启动: {Path}", shortcutPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "移除开机自启动快捷方式失败");
             }
         }
     }
@@ -557,7 +862,12 @@ internal class AppSettings
     public string WebDAVPassword { get; set; } = "";
     public bool WebDAVEnabled { get; set; } = false;
     public DateTime? WebDAVLastSync { get; set; }
-    
+
+    public bool BrowserSyncEnabled { get; set; } = true;
+    public bool BrowserBookmarkSyncEnabled { get; set; } = true;
+    public bool BrowserHistoryIngestEnabled { get; set; } = true;
+    public int BrowserSyncIntervalMinutes { get; set; } = 60;
+
     public string BackupPath { get; set; } = "";
     public bool AutoBackupEnabled { get; set; } = true;
     public int AutoBackupIntervalHours { get; set; } = 4;
@@ -566,4 +876,24 @@ internal class AppSettings
     public bool AutoCleanupEnabled { get; set; } = true;
     public bool ArchiveBeforeCleanup { get; set; } = true;
     public int MaxCloudBackupCount { get; set; } = 5;
+
+    public bool TaskbarEnabled { get; set; } = true;
+    public bool TaskbarShowCpu { get; set; } = true;
+    public bool TaskbarShowMemory { get; set; } = true;
+    public bool TaskbarShowGpu { get; set; } = true;
+    public bool TaskbarShowNet { get; set; } = true;
+    public bool TaskbarShowDisk { get; set; } = true;
+    public bool TaskbarShowTemp { get; set; } = true;
+    public bool TaskbarShowUsage { get; set; } = true;
+    public double DailyUsageGoalHours { get; set; } = 6;
+
+    public bool AiInsightsEnabled { get; set; } = false;
+    public string AiBaseUrl { get; set; } = "https://api.openai.com/v1";
+    public string AiApiKey { get; set; } = "";
+    public string AiModel { get; set; } = "glm-4-flash";
+    public string AiProvider { get; set; } = "zhipu";
+    /// <summary>AI 请求超时秒数；本地模型建议 ≥300。</summary>
+    public int AiTimeoutSeconds { get; set; } = 300;
+    public bool BrowserAutoPush { get; set; } = false;
 }
+

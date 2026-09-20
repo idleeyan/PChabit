@@ -9,6 +9,7 @@ using PChabit.Infrastructure.Monitoring;
 using PChabit.Infrastructure.Services;
 using PChabit.Infrastructure.Analysis;
 using PChabit.Application;
+using PChabit.HardwareMonitor;
 
 namespace PChabit.App.Services;
 
@@ -16,24 +17,26 @@ public static class ServiceConfiguration
 {
     public static IServiceCollection ConfigureServices(this IServiceCollection services, string databasePath)
     {
-        var connectionString = $"Data Source={databasePath};Cache=Shared;Mode=ReadWriteCreate;";
-        
+        // 注意：Microsoft.Data.Sqlite 连接串不支持 "Journal Mode" 关键字
+        // （写入会抛 ArgumentException），WAL 仅通过 EnableWalModeAsync 的 PRAGMA 启用。
+        var connectionString =
+            $"Data Source={databasePath};Cache=Private;Mode=ReadWriteCreate;Default Timeout=5;Pooling=True;";
+
         services.AddDbContext<PChabitDbContext>(options =>
             options.UseSqlite(connectionString, sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(15);
             }));
-        
+
         services.AddDbContextFactory<PChabitDbContext>(options =>
             options.UseSqlite(connectionString, sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(15);
             }));
-        
+
         services.AddTaiApplication();
-        
-        
-        
+
+        services.AddSingleton<InputHookThread>();
         services.AddSingleton<IAppMonitor, AppMonitor>();
         services.AddSingleton<IKeyboardMonitor, KeyboardMonitor>();
         services.AddSingleton<IMouseMonitor, MouseMonitor>();
@@ -56,6 +59,11 @@ public static class ServiceConfiguration
         });
         services.AddSingleton<MonitorManager>();
         
+        // 硬件监控（LiteMonitor 核心移植，见 src/PChabit.HardwareMonitor/NOTICE.md）
+        services.AddSingleton<HardwareMonitorService>();
+        // 硬件分钟样本落库（分析升级 P0，订阅 HardwareMonitorService.ValuesUpdated）
+        services.AddSingleton<HardwareSampleWriter>();
+
         services.AddSingleton<DataCollectionService>();
         services.AddSingleton<IAppIconService, AppIconService>();
         services.AddSingleton<IBackgroundAppSettings, BackgroundAppSettings>();
@@ -68,6 +76,12 @@ public static class ServiceConfiguration
         services.AddScoped<IWebsiteCategoryService, WebsiteCategoryService>();
         
         services.AddSingleton<IBackupService, BackupService>();
+        services.AddSingleton<IBrowserBookmarkRepository, BrowserBookmarkRepository>();
+        services.AddSingleton<BrowserSyncWebSocketHandler>();
+        services.AddSingleton<IHistoryIngestService, HistoryIngestService>();
+        services.AddSingleton<HistorySyncService>();
+        services.AddSingleton<BookmarkTidyService>();
+        services.AddSingleton<IBookmarkSyncService, BookmarkSyncService>();
 
         // 数据导出服务（原在 AddTaiInfrastructure 中但该方法未被调用）
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
@@ -88,11 +102,20 @@ public static class ServiceConfiguration
         // AddScoped 从根容器解析会导致俘定依赖和死锁
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DashboardViewModel>();
+        services.AddTransient<HardwareMonitorViewModel>();
         services.AddTransient<TimelineViewModel>();
         services.AddTransient<AnalyticsViewModel>();
+        services.AddSingleton<IBrowserBookmarkRepository, BrowserBookmarkRepository>();
+        services.AddSingleton<BookmarkLibraryService>();
+        services.AddSingleton<BookmarkHubService>();
+        services.AddSingleton<IAiChatService, AiChatService>();
+        services.AddSingleton<AiSettingsSyncService>();
+        services.AddSingleton<BookmarkTidyAiService>();
+        services.AddSingleton<IAnalyticsAiService, AnalyticsAiService>();
         services.AddTransient<DataManagementViewModel>();
         services.AddTransient<DetailDialogViewModel>();
         services.AddTransient<AppStatsViewModel>();
+        services.AddTransient<AppDetailViewModel>();
         services.AddTransient<KeyboardDetailsViewModel>();
         services.AddTransient<WebDetailsViewModel>();
         services.AddTransient<CategoryEditDialogViewModel>();
@@ -105,16 +128,17 @@ public static class ServiceConfiguration
         services.AddTransient<HeatmapViewModel>();
         services.AddTransient<SankeyViewModel>();
         services.AddTransient<InsightsViewModel>();
+        services.AddTransient<HistoryReportViewModel>();
         
         return services;
     }
     
     public static async Task EnableWalModeAsync(string databasePath)
     {
-        var connectionString = $"Data Source={databasePath};Cache=Shared;";
+        var connectionString = $"Data Source={databasePath};Cache=Private;";
         using var connection = new Microsoft.Data.Sqlite.SqliteConnection(connectionString);
         await connection.OpenAsync();
-        
+
         using var command = connection.CreateCommand();
         command.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000; PRAGMA cache_size=-20000; PRAGMA temp_store=MEMORY; PRAGMA wal_autocheckpoint=10000;";
         await command.ExecuteNonQueryAsync();
@@ -122,3 +146,4 @@ public static class ServiceConfiguration
         Log.Information("SQLite WAL 模式已启用: {Path}", databasePath);
     }
 }
+

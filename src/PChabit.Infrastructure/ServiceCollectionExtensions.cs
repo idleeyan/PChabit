@@ -12,7 +12,9 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddTaiInfrastructure(this IServiceCollection services, string dbPath, int webSocketPort = 8765)
     {
-        var connectionString = $"Data Source={dbPath};Cache=Shared;Mode=ReadWriteCreate;";
+        // 注意：连接串不支持 "Journal Mode"，WAL 需用 PRAGMA 设置
+        var connectionString =
+            $"Data Source={dbPath};Cache=Private;Mode=ReadWriteCreate;Default Timeout=5;Pooling=True;";
 
         services.AddDbContext<PChabitDbContext>(options =>
             options.UseSqlite(connectionString));
