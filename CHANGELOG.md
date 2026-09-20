@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+### 文档
+- `README.md` 全面重写：补充硬件监控、分析复盘驾驶舱、深度周报与 AI 解读、浏览历史与网站分类、
+  任务栏小窗、全局操作日志等模块；删除已移除的「目标管理」章节并加升级说明；
+  开发环境更新为 .NET 10 SDK + Windows App SDK 2.5.1；项目结构补充 `PChabit.HardwareMonitor`
+- `AI_MAINTENANCE.md` 更新项目概览技术栈（.NET 10 / WinAppSDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x）、
+  项目结构与关键依赖版本表；`PublishReadyToRun` 禁令的版本说明同步（历史修复记录保持原样未改）
+- `docs/发布产物语言资源说明.md`：构建输出路径示例由 net9.0 更正为 net10.0
 ## [3.15.15] - 2026-09-20
 
 ### 修复：启动时窗口被自动移到屏幕左上角
