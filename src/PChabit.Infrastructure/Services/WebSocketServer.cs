@@ -60,7 +60,7 @@ public class WebSocketServer : IDisposable
         _cts = new CancellationTokenSource();
     }
     
-    public Task StartAsync()
+    public virtual Task StartAsync()
     {
         if (_isRunning) return Task.CompletedTask;
         
@@ -80,7 +80,7 @@ public class WebSocketServer : IDisposable
         }
     }
     
-    public Task StopAsync()
+    public virtual Task StopAsync()
     {
         if (!_isRunning) return Task.CompletedTask;
         
@@ -380,7 +380,7 @@ public class WebSocketServer : IDisposable
         }
     }
     
-    public void Dispose()
+    public virtual void Dispose()
     {
         _cts.Cancel();
 

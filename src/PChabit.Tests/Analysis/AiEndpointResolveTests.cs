@@ -135,10 +135,11 @@ public class AiEndpointResolveTests
     }
 
     [Fact]
-    public void ExtractContent_FallsBackToReasoning()
+    public void ExtractContent_IgnoresReasoningOnly()
     {
-        var json = """{"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"思考结果"}}]}""";
-        OpenAiCompatibleChatClient.ExtractContent(json).Should().Be("思考结果");
+        // reasoning_content 是英文思考过程，不得当正文
+        var json = """{"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"thinking in english"}}]}""";
+        OpenAiCompatibleChatClient.ExtractContent(json).Should().Be("");
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Moq;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Monitoring;
@@ -140,7 +140,11 @@ public class MonitorManagerTests
         _mouseMonitorMock = new Mock<IMouseMonitor>();
         _webMonitorMock = new Mock<IWebMonitor>();
         _webSocketServerMock = new Mock<WebSocketServer>();
-        
+        // 禁止打真实端口：StartAsync/StopAsync 必须被 stub（否则 Moq 会执行真实 HttpListener）
+        _webSocketServerMock.Setup(s => s.StartAsync()).Returns(Task.CompletedTask);
+        _webSocketServerMock.Setup(s => s.StopAsync()).Returns(Task.CompletedTask);
+        _webSocketServerMock.Setup(s => s.Dispose());
+
         _monitorManager = new MonitorManager(
             _appMonitorMock.Object,
             _keyboardMonitorMock.Object,
@@ -148,30 +152,31 @@ public class MonitorManagerTests
             _webMonitorMock.Object,
             _webSocketServerMock.Object);
     }
-    
+
     [Fact]
     public void Constructor_ShouldInitializeWithDefaultValues()
     {
         _monitorManager.IsRunning.Should().BeFalse();
     }
-    
+
     [Fact]
     public async Task StartAllAsync_ShouldStartAllMonitors()
     {
         await _monitorManager.StartAllAsync();
-        
+
         _appMonitorMock.Verify(m => m.Start(), Times.Once);
         _keyboardMonitorMock.Verify(m => m.Start(), Times.Once);
         _mouseMonitorMock.Verify(m => m.Start(), Times.Once);
         _monitorManager.IsRunning.Should().BeTrue();
+        await _monitorManager.StopAllAsync();
     }
-    
+
     [Fact]
     public async Task StopAllAsync_ShouldStopAllMonitors()
     {
         await _monitorManager.StartAllAsync();
         await _monitorManager.StopAllAsync();
-        
+
         _appMonitorMock.Verify(m => m.Stop(), Times.Once);
         _keyboardMonitorMock.Verify(m => m.Stop(), Times.Once);
         _mouseMonitorMock.Verify(m => m.Stop(), Times.Once);

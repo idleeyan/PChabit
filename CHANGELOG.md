@@ -8,6 +8,12 @@
   寮€鍙戠幆澧冩洿鏂颁负 .NET 10 SDK + Windows App SDK 2.5.1锛涢」鐩粨鏋勮ˉ鍏?`PChabit.HardwareMonitor`
 - `AI_MAINTENANCE.md` 鏇存柊椤圭洰姒傝鎶€鏈爤锛?NET 10 / WinAppSDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x锛夈€?  椤圭洰缁撴瀯涓庡叧閿緷璧栫増鏈〃锛沗PublishReadyToRun` 绂佷护鐨勭増鏈鏄庡悓姝ワ紙鍘嗗彶淇璁板綍淇濇寔鍘熸牱鏈敼锛?- `docs/鍙戝竷浜х墿璇█璧勬簮璇存槑.md`锛氭瀯寤鸿緭鍑鸿矾寰勭ず渚嬬敱 net9.0 鏇存涓?net10.0
 - `docs/AI娣卞害瑙ｈ鍗囩骇璁″垝.md`锛氬弻杞ㄥ崌绾ц鍒掞紙椤圭洰涔犳儻璧勪骇 + AI 娣卞害瑙ｈ锛?
+## [3.22.10]
+
+### 稳定性
+- 全量测试 154/154 通过；修复 Monitor 测试占用 8765 端口（WebSocketServer.StartAsync 改 virtual 并 stub）
+- 解析不再把 reasoning_content 当正文
+
 ## [3.22.9]
 
 ### 精简
@@ -832,3 +838,4 @@
   - 鏁版嵁搴撳垵濮嬪寲鏀逛负绾紓姝ユ墽琛岋紙绉婚櫎 GetAwaiter().GetResult() 鍚屾闃诲锛?  - 鐩戞帶鍣ㄥ惎鍔ㄤ粠 StartAllAsync().Wait() 鏀逛负 Task.Run 寮傛鍚姩
 - **鍏抽棴鍗￠】浼樺寲**: 娑堥櫎绋嬪簭鍏抽棴鏃剁殑鍗￠】
   - DataCollectionService.Stop() 涓?FlushAccumulators 浠庡悓姝ラ樆濉炴敼涓哄甫瓒呮椂鐨勫紓姝ユ墽琛?  - 澶勭悊浠诲姟鍜屽悗鍙板畾鏃跺櫒绛夊緟瓒呮椂浠?2 绉掔缉鐭负 1 绉?  - 鍏抽棴娴佺▼绉婚櫎涓嶅繀瑕佺殑 Task.Delay(100)锛岀獥鍙ｅ叧闂瓑寰呬粠 500ms 缂╃煭涓?200ms
+
