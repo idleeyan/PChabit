@@ -7,17 +7,19 @@ namespace PChabit.Infrastructure.Services;
 public interface IAnalyticsAiService
 {
     bool IsConfigured { get; }
-    /// <summary>调用兼容 OpenAI Chat Completions 的端点；返回模型原文（期望为 JSON 字符串）。</summary>
+    /// <summary>当前解析到的端点描述，便于 UI 显示「正在用本地/云端」。</summary>
+    string ActiveEndpointLabel { get; }
     Task<string> InterpretAsync(string systemPrompt, string userPayload, CancellationToken ct = default);
-    /// <summary>流式返回 content 片段。</summary>
     IAsyncEnumerable<string> InterpretStreamAsync(string systemPrompt, string userPayload, CancellationToken ct = default);
-    /// <summary>追问用快捷模型（可与解读模型不同）。</summary>
+    /// <summary>追问用（双端点模式下优先本地）。</summary>
     Task<string> ChatFastAsync(string systemPrompt, string userPayload, CancellationToken ct = default);
 }
 
 /// <summary>
-/// 分析页「AI 深度解读」。默认关闭；仅发送 AnalysisReportBuilder / AiContextPack 生成的聚合 JSON。
-/// ApiKey 只存在本机 settings.json，不写日志。超时读设置 AiTimeoutSeconds（默认 300s）。
+/// 分析页「AI 深度解读」。支持本地 LM Studio + 云端双端点：
+/// - cloud：解读/追问都走云端
+/// - local：都走本地
+/// - dual：解读云端优先，追问本地优先
 /// </summary>
 public sealed class AnalyticsAiService : IAnalyticsAiService
 {
@@ -32,6 +34,22 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
 
     public bool IsConfigured => _settings.AiInsightsEnabled && _client.IsConfigured;
 
+    public string ActiveEndpointLabel
+    {
+        get
+        {
+            var insight = _client.Resolve(AiEndpointSlot.Auto, isInsight: true);
+            var chat = _client.Resolve(AiEndpointSlot.Auto, isInsight: false);
+            var mode = _client.EndpointMode;
+            return mode switch
+            {
+                "dual" => $"双端点：解读→{insight.Label} · 追问→{chat.Label}",
+                "local" => $"本地：{insight.Label}",
+                _ => $"云端：{insight.Label}"
+            };
+        }
+    }
+
     public async Task<string> InterpretAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
     {
         if (!IsConfigured)
@@ -43,25 +61,10 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
             UserContent = userPayload,
             Temperature = 0.3,
             MaxTokens = 2000,
-            PreferJson = true
+            PreferJson = true,
+            IsInsight = true,
+            Slot = AiEndpointSlot.Auto
         }, ct).ConfigureAwait(false);
-    }
-
-    /// <summary>追问/轻量对话：可用快捷模型（AiModelFast）。</summary>
-    public Task<string> ChatFastAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
-    {
-        if (!IsConfigured)
-            throw new InvalidOperationException("AI 深度解读未配置或未启用（设置 → 分析 AI）。");
-
-        var fast = _settings.AiModelFast;
-        return _client.CompleteAsync(new OpenAiChatRequest
-        {
-            SystemPrompt = systemPrompt,
-            UserContent = userPayload,
-            Temperature = 0.5,
-            MaxTokens = 1200,
-            ModelOverride = string.IsNullOrWhiteSpace(fast) ? null : fast
-        }, ct);
     }
 
     public async IAsyncEnumerable<string> InterpretStreamAsync(
@@ -79,10 +82,30 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
             Temperature = 0.3,
             MaxTokens = 2000,
             PreferJson = true,
-            Stream = true
+            Stream = true,
+            IsInsight = true,
+            Slot = AiEndpointSlot.Auto
         }, ct).ConfigureAwait(false))
         {
             yield return chunk;
         }
+    }
+
+    public Task<string> ChatFastAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
+    {
+        if (!IsConfigured)
+            throw new InvalidOperationException("AI 深度解读未配置或未启用（设置 → 分析 AI）。");
+
+        var fast = _settings.AiModelFast;
+        return _client.CompleteAsync(new OpenAiChatRequest
+        {
+            SystemPrompt = systemPrompt,
+            UserContent = userPayload,
+            Temperature = 0.5,
+            MaxTokens = 1200,
+            ModelOverride = string.IsNullOrWhiteSpace(fast) ? null : fast,
+            IsInsight = false,
+            Slot = AiEndpointSlot.Auto
+        }, ct);
     }
 }

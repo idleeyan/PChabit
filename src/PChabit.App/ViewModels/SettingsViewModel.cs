@@ -100,6 +100,24 @@ public partial class SettingsViewModel : ViewModelBase
     private string _aiModelFast = "";
 
     [ObservableProperty]
+    private string _aiLocalBaseUrl = "http://127.0.0.1:1234/v1";
+
+    [ObservableProperty]
+    private string _aiLocalModel = "local-model";
+
+    [ObservableProperty]
+    private string _aiCloudBaseUrl = "";
+
+    [ObservableProperty]
+    private string _aiCloudApiKey = "";
+
+    [ObservableProperty]
+    private string _aiCloudModel = "";
+
+    [ObservableProperty]
+    private string _aiEndpointMode = "cloud";
+
+    [ObservableProperty]
     private string _aiProvider = "zhipu";
 
     [ObservableProperty]
@@ -269,6 +287,12 @@ public partial class SettingsViewModel : ViewModelBase
         AiApiKey = _settingsService.AiApiKey;
         AiModel = _settingsService.AiModel;
         AiModelFast = _settingsService.AiModelFast;
+        AiLocalBaseUrl = _settingsService.AiLocalBaseUrl;
+        AiLocalModel = _settingsService.AiLocalModel;
+        AiCloudBaseUrl = _settingsService.AiCloudBaseUrl;
+        AiCloudApiKey = _settingsService.AiCloudApiKey;
+        AiCloudModel = _settingsService.AiCloudModel;
+        AiEndpointMode = _settingsService.AiEndpointMode;
         AiProvider = string.IsNullOrEmpty(_settingsService.AiProvider) ? "zhipu" : _settingsService.AiProvider;
         AiTimeoutSeconds = _settingsService.AiTimeoutSeconds;
     }
@@ -365,6 +389,24 @@ public partial class SettingsViewModel : ViewModelBase
                 break;
             case "AiModelFast":
                 _settingsService.AiModelFast = AiModelFast;
+                break;
+            case "AiLocalBaseUrl":
+                _settingsService.AiLocalBaseUrl = AiLocalBaseUrl;
+                break;
+            case "AiLocalModel":
+                _settingsService.AiLocalModel = AiLocalModel;
+                break;
+            case "AiCloudBaseUrl":
+                _settingsService.AiCloudBaseUrl = AiCloudBaseUrl;
+                break;
+            case "AiCloudApiKey":
+                _settingsService.AiCloudApiKey = AiCloudApiKey;
+                break;
+            case "AiCloudModel":
+                _settingsService.AiCloudModel = AiCloudModel;
+                break;
+            case "AiEndpointMode":
+                _settingsService.AiEndpointMode = AiEndpointMode;
                 break;
             case "AiProvider":
                 _settingsService.AiProvider = AiProvider;

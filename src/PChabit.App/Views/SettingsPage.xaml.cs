@@ -287,6 +287,17 @@ public sealed partial class SettingsPage : Page
         AiTimeoutSecondsBox.ValueChanged += (s, e) => OnSettingChanged("AiTimeoutSeconds", e.NewValue);
         AiStrictPrivacySwitch.Toggled += (s, e) => OnSettingChanged("AiStrictPrivacy", AiStrictPrivacySwitch.IsOn);
         AiAutoWeeklyInsightSwitch.Toggled += (s, e) => OnSettingChanged("AiAutoWeeklyInsight", AiAutoWeeklyInsightSwitch.IsOn);
+        AiEndpointModeBox.SelectionChanged += (s, e) =>
+        {
+            if (_isLoading) return;
+            var tag = (AiEndpointModeBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "cloud";
+            OnSettingChanged("AiEndpointMode", tag);
+        };
+        AiCloudBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiCloudBaseUrl", AiCloudBaseUrlBox.Text);
+        AiCloudApiKeyBox.LostFocus += (s, e) => OnSettingChanged("AiCloudApiKey", AiCloudApiKeyBox.Password);
+        AiCloudModelBox.LostFocus += (s, e) => OnSettingChanged("AiCloudModel", AiCloudModelBox.Text);
+        AiLocalBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiLocalBaseUrl", AiLocalBaseUrlBox.Text);
+        AiLocalModelBox.LostFocus += (s, e) => OnSettingChanged("AiLocalModel", AiLocalModelBox.Text);
     }
 
     private async void OnViewChangelogClick(object sender, RoutedEventArgs e)
@@ -489,6 +500,24 @@ public sealed partial class SettingsPage : Page
             case "AiModelFast":
                 ViewModel.AiModelFast = value?.ToString() ?? "";
                 break;
+            case "AiEndpointMode":
+                ViewModel.AiEndpointMode = value?.ToString() ?? "cloud";
+                break;
+            case "AiCloudBaseUrl":
+                ViewModel.AiCloudBaseUrl = value?.ToString() ?? "";
+                break;
+            case "AiCloudApiKey":
+                ViewModel.AiCloudApiKey = value?.ToString() ?? "";
+                break;
+            case "AiCloudModel":
+                ViewModel.AiCloudModel = value?.ToString() ?? "";
+                break;
+            case "AiLocalBaseUrl":
+                ViewModel.AiLocalBaseUrl = value?.ToString() ?? "";
+                break;
+            case "AiLocalModel":
+                ViewModel.AiLocalModel = value?.ToString() ?? "";
+                break;
             case "AiTimeoutSeconds":
                 ViewModel.AiTimeoutSeconds = value is double d ? d : 300;
                 break;
@@ -561,6 +590,19 @@ public sealed partial class SettingsPage : Page
         AiApiKeyBox.Password = ViewModel.AiApiKey ?? "";
         AiModelBox.Text = ViewModel.AiModel ?? "";
         AiModelFastBox.Text = ViewModel.AiModelFast ?? "";
+        AiCloudBaseUrlBox.Text = ViewModel.AiCloudBaseUrl ?? "";
+        AiCloudApiKeyBox.Password = ViewModel.AiCloudApiKey ?? "";
+        AiCloudModelBox.Text = ViewModel.AiCloudModel ?? "";
+        AiLocalBaseUrlBox.Text = ViewModel.AiLocalBaseUrl ?? "";
+        AiLocalModelBox.Text = ViewModel.AiLocalModel ?? "";
+        foreach (var item in AiEndpointModeBox.Items.OfType<ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag?.ToString(), ViewModel.AiEndpointMode, StringComparison.OrdinalIgnoreCase))
+            {
+                AiEndpointModeBox.SelectedItem = item;
+                break;
+            }
+        }
         AiProviderBox.Items.Clear();
         foreach (var p in PChabit.Infrastructure.Services.AiProviderPresets.All)
             AiProviderBox.Items.Add(new ComboBoxItem { Content = p.Label, Tag = p.Kind.ToString() });

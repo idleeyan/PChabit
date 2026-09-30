@@ -68,7 +68,9 @@ public sealed class AiChatService : IAiChatService
             SystemPrompt = systemPrompt,
             UserContent = userPayload,
             Temperature = 0.5,
-            MaxTokens = 1600
+            MaxTokens = 1600,
+            IsInsight = false,
+            Slot = AiEndpointSlot.Auto
         }, ct);
     }
 }

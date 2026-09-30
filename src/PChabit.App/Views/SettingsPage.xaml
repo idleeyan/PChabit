@@ -433,6 +433,41 @@
                                 PlaceholderText="留空则与解读模型相同"
                                 Text="" />
                             <ComboBox
+                                x:Name="AiEndpointModeBox"
+                                Header="端点模式"
+                                HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="云端（单端点）" Tag="cloud" />
+                                <ComboBoxItem Content="本地 LM Studio（单端点）" Tag="local" />
+                                <ComboBoxItem Content="双端点：解读云端 · 追问本地" Tag="dual" />
+                            </ComboBox>
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="双端点模式下可同时保留本地与云端配置。"
+                                TextWrapping="Wrap" />
+                            <TextBox
+                                x:Name="AiCloudBaseUrlBox"
+                                Header="云端 Base URL（空=用上方主配置）"
+                                PlaceholderText="https://api.deepseek.com 或 https://open.bigmodel.cn/api/paas/v4"
+                                Text="" />
+                            <PasswordBox
+                                x:Name="AiCloudApiKeyBox"
+                                Header="云端 API Key（空=用上方主配置）" />
+                            <TextBox
+                                x:Name="AiCloudModelBox"
+                                Header="云端模型（空=用上方主配置）"
+                                Text="" />
+                            <TextBox
+                                x:Name="AiLocalBaseUrlBox"
+                                Header="本地 Base URL（LM Studio）"
+                                PlaceholderText="http://127.0.0.1:1234/v1"
+                                Text="" />
+                            <TextBox
+                                x:Name="AiLocalModelBox"
+                                Header="本地模型"
+                                PlaceholderText="qwen2.5-7b-instruct 等"
+                                Text="" />
+                            <ComboBox
                                 x:Name="AiProviderBox"
                                 Header="Provider"
                                 HorizontalAlignment="Stretch"

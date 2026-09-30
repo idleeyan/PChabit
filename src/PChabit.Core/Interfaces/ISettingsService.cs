@@ -59,6 +59,19 @@ public interface ISettingsService
     int AiTimeoutSeconds { get; set; }
     /// <summary>追问用快捷模型（空则与 AiModel 相同）。</summary>
     string AiModelFast { get; set; }
+    // ===== 双端点（本地 LM Studio + 云端）=====
+    /// <summary>本地端点 Base URL，如 http://127.0.0.1:1234/v1</summary>
+    string AiLocalBaseUrl { get; set; }
+    /// <summary>本地模型名</summary>
+    string AiLocalModel { get; set; }
+    /// <summary>云端 Base URL（空则回退 AiBaseUrl）</summary>
+    string AiCloudBaseUrl { get; set; }
+    /// <summary>云端 API Key</summary>
+    string AiCloudApiKey { get; set; }
+    /// <summary>云端模型（空则回退 AiModel）</summary>
+    string AiCloudModel { get; set; }
+    /// <summary>端点模式：cloud | local | dual（解读云端、追问本地）</summary>
+    string AiEndpointMode { get; set; }
     /// <summary>严格隐私：出域指标包不含应用/分类显示名，仅数值与标签。</summary>
     bool AiStrictPrivacy { get; set; }
     /// <summary>每周自动跑一次 AI 解读（需先启用 AI）。</summary>

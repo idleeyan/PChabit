@@ -531,6 +531,86 @@ public class SettingsService : ISettingsService
         }
     }
 
+    public string AiLocalBaseUrl
+    {
+        get => _settings.AiLocalBaseUrl;
+        set
+        {
+            if (_settings.AiLocalBaseUrl != value)
+            {
+                _settings.AiLocalBaseUrl = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiLocalBaseUrl) });
+            }
+        }
+    }
+
+    public string AiLocalModel
+    {
+        get => _settings.AiLocalModel;
+        set
+        {
+            if (_settings.AiLocalModel != value)
+            {
+                _settings.AiLocalModel = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiLocalModel) });
+            }
+        }
+    }
+
+    public string AiCloudBaseUrl
+    {
+        get => _settings.AiCloudBaseUrl;
+        set
+        {
+            if (_settings.AiCloudBaseUrl != value)
+            {
+                _settings.AiCloudBaseUrl = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiCloudBaseUrl) });
+            }
+        }
+    }
+
+    public string AiCloudApiKey
+    {
+        get => _settings.AiCloudApiKey;
+        set
+        {
+            if (_settings.AiCloudApiKey != value)
+            {
+                _settings.AiCloudApiKey = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiCloudApiKey) });
+            }
+        }
+    }
+
+    public string AiCloudModel
+    {
+        get => _settings.AiCloudModel;
+        set
+        {
+            if (_settings.AiCloudModel != value)
+            {
+                _settings.AiCloudModel = value ?? "";
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiCloudModel) });
+            }
+        }
+    }
+
+    public string AiEndpointMode
+    {
+        get => _settings.AiEndpointMode;
+        set
+        {
+            var v = string.IsNullOrWhiteSpace(value) ? "cloud" : value.Trim().ToLowerInvariant();
+            if (v is not ("cloud" or "local" or "dual")) v = "cloud";
+            if (_settings.AiEndpointMode != v)
+            {
+                _settings.AiEndpointMode = v;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(AiEndpointMode) });
+            }
+        }
+    }
+
     public bool AiAutoWeeklyInsight
     {
         get => _settings.AiAutoWeeklyInsight;
@@ -1016,6 +1096,15 @@ internal class AppSettings
     public int AiTimeoutSeconds { get; set; } = 300;
     /// <summary>追问用快捷模型；空表示与 AiModel 相同。</summary>
     public string AiModelFast { get; set; } = "";
+    /// <summary>本地 LM Studio / Ollama 端点。</summary>
+    public string AiLocalBaseUrl { get; set; } = "http://127.0.0.1:1234/v1";
+    public string AiLocalModel { get; set; } = "local-model";
+    /// <summary>云端端点；空则回退 AiBaseUrl/AiModel。</summary>
+    public string AiCloudBaseUrl { get; set; } = "";
+    public string AiCloudApiKey { get; set; } = "";
+    public string AiCloudModel { get; set; } = "";
+    /// <summary>cloud | local | dual</summary>
+    public string AiEndpointMode { get; set; } = "cloud";
     /// <summary>严格隐私：出域不含应用/分类显示名。</summary>
     public bool AiStrictPrivacy { get; set; } = false;
     /// <summary>每周自动 AI 解读。</summary>
