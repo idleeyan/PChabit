@@ -141,4 +141,24 @@ public class AiEndpointResolveTests
         var c = new OpenAiCompatibleChatClient(s);
         c.Resolve(AiEndpointSlot.Auto, true).Label.Should().Be("本地");
     }
+
+    [Fact]
+    public void ExtractContent_ReadsMessageContent()
+    {
+        var json = """{"choices":[{"message":{"role":"assistant","content":"你好"}}]}""";
+        OpenAiCompatibleChatClient.ExtractContent(json).Should().Be("你好");
+    }
+
+    [Fact]
+    public void ExtractContent_FallsBackToReasoning()
+    {
+        var json = """{"choices":[{"message":{"role":"assistant","content":"","reasoning_content":"思考结果"}}]}""";
+        OpenAiCompatibleChatClient.ExtractContent(json).Should().Be("思考结果");
+    }
+
+    [Fact]
+    public void ExtractContent_EmptyWhenNoText()
+    {
+        OpenAiCompatibleChatClient.ExtractContent("""{"choices":[{"message":{"content":""}}]}""").Should().Be("");
+    }
 }

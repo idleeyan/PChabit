@@ -125,7 +125,16 @@ public sealed class OpenAiCompatibleChatClient
             using var resp1 = await Http.SendAsync(req1, timeoutCts.Token).ConfigureAwait(false);
             var text1 = await resp1.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
             if (resp1.IsSuccessStatusCode)
-                return ExtractContent(text1);
+            {
+                var content = ExtractContent(text1);
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    Log.Warning("AI 响应成功但 content 为空 via {Slot}: {Body}", cfg.Label, Truncate(text1, 400));
+                    throw new HttpRequestException(
+                        $"AI 服务（{cfg.Label}）返回成功但正文为空。原始片段：{Truncate(text1, 240)}");
+                }
+                return content;
+            }
 
             Log.Warning("AI HTTP {Status} via {Slot}: {Body}", (int)resp1.StatusCode, cfg.Label, Truncate(text1, 300));
 
@@ -138,7 +147,11 @@ public sealed class OpenAiCompatibleChatClient
                 if (resp2.IsSuccessStatusCode)
                 {
                     Log.Information("AI 降级请求成功（去掉 response_format/max_tokens）via {Slot}", cfg.Label);
-                    return ExtractContent(text2);
+                    var content2 = ExtractContent(text2);
+                    if (string.IsNullOrWhiteSpace(content2))
+                        throw new HttpRequestException(
+                            $"AI 服务（{cfg.Label}）返回成功但正文为空。原始片段：{Truncate(text2, 240)}");
+                    return content2;
                 }
                 Log.Warning("AI 降级仍失败 {Status}: {Body}", (int)resp2.StatusCode, Truncate(text2, 300));
                 throw new HttpRequestException(
@@ -218,13 +231,19 @@ public sealed class OpenAiCompatibleChatClient
 
         if (fallbackContent is not null)
         {
-            if (fallbackContent.Length > 0)
-                yield return fallbackContent;
+            if (string.IsNullOrWhiteSpace(fallbackContent))
+                throw new HttpRequestException(
+                    $"AI 服务（{cfg.Label}）流式返回成功但正文为空。请改用非流式或检查模型输出。");
+            yield return fallbackContent;
             yield break;
         }
 
         if (streamed is not null)
         {
+            var joined = string.Concat(streamed);
+            if (string.IsNullOrWhiteSpace(joined))
+                throw new HttpRequestException(
+                    $"AI 服务（{cfg.Label}）流式返回 {streamed.Count} 段但正文为空。可尝试关闭流式或更新 LM Studio。");
             foreach (var chunk in streamed)
                 yield return chunk;
         }
@@ -268,28 +287,88 @@ public sealed class OpenAiCompatibleChatClient
         return s.Length <= n ? s : s[..n] + "…";
     }
 
-    private static string ExtractContent(string json)
+    /// <summary>从多种 OpenAI 兼容响应形状提取正文（含 reasoning 模型、completions 风格）。</summary>
+    public static string ExtractContent(string json)
     {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement
-            .GetProperty("choices")[0]
-            .GetProperty("message")
-            .GetProperty("content")
-            .GetString() ?? "";
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+                return "";
+            var c0 = choices[0];
+
+            // chat: message.content / message.reasoning_content
+            if (c0.TryGetProperty("message", out var msg))
+            {
+                var content = ReadString(msg, "content");
+                if (!string.IsNullOrWhiteSpace(content)) return content;
+                var reasoning = ReadString(msg, "reasoning_content");
+                if (!string.IsNullOrWhiteSpace(reasoning)) return reasoning;
+                var reasoning2 = ReadString(msg, "reasoning");
+                if (!string.IsNullOrWhiteSpace(reasoning2)) return reasoning2;
+            }
+
+            // chat delta style
+            if (c0.TryGetProperty("delta", out var delta))
+            {
+                var d = ReadString(delta, "content");
+                if (!string.IsNullOrWhiteSpace(d)) return d;
+            }
+
+            // legacy completions
+            var text = ReadString(c0, "text");
+            if (!string.IsNullOrWhiteSpace(text)) return text;
+
+            return "";
+        }
+        catch
+        {
+            return "";
+        }
     }
+
+    private static string ReadString(JsonElement el, string name)
+        => el.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+            ? v.GetString() ?? ""
+            : "";
 
     private static string? ExtractStreamDelta(string data)
     {
         try
         {
             using var doc = JsonDocument.Parse(data);
-            if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+            {
+                // 有的服务器把正文放在顶层 message / content
+                if (root.TryGetProperty("message", out var m))
+                {
+                    var t = ReadString(m, "content");
+                    return string.IsNullOrWhiteSpace(t) ? null : t;
+                }
+                if (root.TryGetProperty("content", out var top))
+                    return top.ValueKind == JsonValueKind.String ? top.GetString() : null;
                 return null;
+            }
+
             var c0 = choices[0];
-            if (!c0.TryGetProperty("delta", out var delta)) return null;
-            if (delta.TryGetProperty("content", out var content))
-                return content.GetString();
-            return null;
+            if (c0.TryGetProperty("delta", out var delta))
+            {
+                var d = ReadString(delta, "content");
+                if (!string.IsNullOrWhiteSpace(d)) return d;
+                var r = ReadString(delta, "reasoning_content");
+                return string.IsNullOrWhiteSpace(r) ? null : r;
+            }
+
+            if (c0.TryGetProperty("message", out var msg))
+            {
+                var t = ReadString(msg, "content");
+                return string.IsNullOrWhiteSpace(t) ? null : t;
+            }
+
+            var text = ReadString(c0, "text");
+            return string.IsNullOrWhiteSpace(text) ? null : text;
         }
         catch
         {

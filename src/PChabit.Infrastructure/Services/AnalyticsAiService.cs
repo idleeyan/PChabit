@@ -75,6 +75,25 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         if (!IsConfigured)
             throw new InvalidOperationException("AI 深度解读未配置或未启用（设置 → 分析 AI）。云端需填 Key；本地端点可留空 Key。");
 
+        var cfg = _client.Resolve(AiEndpointSlot.Auto, isInsight: true);
+
+        // 本地端点优先非流式：LM Studio 流式解析差异大，容易「跑完为空」
+        if (cfg.IsLocalHost)
+        {
+            var text = await _client.CompleteAsync(new OpenAiChatRequest
+            {
+                SystemPrompt = systemPrompt,
+                UserContent = userPayload,
+                Temperature = 0.3,
+                MaxTokens = 2000,
+                IsInsight = true,
+                Slot = AiEndpointSlot.Auto
+            }, ct).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(text))
+                yield return text;
+            yield break;
+        }
+
         await foreach (var chunk in _client.StreamAsync(new OpenAiChatRequest
         {
             SystemPrompt = systemPrompt,
