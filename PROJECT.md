@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.22.3**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.22.4**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
@@ -65,6 +65,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-09-30 | 3.22.4 | 端点整组生效防混搭 401；解读强制简体中文；解析失败区分英文空话 |
 | 2026-09-30 | 3.22.3 | 端点模式 UI 置顶高亮卡片 + 三大单选 + 当前模式提示 |
 | 2026-09-30 | 3.22.2 | 修复本地 AI 空正文：本地非流式 + 多形状 content 解析 + 空正文抛错附原文 |
 | 2026-09-30 | 3.22.1 | 修复本地 AI 400：本地端点不发 response_format/max_tokens，云端 400 自动降级重试 |

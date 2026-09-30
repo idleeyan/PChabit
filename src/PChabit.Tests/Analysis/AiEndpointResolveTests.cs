@@ -157,8 +157,60 @@ public class AiEndpointResolveTests
     }
 
     [Fact]
-    public void ExtractContent_EmptyWhenNoText()
+    public void CloudSlot_IndependentUrl_RequiresOwnModel()
     {
-        OpenAiCompatibleChatClient.ExtractContent("""{"choices":[{"message":{"content":""}}]}""").Should().Be("");
+        // 只填云端 URL、删掉云端模型 → 不得拿主配置模型去凑，避免 401/串模型
+        var s = new FakeSettings
+        {
+            AiBaseUrl = "https://api.openai.com/v1",
+            AiApiKey = "sk-primary",
+            AiModel = "gpt-4o-mini",
+            AiCloudBaseUrl = "https://api.deepseek.com",
+            AiCloudApiKey = "sk-ds",
+            AiCloudModel = "" // 用户删了云端模型
+        };
+        var c = new OpenAiCompatibleChatClient(s);
+        var cloud = c.Resolve(AiEndpointSlot.Cloud, true);
+        cloud.IsUsable.Should().BeFalse(); // 缺模型
+        cloud.Model.Should().Be("");
+    }
+
+    [Fact]
+    public void CloudSlot_NoIndependentUrl_UsesPrimaryGroup()
+    {
+        var s = new FakeSettings
+        {
+            AiBaseUrl = "https://api.openai.com/v1",
+            AiApiKey = "sk-primary",
+            AiModel = "gpt-4o-mini",
+            AiCloudBaseUrl = "",
+            AiCloudModel = ""
+        };
+        var c = new OpenAiCompatibleChatClient(s);
+        var cloud = c.Resolve(AiEndpointSlot.Cloud, true);
+        cloud.IsUsable.Should().BeTrue();
+        cloud.Model.Should().Be("gpt-4o-mini");
+        cloud.ApiKey.Should().Be("sk-primary");
+    }
+
+    [Fact]
+    public void Dual_CloudIncomplete_FallsBackLocal_Not401()
+    {
+        var s = new FakeSettings
+        {
+            AiEndpointMode = "dual",
+            AiBaseUrl = "",
+            AiApiKey = "",
+            AiModel = "",
+            AiCloudBaseUrl = "https://api.deepseek.com",
+            AiCloudApiKey = "",
+            AiCloudModel = "",
+            AiLocalBaseUrl = "http://127.0.0.1:1234/v1",
+            AiLocalModel = "qwen"
+        };
+        var c = new OpenAiCompatibleChatClient(s);
+        var insight = c.Resolve(AiEndpointSlot.Auto, true);
+        insight.Label.Should().Be("本地");
+        insight.IsUsable.Should().BeTrue();
     }
 }

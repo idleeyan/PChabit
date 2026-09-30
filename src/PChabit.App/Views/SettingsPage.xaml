@@ -471,19 +471,24 @@
                                 FontSize="12"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                Text="云端槽（双端点/云端模式用）"
+                                Text="云端配置（主配置，整组生效）"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Text="未填「云端 Base URL」时，直接用下方 Base URL / Key / 模型；填了独立云端地址则必须单独填模型，避免混搭导致 401。"
                                 TextWrapping="Wrap" />
                             <TextBox
                                 x:Name="AiCloudBaseUrlBox"
-                                Header="云端 Base URL（空=用上方主配置）"
-                                PlaceholderText="https://api.deepseek.com 或 https://open.bigmodel.cn/api/paas/v4"
+                                Header="云端 Base URL（可空=用下方主配置）"
+                                PlaceholderText="留空 = 与 Base URL 主配置相同"
                                 Text="" />
                             <PasswordBox
                                 x:Name="AiCloudApiKeyBox"
                                 Header="云端 API Key（空=用上方主配置）" />
                             <TextBox
                                 x:Name="AiCloudModelBox"
-                                Header="云端模型（空=用上方主配置）"
+                                Header="云端模型（独立 URL 时必填）"
                                 Text="" />
                             <TextBlock
                                 FontSize="12"

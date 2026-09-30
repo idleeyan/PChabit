@@ -167,7 +167,8 @@ public static class AnalysisReportBuilder
     }
 
     public const string SystemPrompt =
-        "你是电脑使用习惯分析顾问，使用简体中文。只根据用户提供的聚合 JSON 分析，禁止编造未出现的数据、URL 或窗口标题。" +
+        "【语言硬性要求】只用简体中文输出，禁止英文正文。只输出指定 JSON，不要 markdown 围栏。" +
+        "你是电脑使用习惯分析顾问。只根据用户提供的聚合 JSON 分析，禁止编造未出现的数据、URL 或窗口标题。" +
         "禁止只复述构成/占比；必须给出归因与可执行计划。数据不足时在 summary 中明确说明缺失来源。" +
         "输出 JSON（不要多余文字）：{" +
         "\"summary\":\"120字内结论\"," +
@@ -176,12 +177,18 @@ public static class AnalysisReportBuilder
         "\"plan\":[{\"title\":\"\",\"detail\":\"\",\"actionKey\":null,\"targetMetricId\":null,\"targetValue\":null,\"effort\":\"low|med|high\"}]," +
         "\"risks\":[\"\"],\"followUps\":[\"追问建议\"]}。" +
         "evidence.metricId 必须来自 payload 的 metrics/daily 键；actionKey 仅可使用：compose、rhythm、hardware、HistoryReport，或 null。" +
-        "plan 尽量带 targetMetricId + targetValue，便于下周核对。语气克制、具体可执行。";
+        "plan 尽量带 targetMetricId + targetValue。语气克制、具体可执行。" +
+        "confidence/effort 用英文枚举，其余字符串字段必须是简体中文。";
 
     /// <summary>追问用：允许自然语言，不要求 JSON。</summary>
     public const string FollowUpSystemPrompt =
-        "你是电脑使用习惯分析顾问，使用简体中文。基于给定指标摘要与上一次解读回答用户追问。" +
+        "【语言硬性要求】只用简体中文回答，禁止大段英文。" +
+        "你是电脑使用习惯分析顾问。基于给定指标摘要与上一次解读回答用户追问。" +
         "只依据给出的数据，禁止编造。回答具体、可执行，不要鸡汤。";
+
+    /// <summary>用户消息前缀：部分模型只看 user，再次锁定语言。</summary>
+    public const string UserLanguagePreamble =
+        "请严格用简体中文输出。若输出 JSON，字符串字段一律中文，禁止英文正文。\n\n";
 
     private sealed class AiPayload
     {

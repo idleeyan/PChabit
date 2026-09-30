@@ -36,26 +36,44 @@ public sealed class OpenAiCompatibleChatClient
 
     public OpenAiCompatibleChatClient(ISettingsService settings) => _settings = settings;
 
-    /// <summary>本地端点配置。</summary>
+    /// <summary>本地端点（LM Studio 等）。Key 恒为空。</summary>
     public AiEndpointConfig LocalConfig => new(
         _settings.AiLocalBaseUrl ?? "",
         "",
         _settings.AiLocalModel ?? "",
         "本地");
 
-    /// <summary>云端端点配置（空字段回退主配置）。</summary>
-    public AiEndpointConfig CloudConfig => new(
-        string.IsNullOrWhiteSpace(_settings.AiCloudBaseUrl) ? _settings.AiBaseUrl ?? "" : _settings.AiCloudBaseUrl,
-        string.IsNullOrWhiteSpace(_settings.AiCloudApiKey) ? _settings.AiApiKey ?? "" : _settings.AiCloudApiKey,
-        string.IsNullOrWhiteSpace(_settings.AiCloudModel) ? _settings.AiModel ?? "" : _settings.AiCloudModel,
-        "云端");
+    /// <summary>
+    /// 云端端点。规则：整组生效，禁止「URL/Key/模型」跨主配置与云端槽混搭。
+    /// - 填了独立云端 BaseURL → 必须独立填模型，否则视为未配置（避免 401/串模型）
+    /// - 未填独立云端 BaseURL → 整体用主配置（AiBaseUrl/AiApiKey/AiModel）
+    /// </summary>
+    public AiEndpointConfig CloudConfig
+    {
+        get
+        {
+            var url = (_settings.AiCloudBaseUrl ?? "").Trim();
+            if (url.Length > 0)
+            {
+                // 独立云端槽：Key 可回退主 Key（同一服务商常见），模型必须独立
+                var key = !string.IsNullOrWhiteSpace(_settings.AiCloudApiKey)
+                    ? _settings.AiCloudApiKey
+                    : _settings.AiApiKey ?? "";
+                var model = (_settings.AiCloudModel ?? "").Trim();
+                return new AiEndpointConfig(url, key, model, "云端");
+            }
 
-    /// <summary>主端点（兼容旧单端点配置）。</summary>
-    public AiEndpointConfig PrimaryConfig => new(
-        _settings.AiBaseUrl ?? "",
-        _settings.AiApiKey ?? "",
-        _settings.AiModel ?? "",
-        "主端点");
+            // 无独立云端地址 → 主配置即云端
+            return new AiEndpointConfig(
+                _settings.AiBaseUrl ?? "",
+                _settings.AiApiKey ?? "",
+                _settings.AiModel ?? "",
+                "云端");
+        }
+    }
+
+    /// <summary>主配置与云端槽同义（避免第三套配置）。</summary>
+    public AiEndpointConfig PrimaryConfig => CloudConfig;
 
     public string EndpointMode => string.IsNullOrWhiteSpace(_settings.AiEndpointMode)
         ? "cloud"
@@ -82,15 +100,18 @@ public sealed class OpenAiCompatibleChatClient
                     "dual" => isInsight
                         ? (cloud.IsUsable ? cloud : local)
                         : (local.IsUsable ? local : cloud),
-                    // cloud（默认）
                     _ => cloud.IsUsable ? cloud : local
                 }
             };
         }
 
         var picked = Pick();
+
+        // 显式指定槽位时不串槽（避免「删了云端模型却拿本地/主配置顶上」）
+        if (slot is AiEndpointSlot.Local or AiEndpointSlot.Cloud or AiEndpointSlot.Primary)
+            return picked;
+
         if (picked.IsUsable) return picked;
-        // 回退：任一可用端点
         if (cloud.IsUsable) return cloud;
         if (local.IsUsable) return local;
         return picked;

@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Analysis;
 using Serilog;
 
 namespace PChabit.Infrastructure.Services;
@@ -58,7 +59,7 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         return await _client.CompleteAsync(new OpenAiChatRequest
         {
             SystemPrompt = systemPrompt,
-            UserContent = userPayload,
+            UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
             Temperature = 0.3,
             MaxTokens = 2000,
             PreferJson = true,
@@ -83,7 +84,7 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
             var text = await _client.CompleteAsync(new OpenAiChatRequest
             {
                 SystemPrompt = systemPrompt,
-                UserContent = userPayload,
+                UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
                 Temperature = 0.3,
                 MaxTokens = 2000,
                 IsInsight = true,
@@ -97,7 +98,7 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         await foreach (var chunk in _client.StreamAsync(new OpenAiChatRequest
         {
             SystemPrompt = systemPrompt,
-            UserContent = userPayload,
+            UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
             Temperature = 0.3,
             MaxTokens = 2000,
             PreferJson = true,
@@ -119,7 +120,7 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         return _client.CompleteAsync(new OpenAiChatRequest
         {
             SystemPrompt = systemPrompt,
-            UserContent = userPayload,
+            UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
             Temperature = 0.5,
             MaxTokens = 1200,
             ModelOverride = string.IsNullOrWhiteSpace(fast) ? null : fast,

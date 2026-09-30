@@ -389,10 +389,28 @@ public partial class AnalyticsViewModel : ViewModelBase
                 return;
             }
 
-            var parsed = AnalyticsAiResponseParser.Parse(raw.ToString());
+            var rawText = raw.ToString();
+            var parsed = AnalyticsAiResponseParser.Parse(rawText);
             _lastParsed = parsed;
-            AiResultText = string.IsNullOrWhiteSpace(parsed.Raw) ? "AI 返回为空" : parsed.Raw;
-            ApplyParsedAi(parsed);
+            if (string.IsNullOrWhiteSpace(rawText))
+            {
+                AiResultText = "AI 返回为空。";
+                HasAiParsed = false;
+            }
+            else if (!parsed.Parsed)
+            {
+                // 未按约定返回中文 JSON：提示 + 原文可复制，不把英文堆当结论
+                var looksEnglish = LooksMostlyEnglish(rawText);
+                AiResultText = looksEnglish
+                    ? "模型未按约定返回简体中文 JSON（疑似英文/闲聊输出）。请检查云端模型是否匹配，或改用本地/双端点。\n\n—— 原始回复（可复制）——\n" + TruncateForUi(rawText, 1200)
+                    : "未能解析为结构化结果。\n\n—— 原始回复（可复制）——\n" + TruncateForUi(rawText, 1200);
+                HasAiParsed = false;
+            }
+            else
+            {
+                AiResultText = parsed.Summary;
+                ApplyParsedAi(parsed);
+            }
 
             // 闭环：落库快照，供下次 lastAiPlan 与追问
             if (parsed.Parsed)
@@ -642,6 +660,26 @@ public partial class AnalyticsViewModel : ViewModelBase
         {
             Log.Warning(ex, "保存计划状态失败");
         }
+    }
+
+    private static bool LooksMostlyEnglish(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var letters = 0;
+        var han = 0;
+        foreach (var ch in text)
+        {
+            if (!char.IsLetter(ch)) continue;
+            if (ch >= 0x4e00 && ch <= 0x9fff) han++;
+            else letters++;
+        }
+        return letters > 40 && han < letters / 4;
+    }
+
+    private static string TruncateForUi(string s, int n)
+    {
+        s = s.Trim();
+        return s.Length <= n ? s : s[..n] + "…";
     }
 
     /// <summary>把当期报告的活跃/专注/夜间/切换聚成一行，供偏离计算。</summary>
