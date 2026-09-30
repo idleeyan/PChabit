@@ -11,6 +11,120 @@
 - `AI_MAINTENANCE.md` 更新项目概览技术栈（.NET 10 / WinAppSDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x）、
   项目结构与关键依赖版本表；`PublishReadyToRun` 禁令的版本说明同步（历史修复记录保持原样未改）
 - `docs/发布产物语言资源说明.md`：构建输出路径示例由 net9.0 更正为 net10.0
+- `docs/AI深度解读升级计划.md`：双轨升级计划（项目习惯资产 + AI 深度解读）
+
+## [3.21.0] - 2026-09-30
+
+### 新增：收尾项
+- **多模型档位**：设置「快捷模型（追问）」`AiModelFast`，追问用快模型、解读用准模型；留空则共用
+- **洞察去重**：`AiInsightDeduper` 过滤与规则洞察重叠的 AI 发现（规则优先）
+- **习惯养成轨迹卡片**：分析页展示近 28 天前后半对比（变好/变差/稳定 + 连续周数）
+- 追问改走 `ChatFastAsync`
+
+### 测试
+- `AiInsightDeduperTests`（3）；分析套件 **92 通过**
+
+## [3.20.0] - 2026-09-30
+
+### 新增：自动化、隐私与习惯轨迹（P3/P4）
+- **严格隐私模式**（设置）：出域指标包去掉应用/分类显示名
+- **每周自动 AI 解读**（设置开关）：启动延迟 2 分钟检测本周是否已跑，生成后落库并通知
+- **复制解读**：AI 结果导出 Markdown（结论/发现/归因/计划/风险/画像）
+- **反馈学习**：历史计划 done/skipped 统计注入 `goals.planFeedback`，降低无效建议
+- **`HabitTrajectoryBuilder`**：夜间/专注/标签占比的 better/worse/stable 轨迹入 AI 包（长期叙事）
+- 设置页新增「严格隐私」「每周自动 AI 解读」开关
+
+### 测试
+- `HabitTrajectoryAndFeedbackTests`（5）；分析套件 **89 通过**
+
+## [3.19.0] - 2026-09-30
+
+### 新增：AI 闭环（P2）
+- **`AiInsightSnapshot` 实体 + 表**（EF + `MigrateAnalysisTablesAsync` 双路径，陷阱 #20）
+- **`AiInsightHistoryService`**：同周期覆盖保存、最新/按周期查询、计划状态 `pending/done/skipped` 落库、清空
+- 解读成功后自动落库；下次解读自动带上 **lastAiPlan 与达成状态**
+- 计划「采纳 / 忽略」持久化
+- **追问对话**：输入框 + 回答卡片；上下文 = 精简指标包 + 上次结论 + 当前计划 + 用户问题（`FollowUpSystemPrompt`）
+
+### 测试
+- `AiInsightHistoryTests`（3）；分析套件 **84 通过**
+
+## [3.18.0] - 2026-09-30
+
+### 新增：习惯画像与个人基线（P1-A）
+- **`HabitProfile` / `HabitProfileBuilder`**：夜型/日型、典型起止、专注中位数、夜间中位数、切换密度、生产力标签占比
+- **`PersonalBaseline` / `PersonalBaselineBuilder`**：工作日/周末 P50/P75/P90；`DeviationPct` / `IsElevated` / `IsLow`
+- **`HabitDayLoader`**：从 `DailySummaries` 近 28 天装载画像原料（无窗口标题/URL）
+- 基线样本不足时禁止「异常」类结论（`Mature=false`）
+
+### 新增：AI 包升级 + 计划闭环 UI（P1-B）
+- `AiContextPack` 注入 `profile` / `baseline` / `deviations` / `goals`（每日目标）/ `lastAiPlan`
+- 解读卡片：**可能原因**（diagnosis+置信度）、**周计划**（采纳/忽略）、**可追问**（followUps）
+- 计划状态 `pending/done/skipped` 会带入下次解读上下文
+
+### 测试
+- `HabitProfileBuilderTests` + `PersonalBaselineBuilderTests`（11）；分析套件 **81 通过**
+
+## [3.17.0] - 2026-09-30
+
+### 新增：行为语义层（P0-A）
+- **`ActivityLabels` / `ActivityLabeler`**：会话 → 活动标签（work-code / work-doc / meeting / learn /
+  browse-info / browse-fun / game / comms / admin / idle / other）；纯函数可单测
+- 窗口标题/域名仅本地推断，**不进入出域 payload**
+- **`DailySummary`** 扩展：`LabelMinutesJson` / `NightMinutes` / `FirstActiveTime` / `LastActiveTime`；
+  `MetricsVersion=3`；`DatabaseInitializer` 同步补列（陷阱 #20 双路径）
+- 每日聚合写入活动标签分钟、夜间分钟（23:00–06:00）、首次/最后活跃时刻
+
+### 新增：AI 指标包与协议（P0-B）
+- **`AiContextPack` v2**：数值 KPI、日序列、24h 热力、TopApp 含环比、标签分钟、metricDictionary；
+  camelCase JSON；严格隐私可去掉应用名
+- **`OpenAiCompatibleChatClient`**：统一 OpenAI 兼容客户端（URL 补全、超时、max_tokens、
+  response_format 尝试、流式 SSE + 非流式回退）；`AnalyticsAiService` / `AiChatService` 共用
+- **`AnalyticsAiResponseParser` v2**：契约 v1/v2、evidence、diagnosis、plan、截断 JSON 括号修复
+- **SystemPrompt v2**：禁止复述构成；强制归因 + 量化计划；evidence.metricId 必须来自指标包
+- 分析页 AI：流式输出、「取消」按钮、失败可复制原文
+
+### 修复/工程
+- 测试项目 `CopyLocalLockFileAssemblies`（xunit host 需要包程序集落盘）
+- 单测：`ActivityLabelerTests`（15）、解析截断/契约 v2/指标包用例；分析套件 **70 通过**
+
+## [3.16.1] - 2026-09-28
+
+### 移除：书签模块彻底下线
+- 删除书签同步全链路代码：
+  - Core：`BrowserBookmark` / `PendingBookmarkChange` 实体、`IBrowserBookmarkRepository`、`Core/Sync`（`BookmarkMergePlanner` / `BrowserSyncModels`）
+  - Infrastructure：`BookmarkHubService` / `BookmarkLibraryService` / `BookmarkSyncService` / `BookmarkTidyService` / `BrowserBookmarkRepository`
+  - App：`DataManagementViewModel.BookmarkSync.cs`；Tests：`BookmarkFolderSyncTests` / `BookmarkMergePlannerTests` / `BrowserDeletionDetectionTests`
+- `App.xaml.cs` 移除 `StartBookmarkAutoSync` 与书签同步定时器；`BrowserSyncWebSocketHandler` 大幅精简
+- `HistorySyncService` 由 `IBrowserBookmarkRepository` 改为直接注入 `IDbContextFactory<PChabitDbContext>`
+- 浏览器书签改由各浏览器自带账号同步维护，PChabit 不再介入；**浏览历史 `BrowserHistoryItems` 保留**
+
+### 优化：任务栏小窗视觉重构
+- 主行数值放大加粗（标签 11px / 数值 15px）作为视觉焦点，次行统一 13px 弱化；标签、数值、分隔符分级配色，仅偏高/过高项着色
+- 标签缩短以避免与主指标撞名：`磁盘`→`盘`、`CPU`→`C`、`GPU`→`G`、`今日`→`今`，网速项去掉标签
+- 次行数值去掉冗余单位：网速 `K/s`→`K`、温度 `°C`→`°`（来源由 `C`/`G` 标签消歧）
+- 条目间距放宽（主行 14px / 次行 10px），避免挤成一团
+
+### 修复：任务栏小窗在 Explorer 重启后丢失
+- `TaskbarWidget.Start()` 改为幂等：句柄失效时销毁重建；父窗口变化（`Shell_TrayWnd` 换代）时自动重新挂载
+
+### 优化：开机自启更可靠
+- `SettingsService` 除 Startup 快捷方式外，**新增写入 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`**
+- 自启目标以 `Environment.ProcessPath` 为准（缺省回退 `AppContext.BaseDirectory`）；目标 exe 不存在时清理残留自启项，避免留下失效路径
+- 新增依赖 `Microsoft.Win32.Registry`
+
+### 其他
+- 清理构建脚本残留：`publish.bat`、`scripts/fix_gcs.py`、`scripts/gen_gcs.py`、`scripts/test_xamlcompiler.bat`
+- 新增项目索引文档 `PROJECT.md`
+
+## [3.16.0] - 2026-09-25
+
+### 新增：网络流量监控
+- 新增「网络流量」页面（`Views/NetworkTrafficPage.xaml` + `ViewModels/NetworkTrafficViewModel.cs`）：实时展示进程级网络流量（上传/下载速度、会话流量、IP）
+- 新增 `NetworkTrafficPersistenceService`：流量数据持久化服务（DI 注册），随应用启动/关闭管理
+- 新增 `Core/Entities/NetworkTrafficEntities.cs` 网络流量实体；`PChabitDbContext` 增加对应表；`DatabaseInitializer` 同步初始化
+- 硬件监控模块新增 `ProcessNetworkMonitor` + `ProcessNetworkNative`（进程网络流量采集核心，依具体进程/网卡枚举）
+
 ## [3.15.15] - 2026-09-20
 
 ### 修复：启动时窗口被自动移到屏幕左上角

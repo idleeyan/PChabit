@@ -58,6 +58,18 @@ public sealed partial class AnalyticsPage : Page
             ViewModel.NavigateAiActionCommand.Execute(item);
     }
 
+    private void PlanDone_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: AiPlanViewModel item })
+            _ = ViewModel.MarkPlanDoneCommand.ExecuteAsync(item);
+    }
+
+    private void PlanSkip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: AiPlanViewModel item })
+            _ = ViewModel.MarkPlanSkippedCommand.ExecuteAsync(item);
+    }
+
     private async void ExportExcel_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         try

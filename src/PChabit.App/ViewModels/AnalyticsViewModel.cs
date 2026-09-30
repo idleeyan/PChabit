@@ -4,7 +4,9 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.App.Services;
+using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
+using PChabit.Core.ValueObjects;
 using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Formatters;
@@ -18,6 +20,36 @@ public sealed class AiItemViewModel
     public string Title { get; init; } = "";
     public string Detail { get; init; } = "";
     public string? ActionKey { get; init; }
+    public string? TargetMetricId { get; init; }
+    public double? TargetValue { get; init; }
+}
+
+/// <summary>周计划项：可采纳 / 忽略。</summary>
+public sealed partial class AiPlanViewModel : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+{
+    public string Title { get; init; } = "";
+    public string Detail { get; init; } = "";
+    public string? ActionKey { get; init; }
+    public string? TargetMetricId { get; init; }
+    public double? TargetValue { get; init; }
+    public string Effort { get; init; } = "med";
+
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    private string _status = "pending"; // pending | done | skipped
+
+    public bool IsPending => Status == "pending";
+    public string StatusText => Status switch
+    {
+        "done" => "已采纳",
+        "skipped" => "已忽略",
+        _ => "待处理"
+    };
+
+    partial void OnStatusChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsPending));
+        OnPropertyChanged(nameof(StatusText));
+    }
 }
 
 /// <summary>
@@ -29,7 +61,12 @@ public partial class AnalyticsViewModel : ViewModelBase
     private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     private readonly IAnalyticsAiService _aiService;
     private readonly ISettingsService _settings;
+    private readonly IAiInsightHistoryService _aiHistory;
     private AnalyticsPeriodReport? _lastReport;
+    private AiContextPack.AiPackModel? _lastPack;
+    private AiInsightSnapshot? _lastSnapshot;
+    private HabitProfile? _lastProfileForExport;
+    private AnalyticsAiResponseParser.ParsedAiResult? _lastParsed;
 
     [ObservableProperty]
     private string _selectedPeriodKey = "本周";
@@ -79,6 +116,9 @@ public partial class AnalyticsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isAiRunning;
 
+    /// <summary>流式/一次性请求的取消源。</summary>
+    private CancellationTokenSource? _aiCts;
+
     [ObservableProperty]
     private string _aiSummary = "";
 
@@ -98,6 +138,34 @@ public partial class AnalyticsViewModel : ViewModelBase
     public ObservableCollection<AiItemViewModel> AiFindings { get; } = new();
     public ObservableCollection<AiItemViewModel> AiSuggestions { get; } = new();
     public ObservableCollection<string> AiRisks { get; } = new();
+    public ObservableCollection<AiPlanViewModel> AiPlans { get; } = new();
+    public ObservableCollection<string> AiDiagnosis { get; } = new();
+    public ObservableCollection<string> AiFollowUps { get; } = new();
+    public ObservableCollection<HabitTrendViewModel> HabitTrends { get; } = new();
+
+    [ObservableProperty]
+    private bool _hasHabitTrends;
+
+    [ObservableProperty]
+    private bool _hasAiPlans;
+
+    [ObservableProperty]
+    private bool _hasAiDiagnosis;
+
+    [ObservableProperty]
+    private bool _hasAiFollowUps;
+
+    [ObservableProperty]
+    private string _followUpQuestion = "";
+
+    [ObservableProperty]
+    private string _followUpAnswer = "";
+
+    [ObservableProperty]
+    private bool _hasFollowUpAnswer;
+
+    [ObservableProperty]
+    private bool _isFollowUpRunning;
 
     public bool AiConfigured => _aiService.IsConfigured;
 
@@ -127,11 +195,13 @@ public partial class AnalyticsViewModel : ViewModelBase
     public AnalyticsViewModel(
         IDbContextFactory<PChabitDbContext> dbContextFactory,
         IAnalyticsAiService aiService,
-        ISettingsService settings) : base()
+        ISettingsService settings,
+        IAiInsightHistoryService aiHistory) : base()
     {
         _dbContextFactory = dbContextFactory;
         _aiService = aiService;
         _settings = settings;
+        _aiHistory = aiHistory;
         Title = "分析";
     }
 
@@ -189,17 +259,165 @@ public partial class AnalyticsViewModel : ViewModelBase
             return;
         }
 
+        _aiCts?.Cancel();
+        _aiCts?.Dispose();
+        _aiCts = new CancellationTokenSource();
+        var ct = _aiCts.Token;
+
         IsAiRunning = true;
-        AiResultText = "正在请求 AI 解读…（仅发送聚合指标，可在设置调整超时）";
+        AiResultText = "正在请求 AI 解读…（仅发送聚合指标；可取消）";
         HasAiResult = true;
         HasAiParsed = false;
         try
         {
-            var payload = AnalysisReportBuilder.BuildAiPayload(_lastReport);
-            var raw = await _aiService.InterpretAsync(AnalysisReportBuilder.SystemPrompt, payload);
-            var parsed = AnalyticsAiResponseParser.Parse(raw);
+            // 装载近 28 天画像/基线（失败不阻断解读）
+            AiContextPack.AiGoals? goals = null;
+            HabitProfile? profile = null;
+            PersonalBaseline? baseline = null;
+            List<AiDeviation>? deviations = null;
+            List<AiContextPack.AiPlanItem>? lastPlan = null;
+            List<HabitTrajectoryBuilder.HabitTrend>? trajectory = null;
+            try
+            {
+                await using var db = await _dbContextFactory.CreateDbContextAsync(ct);
+                var days = await HabitDayLoader.LoadAsync(db, DateTime.Today.AddDays(-28), DateTime.Today.AddDays(1), ct);
+                profile = HabitProfileBuilder.Build(days);
+                baseline = PersonalBaselineBuilder.Build(days);
+                trajectory = HabitTrajectoryBuilder.Build(days);
+                RunOnUIThread(() =>
+                {
+                    HabitTrends.Clear();
+                    foreach (var t in trajectory)
+                    {
+                        HabitTrends.Add(new HabitTrendViewModel
+                        {
+                            Name = t.Name,
+                            Direction = t.Direction,
+                            Detail = t.Detail,
+                            SupportWeeks = t.SupportWeeks,
+                            Strength = t.Strength
+                        });
+                    }
+                    HasHabitTrends = HabitTrends.Count > 0;
+                });
+                var cur = AggregatePeriod(days, _lastReport);
+                if (cur is not null)
+                {
+                    deviations = PersonalBaselineBuilder.ComputeDeviations(
+                        baseline,
+                        cur.Value.Active,
+                        cur.Value.Focus,
+                        cur.Value.Night,
+                        cur.Value.SwitchPerHour);
+                }
+
+                // 上次计划优先来自解读历史（比内存里的 AiPlans 更完整）
+                var lastPlanFromDb = await _aiHistory.LoadLastPlanAsync(ct);
+                if (lastPlanFromDb.Count > 0)
+                    lastPlan = AiInsightHistoryService.ToPackPlan(lastPlanFromDb);
+
+                goals = new AiContextPack.AiGoals
+                {
+                    DailyActiveTargetMin = _settings.DailyUsageGoalHours > 0 ? _settings.DailyUsageGoalHours * 60 : null,
+                    PlanFeedback = AiPlanFeedbackBuilder.FromPlan(
+                        lastPlanFromDb.Count > 0
+                            ? lastPlanFromDb
+                            : AiPlans.Select(p => new AiPlanItem
+                            {
+                                Title = p.Title,
+                                Detail = p.Detail,
+                                Status = p.Status
+                            }).ToList())
+                };
+            }
+            catch (Exception loadEx)
+            {
+                Log.Warning(loadEx, "画像/基线加载失败，解读继续（无画像）");
+            }
+
+            if (AiPlans.Count > 0)
+            {
+                lastPlan ??= new List<AiContextPack.AiPlanItem>();
+                foreach (var p in AiPlans.Where(p => lastPlan.All(x => x.Title != p.Title)))
+                    lastPlan.Add(new AiContextPack.AiPlanItem
+                    {
+                        Title = p.Title,
+                        TargetMetricId = p.TargetMetricId,
+                        TargetValue = p.TargetValue,
+                        Status = p.Status,
+                        Note = p.Detail
+                    });
+            }
+
+            var payload = AiContextPack.Build(
+                _lastReport,
+                strictPrivacy: _settings.AiStrictPrivacy,
+                goals: goals,
+                lastPlan: lastPlan,
+                profile: profile,
+                baseline: baseline,
+                deviations: deviations,
+                trajectory: trajectory);
+
+            _lastPack = AiContextPack.BuildModel(_lastReport, _settings.AiStrictPrivacy, goals, lastPlan, profile, baseline, deviations, trajectory);
+            _lastProfileForExport = profile;
+
+            var raw = new System.Text.StringBuilder();
+            try
+            {
+                await foreach (var chunk in _aiService.InterpretStreamAsync(AnalysisReportBuilder.SystemPrompt, payload, ct))
+                {
+                    raw.Append(chunk);
+                    var partial = raw.ToString();
+                    RunOnUIThread(() =>
+                    {
+                        AiResultText = partial.Length > 0 ? partial : "正在请求 AI 解读…";
+                    });
+                }
+            }
+            catch (Exception streamEx) when (streamEx is not OperationCanceledException)
+            {
+                Log.Information(streamEx, "AI 流式失败，回退一次性");
+                raw.Clear();
+                raw.Append(await _aiService.InterpretAsync(AnalysisReportBuilder.SystemPrompt, payload, ct));
+            }
+
+            if (ct.IsCancellationRequested)
+            {
+                AiResultText = "已取消本次 AI 解读。";
+                HasAiParsed = false;
+                return;
+            }
+
+            var parsed = AnalyticsAiResponseParser.Parse(raw.ToString());
+            _lastParsed = parsed;
             AiResultText = string.IsNullOrWhiteSpace(parsed.Raw) ? "AI 返回为空" : parsed.Raw;
             ApplyParsedAi(parsed);
+
+            // 闭环：落库快照，供下次 lastAiPlan 与追问
+            if (parsed.Parsed)
+            {
+                try
+                {
+                    var snap = AiInsightSnapshotFactory.FromParsed(
+                        _lastReport.Period.Start.ToString("yyyy-MM-dd"),
+                        _lastReport.Period.Label,
+                        _lastReport.Period.Start,
+                        _lastReport.Period.EndExclusive,
+                        parsed);
+                    await _aiHistory.SaveAsync(snap, ct);
+                    _lastSnapshot = snap;
+                }
+                catch (Exception saveEx)
+                {
+                    Log.Warning(saveEx, "保存 AI 解读快照失败");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            AiResultText = "已取消本次 AI 解读。";
+            HasAiParsed = false;
         }
         catch (Exception ex)
         {
@@ -213,24 +431,234 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
     }
 
+    [RelayCommand]
+    private void CancelAiInsight()
+    {
+        try
+        {
+            _aiCts?.Cancel();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "取消 AI 解读");
+        }
+    }
+
+    /// <summary>导出解读 Markdown（复制到剪贴板）。</summary>
+    [RelayCommand]
+    private async Task CopyAiInsightAsync()
+    {
+        try
+        {
+            if (_lastParsed is null || _lastReport is null)
+            {
+                AiResultText = "暂无可导出的 AI 解读，请先生成。";
+                HasAiResult = true;
+                return;
+            }
+
+            var planItems = AiPlans.Count > 0
+                ? AiPlans.Select(p => new AiPlanItem
+                {
+                    Title = p.Title,
+                    Detail = p.Detail,
+                    ActionKey = p.ActionKey,
+                    TargetMetricId = p.TargetMetricId,
+                    TargetValue = p.TargetValue,
+                    Status = p.Status
+                }).ToList()
+                : null;
+
+            var md = AiInsightMarkdownExporter.Export(
+                _lastReport.Period.Label,
+                _lastReport.Period.Start,
+                _lastReport.Period.EndExclusive,
+                _lastParsed,
+                planItems,
+                _lastProfileForExport);
+
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(md);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            Log.Information("AI 解读 Markdown 已复制");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "导出 AI 解读失败");
+        }
+    }
+
+    /// <summary>追问：带上精简指标包 + 上次解读摘要。</summary>
+    [RelayCommand]
+    private async Task SendFollowUpAsync()
+    {
+        var q = FollowUpQuestion?.Trim();
+        if (string.IsNullOrEmpty(q)) return;
+        if (!_aiService.IsConfigured)
+        {
+            FollowUpAnswer = "AI 未启用，请到设置配置。";
+            HasFollowUpAnswer = true;
+            return;
+        }
+
+        IsFollowUpRunning = true;
+        HasFollowUpAnswer = false;
+        FollowUpAnswer = "正在追问…";
+        HasFollowUpAnswer = true;
+        try
+        {
+            var context = new System.Text.StringBuilder();
+            if (_lastPack is not null)
+            {
+                // 精简：meta + metrics + deviations + profile 摘要
+                context.AppendLine("## 指标摘要");
+                context.AppendLine(System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    _lastPack.Meta,
+                    _lastPack.Metrics,
+                    _lastPack.Deviations,
+                    _lastPack.Profile
+                }, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                }));
+            }
+            if (!string.IsNullOrEmpty(AiSummary))
+            {
+                context.AppendLine("## 上次解读结论");
+                context.AppendLine(AiSummary);
+            }
+            if (AiPlans.Count > 0)
+            {
+                context.AppendLine("## 当前计划");
+                foreach (var p in AiPlans)
+                    context.AppendLine($"- {p.Title}（{p.StatusText}）{p.Detail}");
+            }
+            context.AppendLine("## 用户追问");
+            context.AppendLine(q);
+
+            var answer = await _aiService.ChatFastAsync(
+                AnalysisReportBuilder.FollowUpSystemPrompt,
+                context.ToString());
+            FollowUpAnswer = string.IsNullOrWhiteSpace(answer) ? "（无回答）" : answer;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "AI 追问失败");
+            FollowUpAnswer = $"追问失败：{ex.Message}";
+        }
+        finally
+        {
+            IsFollowUpRunning = false;
+        }
+    }
+
     private void ApplyParsedAi(AnalyticsAiResponseParser.ParsedAiResult parsed)
     {
         AiFindings.Clear();
         AiSuggestions.Clear();
         AiRisks.Clear();
+        AiPlans.Clear();
+        AiDiagnosis.Clear();
+        AiFollowUps.Clear();
         AiSummary = parsed.Summary;
         if (!parsed.Parsed)
         {
             HasAiParsed = false;
+            HasAiPlans = false;
+            HasAiDiagnosis = false;
+            HasAiFollowUps = false;
             return;
         }
-        foreach (var f in parsed.Findings)
+        foreach (var f in AiInsightDeduper.FilterFindings(
+            parsed.Findings,
+            Insights.Select(i => (i.Title, i.Message)).ToList()))
             AiFindings.Add(new AiItemViewModel { Title = f.Title, Detail = f.Detail });
         foreach (var s in parsed.Suggestions)
-            AiSuggestions.Add(new AiItemViewModel { Title = s.Title, Detail = s.Action, ActionKey = s.ActionKey });
+            AiSuggestions.Add(new AiItemViewModel
+            {
+                Title = s.Title,
+                Detail = s.Action,
+                ActionKey = s.ActionKey,
+                TargetMetricId = s.TargetMetricId,
+                TargetValue = s.TargetValue
+            });
+        foreach (var p in parsed.Plan ?? parsed.Suggestions.Select(s =>
+            new AnalyticsAiResponseParser.AiPlanItem(s.Title, s.Action, s.ActionKey, s.TargetMetricId, s.TargetValue, "med")))
+        {
+            AiPlans.Add(new AiPlanViewModel
+            {
+                Title = p.Title,
+                Detail = p.Detail,
+                ActionKey = p.ActionKey,
+                TargetMetricId = p.TargetMetricId,
+                TargetValue = p.TargetValue,
+                Effort = p.Effort
+            });
+        }
+        foreach (var d in parsed.Diagnosis ?? Array.Empty<AnalyticsAiResponseParser.AiDiagnosis>())
+        {
+            var conf = d.Confidence switch { "high" => "高", "low" => "低", _ => "中" };
+            AiDiagnosis.Add($"[{conf}] {d.Hypothesis}");
+        }
+        foreach (var f in parsed.FollowUps ?? Array.Empty<string>())
+            AiFollowUps.Add(f);
         foreach (var r in parsed.Risks)
             AiRisks.Add(r);
         HasAiParsed = true;
+        HasAiPlans = AiPlans.Count > 0;
+        HasAiDiagnosis = AiDiagnosis.Count > 0;
+        HasAiFollowUps = AiFollowUps.Count > 0;
+    }
+
+    [RelayCommand]
+    private async Task MarkPlanDoneAsync(AiPlanViewModel? item)
+    {
+        if (item is null) return;
+        item.Status = "done";
+        Log.Information("计划采纳: {Title}", item.Title);
+        await PersistPlanStatusAsync(item.Title, "done");
+    }
+
+    [RelayCommand]
+    private async Task MarkPlanSkippedAsync(AiPlanViewModel? item)
+    {
+        if (item is null) return;
+        item.Status = "skipped";
+        Log.Information("计划忽略: {Title}", item.Title);
+        await PersistPlanStatusAsync(item.Title, "skipped");
+    }
+
+    private async Task PersistPlanStatusAsync(string title, string status)
+    {
+        try
+        {
+            var snap = _lastSnapshot ?? await _aiHistory.GetLatestAsync();
+            if (snap is null) return;
+            await _aiHistory.UpdatePlanStatusAsync(snap.Id, title, status);
+            _lastSnapshot = null; // 强制下次重读
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "保存计划状态失败");
+        }
+    }
+
+    /// <summary>把当期报告的活跃/专注/夜间/切换聚成一行，供偏离计算。</summary>
+    private static (double Active, double Focus, double Night, double SwitchPerHour)? AggregatePeriod(
+        List<HabitDay> days,
+        AnalyticsPeriodReport report)
+    {
+        var from = report.Period.Start.Date;
+        var to = report.Period.EndExclusive.Date;
+        var cur = days.Where(d => d.Date >= from && d.Date < to).ToList();
+        if (cur.Count == 0) return null;
+        var active = cur.Sum(d => d.ActiveMinutes);
+        var focus = cur.Sum(d => d.FocusMinutes ?? 0);
+        var night = cur.Sum(d => d.NightMinutes);
+        var switches = cur.Sum(d => d.AppSwitches ?? 0);
+        var switchPerHour = active > 0 ? switches / (active / 60.0) : 0;
+        return (active, focus, night, Math.Round(switchPerHour, 1));
     }
 
     [RelayCommand]

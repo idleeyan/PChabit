@@ -46,6 +46,10 @@
                         Text="{x:Bind ViewModel.UpdatedTimeText, Mode=OneWay}" />
                     <Button
                         Padding="12,6"
+                        Click="OpenNetworkTraffic_Click"
+                        Content="网络流量 →" />
+                    <Button
+                        Padding="12,6"
                         Click="OpenHistoryAnalysis_Click"
                         Content="历史分析 →" />
                 </StackPanel>
@@ -114,6 +118,26 @@
                                 Foreground="{x:Bind ViewModel.CpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
                                 Value="{x:Bind ViewModel.CpuTemp, Mode=OneWay}" />
                         </StackPanel>
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="最大占用进程" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Text="{x:Bind ViewModel.CpuTopProcessName, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.CpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.CpuTopProcessRate, Mode=OneWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -198,6 +222,26 @@
                                     Value="{x:Bind ViewModel.GpuVramPercent, Mode=OneWay}" />
                             </StackPanel>
                         </StackPanel>
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="最大占用进程" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Text="{x:Bind ViewModel.GpuTopProcessName, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.GpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.GpuTopProcessRate, Mode=OneWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -253,6 +297,26 @@
                                 Foreground="{x:Bind ViewModel.MemColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
                                 Value="{x:Bind ViewModel.MemLoad, Mode=OneWay}" />
                         </StackPanel>
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="最大占用进程" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Text="{x:Bind ViewModel.MemTopProcessName, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.MemColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.MemTopProcessRate, Mode=OneWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -337,19 +401,39 @@
                                     Value="{x:Bind ViewModel.DiskWriteMbps, Mode=OneWay}" />
                             </StackPanel>
                         </StackPanel>
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="2">
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="最大占用进程" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Text="{x:Bind ViewModel.DiskTopProcessName, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Foreground="{x:Bind ViewModel.DiskActivityColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
+                                        Text="{x:Bind ViewModel.DiskTopProcessRate, Mode=OneWay}" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
-                <!-- 网络：上下行速度条 + 会话流量 / IP -->
+                <!-- 网络：上下行 + 最大占用进程 + 流量统计 -->
                 <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource StatCardStyle}">
-                    <StackPanel Spacing="10">
+                    <StackPanel Spacing="8">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Border Width="36" Height="36" Background="{StaticResource StatWebColor}" Opacity="0.15" CornerRadius="8">
                                 <FontIcon FontSize="16" Foreground="{StaticResource StatWebBrush}" Glyph="&#xE8F2;" />
                             </Border>
                             <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="网络" />
                         </StackPanel>
-                        <StackPanel Spacing="6">
+                        <StackPanel Spacing="4">
                             <StackPanel Spacing="2">
                                 <Grid ColumnSpacing="8">
                                     <Grid.ColumnDefinitions>
@@ -360,7 +444,7 @@
                                     <TextBlock Style="{StaticResource MetricLabelStyle}" Text="下行 ↓" />
                                     <TextBlock
                                         Grid.Column="2"
-                                        FontSize="18"
+                                        FontSize="16"
                                         FontWeight="Bold"
                                         Foreground="{StaticResource StatWebBrush}"
                                         Text="{x:Bind ViewModel.NetDownText, Mode=OneWay}" />
@@ -381,7 +465,7 @@
                                     <TextBlock Style="{StaticResource MetricLabelStyle}" Text="上行 ↑" />
                                     <TextBlock
                                         Grid.Column="2"
-                                        FontSize="18"
+                                        FontSize="16"
                                         FontWeight="Bold"
                                         Foreground="{StaticResource PrimaryBrush}"
                                         Text="{x:Bind ViewModel.NetUpText, Mode=OneWay}" />
@@ -393,10 +477,63 @@
                                     Value="{x:Bind ViewModel.NetUpMbps, Mode=OneWay}" />
                             </StackPanel>
                         </StackPanel>
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.NetSessionText, Mode=OneWay}" />
+
+                        <!-- 最大占用网络流量的进程（IP Helper，同任务管理器网络列口径） -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="4">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource MetricLabelStyle}" Text="最大占用进程" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Style="{StaticResource MetricValueStyle}"
+                                        Text="{x:Bind ViewModel.NetTopProcessName, Mode=OneWay}" />
+                                </Grid>
+                                <TextBlock
+                                    HorizontalAlignment="Right"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="{StaticResource StatWebBrush}"
+                                    Text="{x:Bind ViewModel.NetTopProcessRate, Mode=OneWay}" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    LineHeight="16"
+                                    Text="{x:Bind ViewModel.NetProcessTopText, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 网络流量使用统计（会话/今日 + 进程累计） -->
+                        <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="流量统计" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    LineHeight="16"
+                                    Text="{x:Bind ViewModel.NetTrafficStatsText, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource MetricLabelStyle}" Text="会话" />
+                            <TextBlock
+                                Grid.Column="2"
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.NetSessionText, Mode=OneWay}" />
+                        </Grid>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -422,14 +559,14 @@
                             <TextBlock VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" Text="说明" />
                         </StackPanel>
                         <TextBlock
-                            FontSize="13"
+                            FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="采集引擎移植自开源项目 LiteMonitor（LibreHardwareMonitor），数据每秒刷新。主指标与副指标（温度/显存/读写/网速）均带色条：绿正常、黄偏高、红过高；无读数时为灰色且进度条为空。"
+                            Text="采集引擎移植自开源项目 LiteMonitor（LibreHardwareMonitor），数据每秒刷新。主指标与副指标（温度/显存/读写/网速）均带色条：绿正常、黄偏高、红过高；无读数时为灰色且进度条为空。CPU/内存/磁盘/GPU 卡片的「最大占用进程」为 2 秒级进程采样（CPU 时间差分 / 工作集 / IO Transfer / GPU Engine 计数器）；网络卡「最大占用进程 / 流量统计」基于 Windows IP Helper（连接表 + ESTATS）自采，口径接近任务管理器网络列。"
                             TextWrapping="Wrap" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                            Text="阈值：负载 70%/90%，CPU 温度 70/85°C，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。温度依赖主板/驱动，可能显示 --。"
+                            Text="阈值：负载 70%/90%，CPU 温度 70/85°C，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。进程流量为用户态估算（ESTATS/连接 IO），可能略低于任务管理器内核口径。"
                             TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>

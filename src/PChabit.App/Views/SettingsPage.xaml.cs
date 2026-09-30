@@ -267,6 +267,7 @@ public sealed partial class SettingsPage : Page
         AiBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiBaseUrl", AiBaseUrlBox.Text);
         AiApiKeyBox.LostFocus += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Password);
         AiModelBox.LostFocus += (s, e) => OnSettingChanged("AiModel", AiModelBox.Text);
+        AiModelFastBox.LostFocus += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
         AiProviderBox.SelectionChanged += (s, e) =>
         {
             if (_isLoading) return;
@@ -284,6 +285,8 @@ public sealed partial class SettingsPage : Page
             }
         };
         AiTimeoutSecondsBox.ValueChanged += (s, e) => OnSettingChanged("AiTimeoutSeconds", e.NewValue);
+        AiStrictPrivacySwitch.Toggled += (s, e) => OnSettingChanged("AiStrictPrivacy", AiStrictPrivacySwitch.IsOn);
+        AiAutoWeeklyInsightSwitch.Toggled += (s, e) => OnSettingChanged("AiAutoWeeklyInsight", AiAutoWeeklyInsightSwitch.IsOn);
     }
 
     private async void OnViewChangelogClick(object sender, RoutedEventArgs e)
@@ -483,8 +486,17 @@ public sealed partial class SettingsPage : Page
             case "AiModel":
                 ViewModel.AiModel = value?.ToString() ?? "";
                 break;
+            case "AiModelFast":
+                ViewModel.AiModelFast = value?.ToString() ?? "";
+                break;
             case "AiTimeoutSeconds":
                 ViewModel.AiTimeoutSeconds = value is double d ? d : 300;
+                break;
+            case "AiStrictPrivacy":
+                ViewModel.AiStrictPrivacy = (bool)value;
+                break;
+            case "AiAutoWeeklyInsight":
+                ViewModel.AiAutoWeeklyInsight = (bool)value;
                 break;
 
         }
@@ -548,6 +560,7 @@ public sealed partial class SettingsPage : Page
         AiBaseUrlBox.Text = ViewModel.AiBaseUrl ?? "";
         AiApiKeyBox.Password = ViewModel.AiApiKey ?? "";
         AiModelBox.Text = ViewModel.AiModel ?? "";
+        AiModelFastBox.Text = ViewModel.AiModelFast ?? "";
         AiProviderBox.Items.Clear();
         foreach (var p in PChabit.Infrastructure.Services.AiProviderPresets.All)
             AiProviderBox.Items.Add(new ComboBoxItem { Content = p.Label, Tag = p.Kind.ToString() });
@@ -555,6 +568,8 @@ public sealed partial class SettingsPage : Page
             .FirstOrDefault(i => string.Equals(i.Tag?.ToString(), ViewModel.AiProvider, StringComparison.OrdinalIgnoreCase));
         if (sel != null) AiProviderBox.SelectedItem = sel;
         AiTimeoutSecondsBox.Value = ViewModel.AiTimeoutSeconds;
+        AiStrictPrivacySwitch.IsOn = ViewModel.AiStrictPrivacy;
+        AiAutoWeeklyInsightSwitch.IsOn = ViewModel.AiAutoWeeklyInsight;
 
 
         ThemeComboBox.Items.Add(new ComboBoxItem { Content = "系统默认", Tag = "system" });

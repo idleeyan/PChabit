@@ -11,7 +11,10 @@ public enum TaskbarMetricColor
     Crit
 }
 
-/// <summary>任务栏小窗条目：标签（左对齐）+ 数值（状态色）。</summary>
+/// <summary>
+/// 任务栏小窗条目。主行数值放大加粗作为视觉焦点；次行整体弱化。
+/// Safe 用正文色（不抢眼），仅 Warn/Crit 着色，让异常一眼跳出。
+/// </summary>
 public sealed record TaskbarMetricItem(string Label, string Value, TaskbarMetricColor Color);
 
 /// <summary>
@@ -48,22 +51,31 @@ public sealed class TaskbarWidget : IDisposable
     private const uint TRANSPARENT = 1;
     private const uint SRCCOPY = 0x00CC0020;
 
-    // ---------- 颜色 ----------
-    private static readonly uint[] LABEL = { 0x141414, 0xFFFFFF };   // 浅/深
-    private static readonly uint[] SAFE = { 0x008040, 0x66FF99 };
+    // ---------- 颜色（浅/深）----------
+    // 对比度优先：任务栏底色浅≈#D2D2D2 / 深≈#292828，标签用中对比灰、数值用近黑白；
+    // 仅偏高/过高着色。DIM 只给分隔符，正文绝不用过灰。
+    private static readonly uint[] LABEL = { 0x3A3A3A, 0xC8C8C8 };
+    private static readonly uint[] VALUE = { 0x111111, 0xF8F8F8 };
+    private static readonly uint[] DIM = { 0x777777, 0x888888 };      // 仅「·」分隔符
     private static readonly uint[] WARN = { 0xB57500, 0xFFD666 };
     private static readonly uint[] CRIT = { 0xC03030, 0xFF6666 };
     private static readonly uint[] BG_KEY = { 0x00D3D2D2, 0x00292828 }; // 浅 210,210,211 / 深 40,40,41
 
     // ---------- 布局 ----------
-    private const int ColGap = 10;
-    private const int Padding = 6;
-    private const int BaseFontSize = 13;   // 12px 太小发虚，13px + 半粗让微软雅黑更清晰
+    private const int ItemGap = 14;         // 条目间距（主行更松，避免挤成一团）
+    private const int SecondaryItemGap = 10;
+    private const int LabelValueGap = 3;
+    private const int Padding = 8;
+    private const int PrimaryLabelSize = 11;
+    private const int PrimaryValueSize = 15; // 主行数值：视觉焦点
+    private const int SecondarySize = 13;    // 次行可读性优先（过小+过灰会糊成一片）
 
     // ---------- 状态 ----------
     private IntPtr _hwnd;
     private IntPtr _hTaskbar;
-    private IntPtr _font;
+    private IntPtr _fontLabel;
+    private IntPtr _fontValue;
+    private IntPtr _fontSecondary;
     private GCHandle _gcHandle;
     private bool _light;
     private int _width = 60;
@@ -177,12 +189,29 @@ public sealed class TaskbarWidget : IDisposable
     /// <summary>窗口是否已创建并有效（Explorer 重启等场景下会失效）。</summary>
     public bool IsRunning => _hwnd != IntPtr.Zero && IsWindow(_hwnd);
 
-    /// <summary>创建并挂载到任务栏（UI 线程调用）。</summary>
+    /// <summary>
+    /// 创建并挂载到任务栏（UI 线程调用）。幂等：
+    /// - 有效窗口则检查父窗口，必要时重新挂载（Explorer 重启后 Shell_TrayWnd 会换代）
+    /// - 失效句柄先销毁再重建，避免旧句柄挡住恢复
+    /// </summary>
     public void Start()
     {
-        if (_hwnd != IntPtr.Zero) return;
+        if (_disposed) return;
         try
         {
+            if (_hwnd != IntPtr.Zero)
+            {
+                if (IsWindow(_hwnd))
+                {
+                    EnsureAttached();
+                    return;
+                }
+                // 句柄已失效（典型：Explorer 重启销毁了子窗口），清掉后重建
+                Log.Information("TaskbarWidget 句柄失效，重建小窗");
+                try { DestroyWindow(_hwnd); } catch { /* 已失效，忽略 */ }
+                _hwnd = IntPtr.Zero;
+            }
+
             RegisterClass();
             _hwnd = CreateWindowExW(
                 WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
@@ -202,6 +231,29 @@ public sealed class TaskbarWidget : IDisposable
         catch (Exception ex)
         {
             Log.Warning(ex, "TaskbarWidget.Start 失败");
+        }
+    }
+
+    /// <summary>
+    /// 确保仍挂在当前任务栏上。Explorer 重启后可能：
+    /// 1) 子窗口被销毁（IsWindow=false）→ 由 Start() 重建
+    /// 2) 窗口还在但父句柄已换 → 这里重新 SetParent
+    /// </summary>
+    private void EnsureAttached()
+    {
+        if (_hwnd == IntPtr.Zero) return;
+        FindHandles();
+        if (_hTaskbar == IntPtr.Zero) return;
+
+        var parent = GetParent(_hwnd);
+        if (parent != _hTaskbar)
+        {
+            Log.Information("TaskbarWidget 父窗口变化，重新挂载任务栏");
+            AttachToTaskbar();
+        }
+        else
+        {
+            Position();
         }
     }
 
@@ -298,16 +350,11 @@ public sealed class TaskbarWidget : IDisposable
         if (hdc == IntPtr.Zero) return;
         try
         {
-            EnsureFont(hdc);
-            var old = SelectObject(hdc, _font);
+            EnsureFonts();
             int total = 0;
-            foreach (var items in new[] { _row1, _row2 })
-            {
-                int w = MeasureRow(hdc, items);
-                if (w > total) total = w;
-            }
-            SelectObject(hdc, old);
-            _width = Math.Max(total + Padding * 2, 60);
+            if (_row1.Count > 0) total = Math.Max(total, MeasurePrimaryRow(hdc, _row1));
+            if (_row2.Count > 0) total = Math.Max(total, MeasureSecondaryRow(hdc, _row2));
+            _width = Math.Max(total + Padding * 2, 72);
             Position();
         }
         finally
@@ -316,30 +363,65 @@ public sealed class TaskbarWidget : IDisposable
         }
     }
 
-    private int MeasureRow(IntPtr hdc, List<TaskbarMetricItem> items)
+    private int MeasurePrimaryRow(IntPtr hdc, List<TaskbarMetricItem> items)
     {
         int w = 0;
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
-            if (GetTextExtentPoint32W(hdc, it.Label + " " + it.Value, (it.Label + " " + it.Value).Length, out SIZE sz))
-                w += sz.cx;
-            else
-                w += 20;
-            if (i < items.Count - 1) w += ColGap;
+            if (it.Label.Length > 0)
+            {
+                w += MeasureText(hdc, _fontLabel, it.Label);
+                w += LabelValueGap;
+            }
+            w += MeasureText(hdc, _fontValue, it.Value);
+            if (i < items.Count - 1) w += ItemGap;
         }
         return w;
     }
 
-    private void EnsureFont(IntPtr hdc)
+    private int MeasureSecondaryRow(IntPtr hdc, List<TaskbarMetricItem> items)
     {
-        if (_font != IntPtr.Zero) return;
+        int w = 0;
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            if (it.Label.Length > 0)
+            {
+                w += MeasureText(hdc, _fontSecondary, it.Label);
+                w += LabelValueGap;
+            }
+            w += MeasureText(hdc, _fontSecondary, it.Value);
+            if (i < items.Count - 1) w += SecondaryItemGap;
+        }
+        return w;
+    }
+
+    private static int MeasureText(IntPtr hdc, IntPtr font, string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var old = SelectObject(hdc, font);
+        int w = GetTextExtentPoint32W(hdc, text, text.Length, out SIZE sz) ? sz.cx : text.Length * 8;
+        SelectObject(hdc, old);
+        return w;
+    }
+
+    private void EnsureFonts()
+    {
+        if (_fontLabel != IntPtr.Zero) return;
         uint dpi = GetDpiForWindow(_hwnd);
         if (dpi == 0) dpi = 96;
-        int px = -(int)(BaseFontSize * dpi / 96.0);
-        // 微软雅黑：中英文统一样式，比 Segoe UI 更清晰饱满（Segoe UI 下中文靠 font linking 回退雅黑，字形不协调偏丑）
-        // weight=600（SemiBold）：数值与中文标签在任务栏小字号下更醒目
-        _font = CreateFontW(px, 0, 0, 0, 600, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, (uint)(DEFAULT_PITCH | FF_DONTCARE), "Microsoft YaHei UI");
+        // 微软雅黑：中英文统一；ANTIALIASED 避免色键透明面 ClearType 彩边
+        // 主行：小标签 + 大号半粗数值形成焦点；次行：整体小一号弱化
+        _fontLabel = CreateScaledFont(PrimaryLabelSize, 500, dpi);
+        _fontValue = CreateScaledFont(PrimaryValueSize, 700, dpi);
+        _fontSecondary = CreateScaledFont(SecondarySize, 500, dpi);
+    }
+
+    private static IntPtr CreateScaledFont(int sizePt, int weight, uint dpi)
+    {
+        int px = -(int)(sizePt * dpi / 96.0);
+        return CreateFontW(px, 0, 0, 0, weight, 0, 0, 0, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, (uint)(DEFAULT_PITCH | FF_DONTCARE), "Microsoft YaHei UI");
     }
 
     private static IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -378,8 +460,7 @@ public sealed class TaskbarWidget : IDisposable
             IntPtr memDc = CreateCompatibleDC(hdc);
             IntPtr bmp = CreateCompatibleBitmap(hdc, w, h);
             var oldBmp = SelectObject(memDc, bmp);
-            EnsureFont(hdc);
-            var oldFont = SelectObject(memDc, _font);
+            EnsureFonts();
 
             // 背景填透明键
             IntPtr brush = CreateSolidBrush(BG_KEY[_light ? 0 : 1]);
@@ -387,15 +468,27 @@ public sealed class TaskbarWidget : IDisposable
             DeleteObject(brush);
 
             SetBkMode(memDc, TRANSPARENT);
-            int half = h / 2;
-            var row1Rect = new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = half };
-            var row2Rect = new RECT { Left = Padding, Top = half, Right = w - Padding, Bottom = h };
-            DrawRow(memDc, _row1, row1Rect);
-            DrawRow(memDc, _row2, row2Rect);
+
+            // 有主行时上主下次（主行略高，数值更大）；只有一行则垂直居中
+            bool has1 = _row1.Count > 0;
+            bool has2 = _row2.Count > 0;
+            if (has1 && has2)
+            {
+                int primaryH = (int)(h * 0.56);
+                DrawPrimaryRow(memDc, _row1, new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = primaryH });
+                DrawSecondaryRow(memDc, _row2, new RECT { Left = Padding, Top = primaryH, Right = w - Padding, Bottom = h });
+            }
+            else if (has1)
+            {
+                DrawPrimaryRow(memDc, _row1, new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = h });
+            }
+            else if (has2)
+            {
+                DrawSecondaryRow(memDc, _row2, new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = h });
+            }
 
             BitBlt(hdc, 0, 0, w, h, memDc, 0, 0, SRCCOPY);
 
-            SelectObject(memDc, oldFont);
             SelectObject(memDc, oldBmp);
             DeleteObject(bmp);
             DeleteDC(memDc);
@@ -406,38 +499,77 @@ public sealed class TaskbarWidget : IDisposable
         }
     }
 
-    private void DrawRow(IntPtr hdc, List<TaskbarMetricItem> items, RECT rc)
+    private static uint ValueColor(TaskbarMetricColor color, int theme) => color switch
+    {
+        TaskbarMetricColor.Warn => WARN[theme],
+        TaskbarMetricColor.Crit => CRIT[theme],
+        _ => VALUE[theme]
+    };
+
+    /// <summary>主行：小灰标签 + 大号粗体数值（焦点），条目间距拉开。</summary>
+    private void DrawPrimaryRow(IntPtr hdc, List<TaskbarMetricItem> items, RECT rc)
     {
         int x = rc.Left;
-        int yCenter = rc.Top + (rc.Bottom - rc.Top) / 2;
-        // 13px 字体字高约 19px，基线起点取中心偏上 9px（12px 时为 8）
-        int yText = yCenter - 9;
         int theme = _light ? 0 : 1;
+        // 大数字（15px/700）字高约 22px，基线在字顶偏下 17px 处
+        int yValue = TextTop(rc, 22);
+        int yLabel = TextTop(rc, 15);
 
-        foreach (var item in items)
+        for (int i = 0; i < items.Count; i++)
         {
-            // 标签
-            SetTextColor(hdc, LABEL[theme]);
-            string label = item.Label;
-            TextOutW(hdc, x, yText, label, label.Length);
-            if (GetTextExtentPoint32W(hdc, label, label.Length, out SIZE ls)) x += ls.cx;
-            else x += 20;
-
-            // 值
-            uint color = item.Color switch
+            var it = items[i];
+            if (it.Label.Length > 0)
             {
-                TaskbarMetricColor.Warn => WARN[theme],
-                TaskbarMetricColor.Crit => CRIT[theme],
-                _ => SAFE[theme]
-            };
-            SetTextColor(hdc, color);
-            string value = item.Value;
-            TextOutW(hdc, x + 2, yText, value, value.Length);
-            if (GetTextExtentPoint32W(hdc, value, value.Length, out SIZE vs)) x += vs.cx;
-            else x += 20;
+                SelectObject(hdc, _fontLabel);
+                SetTextColor(hdc, LABEL[theme]);
+                TextOutW(hdc, x, yLabel, it.Label, it.Label.Length);
+                x += MeasureText(hdc, _fontLabel, it.Label) + LabelValueGap;
+            }
 
-            x += ColGap - 2;
+            SelectObject(hdc, _fontValue);
+            SetTextColor(hdc, ValueColor(it.Color, theme));
+            TextOutW(hdc, x, yValue, it.Value, it.Value.Length);
+            x += MeasureText(hdc, _fontValue, it.Value);
+
+            if (i < items.Count - 1) x += ItemGap;
         }
+    }
+
+    /// <summary>次行：字号与主行标签接近，标签/数值用高对比色，条目间「·」弱化分组。</summary>
+    private void DrawSecondaryRow(IntPtr hdc, List<TaskbarMetricItem> items, RECT rc)
+    {
+        int x = rc.Left;
+        int theme = _light ? 0 : 1;
+        int y = TextTop(rc, 18);
+        SelectObject(hdc, _fontSecondary);
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            if (it.Label.Length > 0)
+            {
+                SetTextColor(hdc, LABEL[theme]);
+                TextOutW(hdc, x, y, it.Label, it.Label.Length);
+                x += MeasureText(hdc, _fontSecondary, it.Label) + LabelValueGap;
+            }
+
+            SetTextColor(hdc, ValueColor(it.Color, theme));
+            TextOutW(hdc, x, y, it.Value, it.Value.Length);
+            x += MeasureText(hdc, _fontSecondary, it.Value);
+
+            if (i < items.Count - 1)
+            {
+                SetTextColor(hdc, DIM[theme]);
+                TextOutW(hdc, x + SecondaryItemGap / 2 - 2, y, "·", 1);
+                x += SecondaryItemGap;
+            }
+        }
+    }
+
+    private static int TextTop(RECT rc, int textHeight)
+    {
+        int h = rc.Bottom - rc.Top;
+        return rc.Top + Math.Max(0, (h - textHeight) / 2);
     }
 
     public void Dispose()
@@ -451,11 +583,9 @@ public sealed class TaskbarWidget : IDisposable
                 DestroyWindow(_hwnd);
                 _hwnd = IntPtr.Zero;
             }
-            if (_font != IntPtr.Zero)
-            {
-                DeleteObject(_font);
-                _font = IntPtr.Zero;
-            }
+            if (_fontLabel != IntPtr.Zero) { DeleteObject(_fontLabel); _fontLabel = IntPtr.Zero; }
+            if (_fontValue != IntPtr.Zero) { DeleteObject(_fontValue); _fontValue = IntPtr.Zero; }
+            if (_fontSecondary != IntPtr.Zero) { DeleteObject(_fontSecondary); _fontSecondary = IntPtr.Zero; }
             if (_gcHandle.IsAllocated) _gcHandle.Free();
         }
         catch (Exception ex)

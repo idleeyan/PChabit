@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using PChabit.HardwareMonitor;
+using PChabit.HardwareMonitor.Hardware;
 using Serilog;
 
 namespace PChabit.App.ViewModels;
@@ -12,6 +13,8 @@ namespace PChabit.App.ViewModels;
 public partial class HardwareMonitorViewModel : ViewModelBase
 {
     private readonly HardwareMonitorService _monitorService;
+    private readonly ProcessNetworkMonitor _processNetwork;
+    private readonly ProcessResourceMonitor _processResource;
     private bool _subscribed;
 
     // ---- CPU ----
@@ -27,6 +30,10 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     private double _cpuTemp;
     [ObservableProperty]
     private string _cpuTempColor = MutedHex;
+    [ObservableProperty]
+    private string _cpuTopProcessName = "--";
+    [ObservableProperty]
+    private string _cpuTopProcessRate = "--";
 
     // ---- GPU ----
     [ObservableProperty]
@@ -47,6 +54,10 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     private double _gpuVramPercent;
     [ObservableProperty]
     private string _gpuVramColor = MutedHex;
+    [ObservableProperty]
+    private string _gpuTopProcessName = "--";
+    [ObservableProperty]
+    private string _gpuTopProcessRate = "--";
 
     // ---- 内存 ----
     [ObservableProperty]
@@ -57,6 +68,10 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     private string _memUsageText = "--";
     [ObservableProperty]
     private string _memColor = MutedHex;
+    [ObservableProperty]
+    private string _memTopProcessName = "--";
+    [ObservableProperty]
+    private string _memTopProcessRate = "--";
 
     // ---- 磁盘 ----
     [ObservableProperty]
@@ -77,6 +92,10 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     private string _diskActivityText = "--";
     [ObservableProperty]
     private string _diskActivityColor = MutedHex;
+    [ObservableProperty]
+    private string _diskTopProcessName = "--";
+    [ObservableProperty]
+    private string _diskTopProcessRate = "--";
 
     // ---- 网络 ----
     [ObservableProperty]
@@ -91,6 +110,14 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     private string _netSessionText = "--";
     [ObservableProperty]
     private string _netIpText = "--";
+    [ObservableProperty]
+    private string _netTopProcessName = "--";
+    [ObservableProperty]
+    private string _netTopProcessRate = "--";
+    [ObservableProperty]
+    private string _netProcessTopText = "暂无活跃网络进程";
+    [ObservableProperty]
+    private string _netTrafficStatsText = "--";
 
     [ObservableProperty]
     private string _updatedTimeText = "--";
@@ -112,9 +139,11 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     /// <summary>网络上下行进度条参考满刻度（MB/s）。</summary>
     public double NetSpeedBarMax => Math.Max(1, Math.Max(NetDownMbps, NetUpMbps) * 1.25);
 
-    public HardwareMonitorViewModel(HardwareMonitorService monitorService)
+    public HardwareMonitorViewModel(HardwareMonitorService monitorService, ProcessNetworkMonitor processNetwork, ProcessResourceMonitor processResource)
     {
         _monitorService = monitorService;
+        _processNetwork = processNetwork;
+        _processResource = processResource;
     }
 
     /// <summary>页面进入时订阅（在 UI 线程调用）。</summary>
@@ -207,6 +236,9 @@ public partial class HardwareMonitorViewModel : ViewModelBase
             NetSessionText = $"本会话 上传 {FormatTotalBytes(up)} · 下载 {FormatTotalBytes(down)}";
             NetIpText = string.IsNullOrWhiteSpace(_monitorService.GetNetworkIP()) ? "--" : _monitorService.GetNetworkIP();
 
+            RefreshProcessNetwork();
+            RefreshProcessResources();
+
             UpdatedTimeText = DateTime.Now.ToString("HH:mm:ss");
 
             // 计算属性：磁盘/网络进度条满刻度随峰值变化
@@ -217,6 +249,125 @@ public partial class HardwareMonitorViewModel : ViewModelBase
         {
             Log.Warning(ex, "硬件监控数值刷新失败");
         }
+    }
+
+    /// <summary>各卡片「最大占用进程」：CPU / 内存 / 磁盘 / GPU。</summary>
+    private void RefreshProcessResources()
+    {
+        var snap = _processResource.GetSnapshot();
+
+        if (snap.TopCpu is { } cpu)
+        {
+            CpuTopProcessName = DisplayProcessName(cpu.ProcessName, cpu.ProcessId);
+            CpuTopProcessRate = $"{cpu.CpuPercent:F1}%";
+        }
+        else
+        {
+            CpuTopProcessName = "--";
+            CpuTopProcessRate = "--";
+        }
+
+        if (snap.TopMemory is { } mem)
+        {
+            MemTopProcessName = DisplayProcessName(mem.ProcessName, mem.ProcessId);
+            MemTopProcessRate = FormatMbValue(mem.MemoryMb);
+        }
+        else
+        {
+            MemTopProcessName = "--";
+            MemTopProcessRate = "--";
+        }
+
+        if (snap.TopDisk is { } disk)
+        {
+            DiskTopProcessName = DisplayProcessName(disk.ProcessName, disk.ProcessId);
+            DiskTopProcessRate = FormatSpeedValue(disk.DiskBytesPerSec);
+        }
+        else
+        {
+            DiskTopProcessName = "--";
+            DiskTopProcessRate = "--";
+        }
+
+        // GPU：优先 GPU 引擎占用；无引擎数据时回退专用显存 Top
+        if (snap.TopGpu is { } gpu)
+        {
+            GpuTopProcessName = DisplayProcessName(gpu.ProcessName, gpu.ProcessId);
+            GpuTopProcessRate = $"{gpu.GpuPercent:F1}%" + (gpu.GpuDedicatedMb > 16 ? $" · {FormatMbValue(gpu.GpuDedicatedMb)}" : "");
+        }
+        else if (snap.TopGpuMemory is { } gpuMem)
+        {
+            GpuTopProcessName = DisplayProcessName(gpuMem.ProcessName, gpuMem.ProcessId);
+            GpuTopProcessRate = FormatMbValue(gpuMem.GpuDedicatedMb);
+        }
+        else
+        {
+            GpuTopProcessName = "--";
+            GpuTopProcessRate = "--";
+        }
+    }
+
+    private static string DisplayProcessName(string name, int pid)
+        => string.IsNullOrWhiteSpace(name) ? $"PID {pid}" : name;
+
+    private static string FormatMbValue(double mb)
+    {
+        if (mb <= 0) return "--";
+        return mb >= 1024 ? $"{mb / 1024:F2} GB" : $"{mb:F0} MB";
+    }
+
+    /// <summary>进程网络：最大占用进程 + Top 列表 + 流量统计。</summary>
+    private void RefreshProcessNetwork()
+    {
+        var snap = _processNetwork.GetSnapshot(5);
+        var top = snap.TopByRate;
+        if (top == null)
+        {
+            NetTopProcessName = "--";
+            NetTopProcessRate = "--";
+            NetProcessTopText = "暂无活跃网络进程";
+        }
+        else
+        {
+            NetTopProcessName = string.IsNullOrWhiteSpace(top.ProcessName) ? $"PID {top.ProcessId}" : top.ProcessName;
+            NetTopProcessRate = FormatProcessRate(top);
+            var lines = snap.TopByRateList
+                .Select((p, i) => $"{i + 1}. {p.ProcessName}  {FormatProcessRate(p)}")
+                .ToList();
+            NetProcessTopText = lines.Count > 0 ? string.Join("\n", lines) : "暂无活跃网络进程";
+        }
+
+        // 流量统计：系统会话/今日 + 进程今日 Top（本程序采样口径，类似系统「数据使用量」）
+        var stats = new List<string>
+        {
+            $"系统会话 ↑{FormatTotalBytes(snap.SystemSessionUpBytes)} ↓{FormatTotalBytes(snap.SystemSessionDownBytes)}",
+            $"系统今日 ↑{FormatTotalBytes(snap.SystemTodayUpBytes)} ↓{FormatTotalBytes(snap.SystemTodayDownBytes)}"
+        };
+
+        if (snap.TopByToday.Count > 0)
+        {
+            stats.Add("今日进程累计:");
+            foreach (var p in snap.TopByToday.Take(3))
+            {
+                var total = p.TodayDownBytes + p.TodayUpBytes;
+                stats.Add($"  {p.ProcessName}  {FormatTotalBytes(total)}");
+            }
+        }
+
+        NetTrafficStatsText = string.Join("\n", stats);
+    }
+
+    private static string FormatProcessRate(ProcessNetworkItem item)
+    {
+        return $"↓{FormatSpeedValue(item.DownBytesPerSec)} ↑{FormatSpeedValue(item.UpBytesPerSec)}";
+    }
+
+    private static string FormatSpeedValue(double bytesPerSec)
+    {
+        if (bytesPerSec < 0) return "--";
+        if (bytesPerSec < 1024) return $"{bytesPerSec:F0} B/s";
+        if (bytesPerSec < 1024 * 1024) return $"{bytesPerSec / 1024:F1} KB/s";
+        return $"{bytesPerSec / 1024 / 1024:F2} MB/s";
     }
 
     // ================= 格式化与配色 =================

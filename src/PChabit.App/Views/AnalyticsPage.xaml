@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:PChabit.App.Views"
+    xmlns:vm="using:PChabit.App.ViewModels"
     mc:Ignorable="d">
 
     <Grid>
@@ -66,6 +67,15 @@
                                         Padding="12,6"
                                         Command="{x:Bind ViewModel.RunAiInsightCommand}"
                                         Content="AI 深度解读" />
+                                    <Button
+                                        Padding="12,6"
+                                        Command="{x:Bind ViewModel.CopyAiInsightCommand}"
+                                        Content="复制解读" />
+                                    <Button
+                                        Padding="12,6"
+                                        Command="{x:Bind ViewModel.CancelAiInsightCommand}"
+                                        Content="取消"
+                                        Visibility="{x:Bind ViewModel.IsAiRunning, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                 </StackPanel>
                             </Grid>
 
@@ -176,6 +186,54 @@
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
                                 CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasHabitTrends, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="8">
+                                    <TextBlock FontWeight="SemiBold" Text="习惯养成轨迹" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="基于近 28 天前后半对比，相对你自己的趋势。" />
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.HabitTrends, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:HabitTrendViewModel">
+                                                <Grid ColumnSpacing="10" Margin="0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="28" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock
+                                                        Grid.Column="0"
+                                                        FontSize="16"
+                                                        FontWeight="SemiBold"
+                                                        Text="{x:Bind BadgeText}" />
+                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                        <TextBlock FontSize="13" FontWeight="SemiBold">
+                                                            <Run Text="{x:Bind Name}" />
+                                                            <Run Text=" · " />
+                                                            <Run Text="{x:Bind DirectionText}" />
+                                                            <Run Text=" " />
+                                                            <Run Text="{x:Bind SupportText}" />
+                                                        </TextBlock>
+                                                        <TextBlock
+                                                            FontSize="12"
+                                                            Opacity="0.8"
+                                                            TextWrapping="Wrap"
+                                                            Text="{x:Bind Detail}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
                                 Visibility="{x:Bind ViewModel.HasAiResult, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
                                 <StackPanel Spacing="8">
                                     <TextBlock FontWeight="SemiBold" Text="AI 深度解读（仅供参考）" />
@@ -198,6 +256,72 @@
                                                     <TextBlock FontSize="13" FontWeight="SemiBold" Text="{Binding Title}" />
                                                     <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding Detail}" />
                                                 </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="可能原因"
+                                        Visibility="{x:Bind ViewModel.HasAiDiagnosis, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ItemsControl
+                                        ItemsSource="{x:Bind ViewModel.AiDiagnosis, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiDiagnosis, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock
+                                                    FontSize="12"
+                                                    Margin="0,2"
+                                                    Opacity="0.85"
+                                                    TextWrapping="Wrap"
+                                                    Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="周计划"
+                                        Visibility="{x:Bind ViewModel.HasAiPlans, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ItemsControl
+                                        ItemsSource="{x:Bind ViewModel.AiPlans, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiPlans, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:AiPlanViewModel">
+                                                <Border
+                                                    Margin="0,4"
+                                                    Padding="10"
+                                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="6">
+                                                    <Grid ColumnSpacing="8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Spacing="2">
+                                                            <TextBlock FontSize="13" FontWeight="SemiBold" Text="{x:Bind Title}" />
+                                                            <TextBlock FontSize="12" TextWrapping="Wrap" Text="{x:Bind Detail}" />
+                                                            <TextBlock
+                                                                FontSize="11"
+                                                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                                Text="{x:Bind StatusText}" />
+                                                        </StackPanel>
+                                                        <StackPanel
+                                                            Grid.Column="1"
+                                                            VerticalAlignment="Center"
+                                                            Spacing="4"
+                                                            Visibility="{x:Bind IsPending, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                            <Button
+                                                                Padding="8,4"
+                                                                Click="PlanDone_Click"
+                                                                Content="采纳"
+                                                                Tag="{x:Bind}" />
+                                                            <Button
+                                                                Padding="8,4"
+                                                                Click="PlanSkip_Click"
+                                                                Content="忽略"
+                                                                Tag="{x:Bind}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
@@ -244,11 +368,54 @@
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                     <TextBlock
+                                        FontWeight="SemiBold"
+                                        Text="可追问"
+                                        Visibility="{x:Bind ViewModel.HasAiFollowUps, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                                    <ItemsControl
+                                        ItemsSource="{x:Bind ViewModel.AiFollowUps, Mode=OneWay}"
+                                        Visibility="{x:Bind ViewModel.HasAiFollowUps, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock
+                                                    FontSize="11"
+                                                    Opacity="0.75"
+                                                    TextWrapping="Wrap"
+                                                    Text="{Binding}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock
                                         FontSize="12"
                                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                         TextWrapping="Wrap"
                                         Text="{x:Bind ViewModel.AiResultText, Mode=OneWay}"
                                         Visibility="{x:Bind ViewModel.HasAiParsed, Mode=OneWay, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                    <Grid ColumnSpacing="8" Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox
+                                            Grid.Column="0"
+                                            PlaceholderText="追问，例如：为什么专注掉了？"
+                                            Text="{x:Bind ViewModel.FollowUpQuestion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Button
+                                            Grid.Column="1"
+                                            Padding="12,6"
+                                            VerticalAlignment="Center"
+                                            Command="{x:Bind ViewModel.SendFollowUpCommand}"
+                                            Content="追问" />
+                                    </Grid>
+                                    <Border
+                                        Padding="10"
+                                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                        CornerRadius="6"
+                                        Visibility="{x:Bind ViewModel.HasFollowUpAnswer, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock
+                                            FontSize="12"
+                                            TextWrapping="Wrap"
+                                            Text="{x:Bind ViewModel.FollowUpAnswer, Mode=OneWay}" />
+                                    </Border>
                                 </StackPanel>
                             </Border>
 

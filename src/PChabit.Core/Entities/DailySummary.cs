@@ -55,8 +55,20 @@ public class DailySummary : EntityBase
     public long? NetBytesUp { get; set; }
     public long? NetBytesDown { get; set; }
 
-    /// <summary>指标口径版本：null/1 = v1 行为数据；2 = 已含 P0+ 扩展口径</summary>
+    /// <summary>指标口径版本：null/1 = v1 行为数据；2 = 硬件/专注扩展；3 = 活动标签/夜间/起止</summary>
     public int? MetricsVersion { get; set; }
+
+    /// <summary>活动标签分钟 JSON：{"work-code":120,...}（ActivityLabels 字面量键）</summary>
+    public string? LabelMinutesJson { get; set; }
+
+    /// <summary>夜间分钟（23:00–06:00 与会话重叠）</summary>
+    public double? NightMinutes { get; set; }
+
+    /// <summary>当日首次活跃时刻 "HH:mm"；无数据为空</summary>
+    public string? FirstActiveTime { get; set; }
+
+    /// <summary>当日最后活跃时刻 "HH:mm"；无数据为空</summary>
+    public string? LastActiveTime { get; set; }
 
     /// <summary>最后更新时间</summary>
     public DateTime LastUpdated { get; set; }

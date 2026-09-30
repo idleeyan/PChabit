@@ -33,7 +33,6 @@ public interface ISettingsService
     int MaxCloudBackupCount { get; set; }
 
     bool BrowserSyncEnabled { get; set; }
-    bool BrowserBookmarkSyncEnabled { get; set; }
     bool BrowserHistoryIngestEnabled { get; set; }
     int BrowserSyncIntervalMinutes { get; set; }
 
@@ -58,6 +57,12 @@ public interface ISettingsService
     string AiProvider { get; set; }
     /// <summary>AI 解读超时（秒）。本地大模型推理慢，默认 300；范围 30–900。</summary>
     int AiTimeoutSeconds { get; set; }
+    /// <summary>追问用快捷模型（空则与 AiModel 相同）。</summary>
+    string AiModelFast { get; set; }
+    /// <summary>严格隐私：出域指标包不含应用/分类显示名，仅数值与标签。</summary>
+    bool AiStrictPrivacy { get; set; }
+    /// <summary>每周自动跑一次 AI 解读（需先启用 AI）。</summary>
+    bool AiAutoWeeklyInsight { get; set; }
     /// <summary>书签库整树自动推送到浏览器。</summary>
     bool BrowserAutoPush { get; set; }
 

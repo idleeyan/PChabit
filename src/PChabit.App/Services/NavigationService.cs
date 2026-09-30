@@ -28,6 +28,7 @@ public class NavigationService
         Register<KeyboardDetailsPage>("KeyboardDetails");
         Register<WebAccessPage>("WebAccess");
         Register<HardwareMonitorPage>("Monitor");
+        Register<NetworkTrafficPage>("NetworkTraffic");
         Register<AnalyticsPage>("Analytics");
         Register<DataManagementPage>("DataManagement");
         Register<HistoryReportPage>("HistoryReport");

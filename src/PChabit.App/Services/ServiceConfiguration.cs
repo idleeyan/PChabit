@@ -61,6 +61,12 @@ public static class ServiceConfiguration
         
         // 硬件监控（LiteMonitor 核心移植，见 src/PChabit.HardwareMonitor/NOTICE.md）
         services.AddSingleton<HardwareMonitorService>();
+        // 进程网络流量（IP Helper 连接表 + ESTATS，硬件页「最大占用进程/流量统计」）
+        services.AddSingleton<PChabit.HardwareMonitor.Hardware.ProcessNetworkMonitor>();
+        // 进程 CPU/内存/磁盘/GPU 占用（硬件卡片「最大占用进程」）
+        services.AddSingleton<PChabit.HardwareMonitor.Hardware.ProcessResourceMonitor>();
+        // 网络流量历史落库 + 独立统计页
+        services.AddSingleton<NetworkTrafficPersistenceService>();
         // 硬件分钟样本落库（分析升级 P0，订阅 HardwareMonitorService.ValuesUpdated）
         services.AddSingleton<HardwareSampleWriter>();
 
@@ -76,12 +82,9 @@ public static class ServiceConfiguration
         services.AddScoped<IWebsiteCategoryService, WebsiteCategoryService>();
         
         services.AddSingleton<IBackupService, BackupService>();
-        services.AddSingleton<IBrowserBookmarkRepository, BrowserBookmarkRepository>();
         services.AddSingleton<BrowserSyncWebSocketHandler>();
         services.AddSingleton<IHistoryIngestService, HistoryIngestService>();
         services.AddSingleton<HistorySyncService>();
-        services.AddSingleton<BookmarkTidyService>();
-        services.AddSingleton<IBookmarkSyncService, BookmarkSyncService>();
 
         // 数据导出服务（原在 AddTaiInfrastructure 中但该方法未被调用）
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
@@ -103,15 +106,14 @@ public static class ServiceConfiguration
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<HardwareMonitorViewModel>();
+        services.AddTransient<NetworkTrafficViewModel>();
         services.AddTransient<TimelineViewModel>();
         services.AddTransient<AnalyticsViewModel>();
-        services.AddSingleton<IBrowserBookmarkRepository, BrowserBookmarkRepository>();
-        services.AddSingleton<BookmarkLibraryService>();
-        services.AddSingleton<BookmarkHubService>();
         services.AddSingleton<IAiChatService, AiChatService>();
         services.AddSingleton<AiSettingsSyncService>();
-        services.AddSingleton<BookmarkTidyAiService>();
         services.AddSingleton<IAnalyticsAiService, AnalyticsAiService>();
+        services.AddSingleton<IAiInsightHistoryService, AiInsightHistoryService>();
+        services.AddSingleton<IWeeklyAiInsightService, WeeklyAiInsightService>();
         services.AddTransient<DataManagementViewModel>();
         services.AddTransient<DetailDialogViewModel>();
         services.AddTransient<AppStatsViewModel>();

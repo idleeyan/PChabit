@@ -21,15 +21,15 @@ public class PChabitDbContext : DbContext
     public DbSet<EfficiencyScore> EfficiencyScores { get; set; }
     public DbSet<WorkPattern> WorkPatterns { get; set; }
     public DbSet<InsightReport> InsightReports { get; set; }
+    public DbSet<AiInsightSnapshot> AiInsightSnapshots { get; set; }
     public DbSet<DailySummary> DailySummaries { get; set; }
-    public DbSet<BrowserBookmark> BrowserBookmarks { get; set; }
 
-    public DbSet<PendingBookmarkChange> PendingBookmarkChanges { get; set; }
-    public DbSet<BookmarkSyncBaseline> BookmarkSyncBaselines { get; set; }
     public DbSet<BrowserSyncMeta> BrowserSyncMetas { get; set; }
     public DbSet<BrowserHistoryItem> BrowserHistoryItems { get; set; }
     public DbSet<AppDailyStats> AppDailyStats { get; set; }
     public DbSet<HardwareSample> HardwareSamples { get; set; }
+    public DbSet<NetworkTrafficSample> NetworkTrafficSamples { get; set; }
+    public DbSet<ProcessNetworkUsage> ProcessNetworkUsages { get; set; }
 
     public PChabitDbContext(DbContextOptions<PChabitDbContext> options) : base(options)
     {
@@ -59,16 +59,12 @@ public class PChabitDbContext : DbContext
         ConfigureEfficiencyScore(modelBuilder);
         ConfigureWorkPattern(modelBuilder);
         ConfigureInsightReport(modelBuilder);
+        ConfigureAiInsightSnapshot(modelBuilder);
         ConfigureDailySummary(modelBuilder);
-            ConfigureBrowserBookmark(modelBuilder);
-            modelBuilder.Entity<PendingBookmarkChange>(entity =>
-            {
-                entity.ToTable("PendingBookmarkChanges");
-                entity.HasKey(e => e.Id);
-                entity.Property(e => e.Id).ValueGeneratedOnAdd();
-            });
+            ConfigureBrowserHistory(modelBuilder);
             ConfigureAppDailyStats(modelBuilder);
             ConfigureHardwareSample(modelBuilder);
+            ConfigureNetworkTraffic(modelBuilder);
     }
     
     private static void ConfigureAppSession(ModelBuilder modelBuilder)
@@ -337,6 +333,24 @@ public class PChabitDbContext : DbContext
         });
     }
 
+    private static void ConfigureAiInsightSnapshot(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AiInsightSnapshot>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.PeriodKey);
+            entity.HasIndex(e => e.CreatedAt);
+
+            entity.Property(e => e.CreatedAt)
+                .HasConversion(
+                    v => v.ToString("yyyy-MM-dd HH:mm:ss"),
+                    v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
+        });
+    }
+
     private static void ConfigureDailySummary(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<DailySummary>(entity =>
@@ -380,25 +394,29 @@ public class PChabitDbContext : DbContext
         });
     }
 
-    private static void ConfigureBrowserBookmark(ModelBuilder modelBuilder)
+    private static void ConfigureNetworkTraffic(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<BrowserBookmark>(entity =>
+        modelBuilder.Entity<NetworkTrafficSample>(entity =>
         {
-            entity.ToTable("BrowserBookmarks");
+            entity.ToTable("NetworkTrafficSamples");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasMaxLength(500);
-            entity.HasIndex(e => e.Url);
-            entity.HasIndex(e => e.IsDeleted);
-            entity.HasIndex(e => new { e.Type, e.Title });
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.HasIndex(e => e.Timestamp).IsUnique();
         });
 
-        modelBuilder.Entity<BookmarkSyncBaseline>(entity =>
+        modelBuilder.Entity<ProcessNetworkUsage>(entity =>
         {
-            entity.ToTable("BookmarkSyncBaselines");
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.ToTable("ProcessNetworkUsages");
+            entity.HasKey(e => new { e.Date, e.Hour, e.ProcessName });
+            entity.Property(e => e.ProcessName).HasMaxLength(256);
+            entity.HasIndex(e => e.Date);
         });
+    }
 
+    private static void ConfigureBrowserHistory(ModelBuilder modelBuilder)
+    {
         modelBuilder.Entity<BrowserSyncMeta>(entity =>
         {
             entity.ToTable("BrowserSyncMetas");

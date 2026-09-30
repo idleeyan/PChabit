@@ -25,7 +25,6 @@ public partial class App : Microsoft.UI.Xaml.Application
     private Window? _window;
     private ServiceProvider? _serviceProvider;
     private MonitorManager? _monitorManager;
-    private Timer? _bookmarkSyncTimer;
     private readonly TaskCompletionSource _dbInitCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     
     private const int WM_SETICON = 0x0080;
@@ -534,10 +533,41 @@ public partial class App : Microsoft.UI.Xaml.Application
             _dataCollectionService.Start();
             Log.Information("数据收集服务已启动");
 
+            // 周自动 AI 解读（延迟 2 分钟，避免抢启动 IO）
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(2));
+                    var weekly = _serviceProvider!.GetService<Infrastructure.Services.IWeeklyAiInsightService>();
+                    if (weekly is not null)
+                        await weekly.TryRunWeeklyAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex, "周自动 AI 解读调度失败");
+                }
+            });
+
             // 硬件监控（LiteMonitor 核心移植）
             _hardwareMonitorService = _serviceProvider!.GetRequiredService<HardwareMonitorService>();
             _hardwareMonitorService.Start();
             Log.Information("硬件监控服务已启动");
+
+            // 进程网络流量监视（任务管理器式：最大占用进程 + 流量统计）
+            var processNetwork = _serviceProvider!.GetRequiredService<PChabit.HardwareMonitor.Hardware.ProcessNetworkMonitor>();
+            processNetwork.NetUpGetter = () => _hardwareMonitorService?.Get("NET.Up");
+            processNetwork.NetDownGetter = () => _hardwareMonitorService?.Get("NET.Down");
+            processNetwork.Start();
+            Log.Information("进程网络流量监视已启动");
+
+            // 进程 CPU/内存/磁盘/GPU 占用（硬件卡片最大占用进程）
+            _serviceProvider!.GetRequiredService<PChabit.HardwareMonitor.Hardware.ProcessResourceMonitor>().Start();
+            Log.Information("进程资源占用监视已启动");
+
+            // 网络流量历史落库（独立统计页数据源）
+            _serviceProvider!.GetRequiredService<NetworkTrafficPersistenceService>().Start();
+            Log.Information("网络流量落库服务已启动");
 
             // 硬件分钟样本落库（分析升级 P0，与硬件监控同生命周期）
             _hardwareSampleWriter = _serviceProvider!.GetRequiredService<HardwareSampleWriter>();
@@ -545,7 +575,6 @@ public partial class App : Microsoft.UI.Xaml.Application
 
             StartTrayDisplayTimer();
 
-            StartBookmarkAutoSync();
         }
         catch (Exception ex)
         {
@@ -603,10 +632,8 @@ public partial class App : Microsoft.UI.Xaml.Application
         {
             _taskbarWidget = new TaskbarWidget();
         }
-        if (!_taskbarWidget.IsRunning)
-        {
-            _taskbarWidget.Start();
-        }
+        // Start 幂等：失效句柄会重建，父窗口变化会重挂载（Explorer 重启后可恢复）
+        _taskbarWidget.Start();
         if (!_taskbarWidget.IsRunning) return;
 
         double todayMinutes = GetTodayActiveMinutes();
@@ -615,13 +642,17 @@ public partial class App : Microsoft.UI.Xaml.Application
         _taskbarWidget.SetTheme(IsSystemLightTheme());
     }
 
-    /// <summary>按勾选组装任务栏两行文本（照抄 LiteMonitor 任务栏显示风格）。</summary>
+    /// <summary>
+    /// 组装任务栏两行：行1 主指标（负载，大字焦点），行2 次指标（网速/磁盘/温度/今日，弱化）。
+    /// 标签尽量短，温度用 C/G 消歧，避免和负载项的 CPU/GPU 撞名。
+    /// </summary>
     private (List<TaskbarMetricItem> row1, List<TaskbarMetricItem> row2) BuildTaskbarRows(ISettingsService settings, double todayMinutes)
     {
         var hw = _hardwareMonitorService;
         var row1 = new List<TaskbarMetricItem>();
         var row2 = new List<TaskbarMetricItem>();
 
+        // 主行：使用率大项
         if (settings.TaskbarShowCpu)
             row1.Add(new TaskbarMetricItem("CPU", FormatPercent(hw?.Get("CPU.Load")), LoadColor(hw?.Get("CPU.Load"))));
         if (settings.TaskbarShowMemory)
@@ -637,20 +668,21 @@ public partial class App : Microsoft.UI.Xaml.Application
             row1.Add(new TaskbarMetricItem("显存", FormatPercent(vramPct), LoadColor(vramPct)));
         }
 
+        // 次行：次要信息，短前缀
         if (settings.TaskbarShowNet)
         {
-            row2.Add(new TaskbarMetricItem("网速",
-                $"↓{FormatSpeed(hw?.Get("NET.Down"))} ↑{FormatSpeed(hw?.Get("NET.Up"))}", TaskbarMetricColor.Safe));
+            row2.Add(new TaskbarMetricItem("",
+                $"↓{FormatSpeedShort(hw?.Get("NET.Down"))} ↑{FormatSpeedShort(hw?.Get("NET.Up"))}", TaskbarMetricColor.Safe));
         }
         if (settings.TaskbarShowDisk)
-            row2.Add(new TaskbarMetricItem("磁盘", FormatPercent(hw?.Get("DISK.Activity")), LoadColor(hw?.Get("DISK.Activity"))));
+            row2.Add(new TaskbarMetricItem("盘", FormatPercent(hw?.Get("DISK.Activity")), LoadColor(hw?.Get("DISK.Activity"))));
         if (settings.TaskbarShowTemp)
         {
-            row2.Add(new TaskbarMetricItem("CPU", FormatTemp(hw?.Get("CPU.Temp")), TempColor(hw?.Get("CPU.Temp"))));
-            row2.Add(new TaskbarMetricItem("GPU", FormatTemp(hw?.Get("GPU.Temp")), TempColor(hw?.Get("GPU.Temp"))));
+            row2.Add(new TaskbarMetricItem("C", FormatTempShort(hw?.Get("CPU.Temp")), TempColor(hw?.Get("CPU.Temp"))));
+            row2.Add(new TaskbarMetricItem("G", FormatTempShort(hw?.Get("GPU.Temp")), TempColor(hw?.Get("GPU.Temp"))));
         }
         if (settings.TaskbarShowUsage)
-            row2.Add(new TaskbarMetricItem("今日", FormatUsage(todayMinutes, settings.DailyUsageGoalHours), TaskbarMetricColor.Safe));
+            row2.Add(new TaskbarMetricItem("今", FormatUsage(todayMinutes, settings.DailyUsageGoalHours), TaskbarMetricColor.Safe));
 
         return (row1, row2);
     }
@@ -718,55 +750,22 @@ public partial class App : Microsoft.UI.Xaml.Application
     private static string FormatPercent(float? v) =>
         v.HasValue && !float.IsNaN(v.Value) ? $"{Math.Clamp(v.Value, 0, 999):F0}%" : "--";
 
-    private static string FormatSpeed(float? bytesPerSec)
+    /// <summary>任务栏次行网速：去掉 /s 后缀，缩短占位。</summary>
+    private static string FormatSpeedShort(float? bytesPerSec)
     {
         if (!bytesPerSec.HasValue || float.IsNaN(bytesPerSec.Value) || bytesPerSec.Value < 0) return "--";
         double v = bytesPerSec.Value;
-        if (v < 1024) return $"{v:F0}B/s";
-        if (v < 1024 * 1024) return $"{v / 1024:F0}K/s";
-        if (v < 1024.0 * 1024 * 1024) return $"{v / 1024 / 1024:F1}M/s";
-        return $"{v / 1024 / 1024 / 1024:F1}G/s";
+        if (v < 1024) return $"{v:F0}B";
+        if (v < 1024 * 1024) return $"{v / 1024:F0}K";
+        if (v < 1024.0 * 1024 * 1024) return $"{v / 1024 / 1024:F1}M";
+        return $"{v / 1024 / 1024 / 1024:F1}G";
     }
 
-    private static string FormatTemp(float? v) =>
-        v.HasValue && !float.IsNaN(v.Value) ? $"{v.Value:F0}°C" : "--";
+    /// <summary>任务栏次行温度：仅度数，来源用 C/G 短标签消歧。</summary>
+    private static string FormatTempShort(float? v) =>
+        v.HasValue && !float.IsNaN(v.Value) ? $"{v.Value:F0}°" : "--";
 
 
-    private void StartBookmarkAutoSync()
-    {
-        try
-        {
-            var settings = _serviceProvider!.GetService<ISettingsService>();
-            var syncService = _serviceProvider!.GetService<IBookmarkSyncService>();
-            if (settings == null || syncService == null) return;
-            if (!settings.BrowserSyncEnabled || !settings.BrowserBookmarkSyncEnabled)
-            {
-                Log.Information("书签自动同步已停用（模块下线，数据保留在本地库）");
-                return;
-            }
-
-            var minutes = Math.Max(5, settings.BrowserSyncIntervalMinutes);
-            _bookmarkSyncTimer = new Timer(async _ =>
-            {
-                try
-                {
-                    Log.Information("自动书签同步触发（间隔 {Minutes} 分钟）", minutes);
-                    var result = await syncService.SyncAsync();
-                    Log.Information("自动书签同步结果: {Message}", result.Message);
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning(ex, "自动书签同步失败");
-                }
-            }, null, TimeSpan.FromMinutes(minutes), TimeSpan.FromMinutes(minutes));
-
-            Log.Information("书签自动同步已启动，间隔 {Minutes} 分钟", minutes);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "启动书签自动同步失败");
-        }
-    }
 
     private void StartBackupService()
     {
@@ -877,6 +876,24 @@ public partial class App : Microsoft.UI.Xaml.Application
                 _hardwareMonitorService?.Stop();
                 Log.Information("硬件监控服务已停止");
 
+                try
+                {
+                    _serviceProvider?.GetService<PChabit.HardwareMonitor.Hardware.ProcessNetworkMonitor>()?.Stop();
+                }
+                catch { /* ignore */ }
+
+                try
+                {
+                    _serviceProvider?.GetService<PChabit.HardwareMonitor.Hardware.ProcessResourceMonitor>()?.Stop();
+                }
+                catch { /* ignore */ }
+
+                try
+                {
+                    _serviceProvider?.GetService<NetworkTrafficPersistenceService>()?.Stop();
+                }
+                catch { /* ignore */ }
+
                 _trayDisplayTimer?.Stop();
                 _trayDisplayTimer = null;
                 _taskbarWidget?.Dispose();
@@ -898,8 +915,6 @@ public partial class App : Microsoft.UI.Xaml.Application
 
             try
             {
-                _bookmarkSyncTimer?.Dispose();
-                _bookmarkSyncTimer = null;
             }
             catch { /* ignore */ }
         }

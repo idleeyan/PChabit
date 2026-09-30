@@ -97,12 +97,20 @@ public partial class SettingsViewModel : ViewModelBase
     private string _aiModel = "glm-4-flash";
 
     [ObservableProperty]
+    private string _aiModelFast = "";
+
+    [ObservableProperty]
     private string _aiProvider = "zhipu";
 
     [ObservableProperty]
     private double _aiTimeoutSeconds = 300;
 
-    
+    [ObservableProperty]
+    private bool _aiStrictPrivacy;
+
+    [ObservableProperty]
+    private bool _aiAutoWeeklyInsight;
+
     [ObservableProperty]
     private int _dataRetentionDays = 90;
     
@@ -255,9 +263,12 @@ public partial class SettingsViewModel : ViewModelBase
         TaskbarShowUsage = _settingsService.TaskbarShowUsage;
         DailyUsageGoalHours = _settingsService.DailyUsageGoalHours;
         AiInsightsEnabled = _settingsService.AiInsightsEnabled;
+        AiStrictPrivacy = _settingsService.AiStrictPrivacy;
+        AiAutoWeeklyInsight = _settingsService.AiAutoWeeklyInsight;
         AiBaseUrl = _settingsService.AiBaseUrl;
         AiApiKey = _settingsService.AiApiKey;
         AiModel = _settingsService.AiModel;
+        AiModelFast = _settingsService.AiModelFast;
         AiProvider = string.IsNullOrEmpty(_settingsService.AiProvider) ? "zhipu" : _settingsService.AiProvider;
         AiTimeoutSeconds = _settingsService.AiTimeoutSeconds;
     }
@@ -337,6 +348,12 @@ public partial class SettingsViewModel : ViewModelBase
             case "AiInsightsEnabled":
                 _settingsService.AiInsightsEnabled = AiInsightsEnabled;
                 break;
+            case "AiStrictPrivacy":
+                _settingsService.AiStrictPrivacy = AiStrictPrivacy;
+                break;
+            case "AiAutoWeeklyInsight":
+                _settingsService.AiAutoWeeklyInsight = AiAutoWeeklyInsight;
+                break;
             case "AiBaseUrl":
                 _settingsService.AiBaseUrl = AiBaseUrl;
                 break;
@@ -345,6 +362,9 @@ public partial class SettingsViewModel : ViewModelBase
                 break;
             case "AiModel":
                 _settingsService.AiModel = AiModel;
+                break;
+            case "AiModelFast":
+                _settingsService.AiModelFast = AiModelFast;
                 break;
             case "AiProvider":
                 _settingsService.AiProvider = AiProvider;

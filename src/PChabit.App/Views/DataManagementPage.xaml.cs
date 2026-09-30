@@ -14,43 +14,6 @@ public sealed partial class DataManagementPage : Page
 {
     public DataManagementViewModel ViewModel { get; }
 
-    private async void ShowBookmarkErrors_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var errors = ViewModel.GetBookmarkSyncErrorList();
-            if (errors.Count == 0) return;
-
-            var panel = new StackPanel { Spacing = 8, MaxHeight = 420 };
-            panel.Children.Add(new TextBlock
-            {
-                Text = "本次书签同步错误明细如下。常见处理：重新加载各浏览器扩展 → 确认已连接 → 再点「同步书签」。",
-                TextWrapping = TextWrapping.Wrap,
-                FontSize = 12
-            });
-            var list = new ListView { ItemsSource = errors, MaxHeight = 360 };
-            if (Resources.TryGetValue("BookmarkErrorItemTemplate", out var tmpl) && tmpl is DataTemplate dt)
-                list.ItemTemplate = dt;
-            panel.Children.Add(list);
-
-            var dialog = new ContentDialog
-            {
-                Title = $"书签同步错误（{errors.Count}）",
-                Content = panel,
-                CloseButtonText = "关闭",
-                PrimaryButtonText = "复制全部",
-                XamlRoot = XamlRoot
-            };
-            var result = await dialog.ShowAsync();
-            if (result == ContentDialogResult.Primary)
-                ViewModel.CopyBookmarkSyncErrorsCommand.Execute(null);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "展示书签同步错误失败");
-        }
-    }
-
     public DataManagementPage()
     {
         Log.Information("DataManagementPage: 1-构造函数开始");
@@ -104,7 +67,6 @@ public sealed partial class DataManagementPage : Page
 
             await ViewModel.LoadBackupsAsync();
             await ViewModel.LoadOverviewAsync();
-            _ = ViewModel.LoadBookmarkStatsAsync();
             _ = ViewModel.LoadHistoryStatsAsync();
 
             // WinUI 3 中 async void 的 await 延续未必回到 UI 线程，

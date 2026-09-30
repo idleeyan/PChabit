@@ -46,7 +46,7 @@ public partial class DataManagementViewModel : ViewModelBase
     public ObservableCollection<WebDAVFileInfo> RemoteFiles { get; } = new();
     public ObservableCollection<OperationLogItem> OperationLogs { get; } = new();
 
-    /// <summary>全局日志（含书签库推送等，来自 GlobalOpLog）。</summary>
+    /// <summary>全局日志（来自 GlobalOpLog）。</summary>
     public ObservableCollection<string> GlobalLogs { get; } = new();
 
     public bool HasGlobalLogs => GlobalLogs.Count > 0;
@@ -117,18 +117,16 @@ public partial class DataManagementViewModel
         ISettingsService settingsService,
         IDbContextFactory<PChabitDbContext> dbFactory,
         IWebDAVSyncService webDAVSyncService,
-        IExportService exportService,
-        IBookmarkSyncService bookmarkSyncService) : base()
+        IExportService exportService) : base()
     {
         _backupService = backupService;
         _settingsService = settingsService;
         _dbFactory = dbFactory;
         _webDAVSyncService = webDAVSyncService;
         _exportService = exportService;
-        _bookmarkSyncService = bookmarkSyncService;
         Title = "数据管理";
 
-        // 订阅全局操作日志（书签库推送等也会写入）
+        // 订阅全局操作日志
         try
         {
             foreach (var i in PChabit.App.Services.GlobalOpLog.Snapshot())
@@ -157,30 +155,11 @@ public partial class DataManagementViewModel
         _maxCloudBackupCount = settingsService.MaxCloudBackupCount;
 
         _browserSyncEnabled = settingsService.BrowserSyncEnabled;
-        _browserBookmarkSyncEnabled = settingsService.BrowserBookmarkSyncEnabled;
         _browserSyncIntervalMinutes = settingsService.BrowserSyncIntervalMinutes;
         _browserHistoryIngestEnabled = settingsService.BrowserHistoryIngestEnabled;
 
-        // 书签整理服务
-        try { _tidyService = App.GetService<BookmarkTidyService>(); }
-        catch { _tidyService = null; }
         try { _historySyncService = App.GetService<HistorySyncService>(); }
         catch { _historySyncService = null; }
-
-        // 浏览器连接状态
-        try
-        {
-            var wsHandler = App.GetService<BrowserSyncWebSocketHandler>();
-            UpdateConnectedBrowsers(wsHandler.ReadyBrowsers);
-            wsHandler.BrowserSyncReady += (_, e) =>
-            {
-                Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() =>
-                {
-                    UpdateConnectedBrowsers(wsHandler.ReadyBrowsers);
-                });
-            };
-        }
-        catch { /* handler 可能未注册 */ }
 
         if (settingsService.WebDAVLastSync.HasValue)
         {

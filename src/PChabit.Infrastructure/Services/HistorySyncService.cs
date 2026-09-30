@@ -1,9 +1,10 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
-using PChabit.Core.Sync;
+using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 
 namespace PChabit.Infrastructure.Services;
@@ -19,7 +20,7 @@ public class HistorySyncService
     public const string LegacyCloudFile = "browser-history-total.json";
 
     private readonly IHistoryIngestService _ingest;
-    private readonly IBrowserBookmarkRepository _metaRepo;
+    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
     private readonly IWebDAVSyncService _webDav;
     private readonly ISettingsService _settings;
     private readonly BrowserSyncWebSocketHandler _wsHandler;
@@ -35,13 +36,13 @@ public class HistorySyncService
 
     public HistorySyncService(
         IHistoryIngestService ingest,
-        IBrowserBookmarkRepository metaRepo,
+        IDbContextFactory<PChabitDbContext> dbFactory,
         IWebDAVSyncService webDav,
         ISettingsService settings,
         BrowserSyncWebSocketHandler wsHandler)
     {
         _ingest = ingest;
-        _metaRepo = metaRepo;
+        _dbFactory = dbFactory;
         _webDav = webDav;
         _settings = settings;
         _wsHandler = wsHandler;
@@ -135,8 +136,11 @@ public class HistorySyncService
             };
             var json = JsonSerializer.Serialize(payload, JsonOptions);
             await _webDav.UploadFileAsync(url, user, pass, CloudFilePath, Encoding.UTF8.GetBytes(json), ct);
-            await _metaRepo.SetMetaAsync(BrowserSyncMetaKeys.HistoryLastSyncAt,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(), ct);
+            await using (var metaDb = await _dbFactory.CreateDbContextAsync(ct))
+            {
+                await metaDb.SetMetaIfPossibleAsync(BrowserSyncMetaKeys.HistoryLastSyncAt,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(), ct);
+            }
 
             Report("历史同步完成");
             return (true, $"本机 {localCount} · 云端合并 {merged.Count} · 补入 {added}", localCount + added, merged.Count);
@@ -365,7 +369,18 @@ public class HistorySyncService
     }
 
     public static string NormalizeUrl(string url)
-        => BookmarkMergePlanner.NormalizeUrl(url);
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url?.Trim() ?? string.Empty;
+
+        if (Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u)
+            && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+        {
+            var path = u.AbsolutePath.TrimEnd('/');
+            return $"{u.GetLeftPart(UriPartial.Authority)}{path}{u.Query}";
+        }
+
+        return url.Trim();
+    }
 
     public class CloudHistoryItem
     {

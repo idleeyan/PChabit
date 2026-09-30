@@ -9,6 +9,8 @@
     <IsTestProject>true</IsTestProject>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
+    <!-- 测试项目需要把 NuGet 程序集拷到输出目录（xunit host 探测） -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
   <ItemGroup>

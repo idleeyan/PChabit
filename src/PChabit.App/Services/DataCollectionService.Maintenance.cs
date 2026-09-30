@@ -30,10 +30,18 @@ public partial class DataCollectionService : IDisposable
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
 
-            var exists = await dbContext.DailySummaries
-                .AnyAsync(s => s.Date == dateKey);
+            // 网络流量会先写「仅 NetBytes」空壳行；Any 会误判为已聚合 → 行为数据永久为 0。
+            // 空壳特征：按键/点击/活跃均为 0 且 TopApps 为空数组。
+            var existing = await dbContext.DailySummaries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Date == dateKey);
+            var incomplete = existing == null
+                || (existing.TotalKeys <= 0
+                    && existing.TotalMouseClicks <= 0
+                    && existing.ActiveMinutes <= 0
+                    && (string.IsNullOrEmpty(existing.TopApps) || existing.TopApps == "[]"));
 
-            if (!exists)
+            if (incomplete)
             {
                 await AggregateDailySummaryAsync(dbContext, yesterday, dateKey);
 
@@ -111,19 +119,18 @@ public partial class DataCollectionService : IDisposable
             {
                 var first = g.First();
                 var (catName, _) = AppStatsEngine.ResolveCategory(first, categoryMap);
-                var minutes = g.Where(s => s.EndTime.HasValue)
-                    .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-                var focusMinutes = g.Where(s => s.EndTime.HasValue &&
-                        (s.EndTime!.Value - s.StartTime).TotalMinutes >= 25 &&
+                var minutes = g.Sum(SessionActiveMinutes);
+                var focusMinutes = g.Where(s => SessionActiveMinutes(s) >= 25 &&
                         AnalyticsEngine.IsProductiveCategory(catName))
-                    .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+                    .Sum(SessionActiveMinutes);
 
                 // 小时分布：跨小时会话按重叠裁剪（与 AppStats 现状口径一致）
                 var hourly = new double[24];
-                foreach (var s in g.Where(x => x.EndTime.HasValue))
+                foreach (var s in g)
                 {
                     var sStart = s.StartTime;
-                    var sEnd = s.EndTime!.Value;
+                    var sEnd = s.EndTime ?? s.StartTime;
+                    if (sEnd <= sStart) continue;
                     for (var h = 0; h < 24; h++)
                     {
                         var hs = date.AddHours(h);
@@ -183,6 +190,73 @@ public partial class DataCollectionService : IDisposable
         Log.Information("应用统计日预聚合完成: {Date}, 应用数={Count}", dateKey, groups.Count);
     }
 
+    /// <summary>会话有效分钟：优先 ActiveDuration，否则墙钟时长（与任务栏「今日」口径一致）。</summary>
+    private static double SessionActiveMinutes(AppSession s)
+    {
+        if (s.ActiveDuration > TimeSpan.Zero)
+            return Math.Max(0, s.ActiveDuration.TotalMinutes);
+        if (!s.EndTime.HasValue)
+            return 0;
+        return Math.Max(0, (s.EndTime.Value - s.StartTime).TotalMinutes);
+    }
+
+    /// <summary>
+    /// 构建标签输入：非浏览器用应用会话；浏览器优先用网页会话语义（避免双计）。
+    /// 窗口标题/域名仅本地推断。
+    /// </summary>
+    private static List<PChabit.Core.ValueObjects.ActivityLabelInput> BuildLabelInputs(
+        List<AppSession> appSessions,
+        List<WebSession> webSessions,
+        double dayKeysPerMin)
+    {
+        var inputs = new List<PChabit.Core.ValueObjects.ActivityLabelInput>();
+        var browserProcesses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "chrome", "msedge", "firefox", "brave", "opera", "iexplore", "360chrome", "qqbrowser", "sogouexplorer", "librewolf"
+        };
+
+        foreach (var s in appSessions)
+        {
+            var process = s.ProcessName ?? "";
+            var minutes = SessionActiveMinutes(s);
+            if (minutes <= 0) continue;
+
+            var isBrowser = browserProcesses.Any(b =>
+                process.Contains(b, StringComparison.OrdinalIgnoreCase));
+
+            if (isBrowser && webSessions.Count > 0)
+                continue; // 交给网页会话标注，避免浏览器时长双计
+
+            inputs.Add(new PChabit.Core.ValueObjects.ActivityLabelInput(
+                process,
+                s.Category,
+                s.WindowTitle,
+                null,
+                null,
+                dayKeysPerMin,
+                minutes));
+        }
+
+        foreach (var w in webSessions)
+        {
+            var minutes = w.ActiveDuration > TimeSpan.Zero
+                ? w.ActiveDuration.TotalMinutes
+                : (w.EndTime.HasValue ? (w.EndTime.Value - w.StartTime).TotalMinutes : 0);
+            if (minutes <= 0) continue;
+
+            inputs.Add(new PChabit.Core.ValueObjects.ActivityLabelInput(
+                w.Browser,
+                null,
+                w.Title,
+                w.CategoryName,
+                w.Domain,
+                dayKeysPerMin * 0.5,
+                minutes));
+        }
+
+        return inputs;
+    }
+
     private static async Task AggregateDailySummaryAsync(PChabitDbContext dbContext, DateTime date, string dateKey)
     {
         var nextDay = date.AddDays(1);
@@ -220,16 +294,13 @@ public partial class DataCollectionService : IDisposable
 
         var topApps = appSessions
             .GroupBy(s => s.ProcessName)
-            .Select(g => new { Name = g.Key, Minutes = g.Sum(s =>
-                s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
+            .Select(g => new { Name = g.Key, Minutes = g.Sum(SessionActiveMinutes) })
             .OrderByDescending(x => x.Minutes)
             .Take(10)
             .Select(x => new { x.Name, x.Minutes })
             .ToList();
 
-        var activeMinutes = appSessions
-            .Where(s => s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
+        var activeMinutes = appSessions.Sum(SessionActiveMinutes);
 
         // 从 WebSession 聚合网页指标（真实会话，排除 Legacy 切片）
         var webSessions = await dbContext.WebSessions
@@ -249,6 +320,28 @@ public partial class DataCollectionService : IDisposable
         var webMinutes = webActiveTicks > 0
             ? Math.Round(webActiveTicks / (double)TimeSpan.TicksPerMinute, 1)
             : 0;
+
+        // 行为语义层 P0：活动标签 / 夜间 / 起止（原文标题与 URL 只在本地推断）
+        var dayKeysPerMin = activeMinutes > 0 ? totalKeys / activeMinutes : 0;
+        var labelInputs = BuildLabelInputs(appSessions, webSessions, dayKeysPerMin);
+        var labelMinutes = PChabit.Infrastructure.Analysis.ActivityLabeler.AggregateLabelMinutes(labelInputs);
+        var labelMinutesJson = System.Text.Json.JsonSerializer.Serialize(labelMinutes);
+
+        double nightMinutes = 0;
+        string? firstActive = null;
+        string? lastActive = null;
+        foreach (var s in appSessions)
+        {
+            var end = s.EndTime ?? s.StartTime;
+            if (end <= s.StartTime) continue;
+            nightMinutes += PChabit.Infrastructure.Analysis.ActivityLabeler.OverlapNightMinutes(s.StartTime, end);
+            var st = s.StartTime;
+            if (firstActive is null || st.TimeOfDay < TimeSpan.Parse(firstActive))
+                firstActive = st.ToString("HH:mm");
+            if (lastActive is null || st.TimeOfDay > TimeSpan.Parse(lastActive))
+                lastActive = end.ToString("HH:mm");
+        }
+        nightMinutes = Math.Round(nightMinutes, 1);
 
         // Upsert DailySummary
         var summary = await dbContext.DailySummaries
@@ -274,7 +367,11 @@ public partial class DataCollectionService : IDisposable
                 GpuLoadAvg = hardware?.GpuLoadAvg,
                 GpuTempMax = hardware?.GpuTempMax,
                 MemLoadAvg = hardware?.MemLoadAvg,
-                MetricsVersion = 2,
+                LabelMinutesJson = labelMinutesJson,
+                NightMinutes = nightMinutes,
+                FirstActiveTime = firstActive,
+                LastActiveTime = lastActive,
+                MetricsVersion = 3,
                 LastUpdated = DateTime.Now
             };
             await dbContext.DailySummaries.AddAsync(summary);
@@ -295,7 +392,11 @@ public partial class DataCollectionService : IDisposable
             summary.GpuLoadAvg = hardware?.GpuLoadAvg;
             summary.GpuTempMax = hardware?.GpuTempMax;
             summary.MemLoadAvg = hardware?.MemLoadAvg;
-            summary.MetricsVersion = 2;
+            summary.LabelMinutesJson = labelMinutesJson;
+            summary.NightMinutes = nightMinutes;
+            summary.FirstActiveTime = firstActive;
+            summary.LastActiveTime = lastActive;
+            summary.MetricsVersion = 3;
             summary.LastUpdated = DateTime.Now;
         }
 

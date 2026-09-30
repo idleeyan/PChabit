@@ -33,6 +33,19 @@ public sealed partial class HardwareMonitorPage : Page
         }
     }
 
+    private void OpenNetworkTraffic_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ok = App.GetService<NavigationService>().NavigateTo("NetworkTraffic");
+            Log.Information("硬件页→网络流量: {Ok}", ok);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "硬件页跳转网络流量失败", ex);
+        }
+    }
+
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);

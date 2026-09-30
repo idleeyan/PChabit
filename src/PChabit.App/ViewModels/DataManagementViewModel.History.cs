@@ -8,54 +8,17 @@ using Serilog;
 namespace PChabit.App.ViewModels;
 
 /// <summary>
-/// 书签同步模块已下线（3.15.11+）。保留命令壳以免 XAML 断裂；不再访问书签库。
+/// 浏览历史同步（书签库/书签同步模块已下线）。
 /// </summary>
 public partial class DataManagementViewModel
 {
-    private readonly IBookmarkSyncService? _bookmarkSyncService;
-    private readonly BookmarkTidyService? _tidyService;
     private readonly HistorySyncService? _historySyncService;
 
     [ObservableProperty]
     private bool _browserSyncEnabled = false;
 
     [ObservableProperty]
-    private bool _browserBookmarkSyncEnabled = false;
-
-    [ObservableProperty]
     private int _browserSyncIntervalMinutes = 60;
-
-    [ObservableProperty]
-    private bool _isBookmarkSyncing;
-
-    [ObservableProperty]
-    private bool _isTidying;
-
-    [ObservableProperty]
-    private string _bookmarkSyncStatus = "书签模块已停用";
-
-    [ObservableProperty]
-    private string _bookmarkSyncProgressText = "";
-
-    [ObservableProperty]
-    private string _connectedBrowsersText = "书签同步已停用";
-
-    [ObservableProperty]
-    private string _bookmarkStatsText = "书签模块已停用（本机历史数据可能仍在 SQLite）";
-
-    [ObservableProperty]
-    private string _bookmarkSourceText = "";
-
-    [ObservableProperty]
-    private string _bookmarkFolderText = "";
-
-    [ObservableProperty]
-    private string _lastSyncText = "书签同步已停用";
-
-    public ObservableCollection<string> TidyPreviewLines { get; } = new();
-
-    [ObservableProperty]
-    private bool _hasTidyPreview;
 
     [ObservableProperty]
     private bool _browserHistoryIngestEnabled = true;
@@ -68,9 +31,6 @@ public partial class DataManagementViewModel
 
     [ObservableProperty]
     private string _historyStatsText = "";
-
-    private const string ModuleDisabledMsg =
-        "书签库/书签同步模块已停用。请使用浏览器自带书签同步；本机历史数据保留在 SQLite，不会自动删除。";
 
     partial void OnBrowserHistoryIngestEnabledChanged(bool value)
     {
@@ -175,103 +135,11 @@ public partial class DataManagementViewModel
 
     partial void OnBrowserSyncEnabledChanged(bool value)
     {
-        // 模块停用：强制写回 false
-        if (value)
-        {
-            BrowserSyncEnabled = false;
-            return;
-        }
-        try { _settingsService.BrowserSyncEnabled = false; } catch { }
-    }
-
-    partial void OnBrowserBookmarkSyncEnabledChanged(bool value)
-    {
-        if (value)
-        {
-            BrowserBookmarkSyncEnabled = false;
-            return;
-        }
-        try { _settingsService.BrowserBookmarkSyncEnabled = false; } catch { }
+        try { _settingsService.BrowserSyncEnabled = value; } catch { }
     }
 
     partial void OnBrowserSyncIntervalMinutesChanged(int value)
     {
         try { _settingsService.BrowserSyncIntervalMinutes = value; } catch { }
-    }
-
-    public void UpdateConnectedBrowsers(IEnumerable<string> browsers)
-    {
-        _ = browsers;
-        ConnectedBrowsersText = ModuleDisabledMsg;
-    }
-
-    [RelayCommand]
-    private Task LoadBookmarkStatsCommandAsync() => LoadBookmarkStatsAsync();
-
-    [RelayCommand]
-    private async Task RefreshBrowsersAsync()
-    {
-        BookmarkSyncStatus = ModuleDisabledMsg;
-        ConnectedBrowsersText = ModuleDisabledMsg;
-        await LoadBookmarkStatsAsync();
-    }
-
-    public async Task LoadBookmarkStatsAsync()
-    {
-        BookmarkStatsText = ModuleDisabledMsg;
-        BookmarkSourceText = "";
-        BookmarkFolderText = "";
-        LastSyncText = "书签同步已停用";
-        BookmarkSyncStatus = ModuleDisabledMsg;
-        await Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private async Task SyncBookmarksAsync()
-    {
-        BookmarkSyncStatus = ModuleDisabledMsg;
-        AddLog("警告", "书签同步模块已停用，本次未执行");
-        await Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private async Task PreviewTidyAsync()
-    {
-        BookmarkSyncStatus = ModuleDisabledMsg;
-        TidyPreviewLines.Clear();
-        HasTidyPreview = false;
-        AddLog("警告", "书签整理模块已停用");
-        await Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private async Task ApplyTidyAsync()
-    {
-        BookmarkSyncStatus = ModuleDisabledMsg;
-        AddLog("警告", "书签整理模块已停用");
-        await Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private async Task ResetBookmarkBaselineAsync()
-    {
-        BookmarkSyncStatus = ModuleDisabledMsg;
-        AddLog("警告", "书签基线重置已停用");
-        await Task.CompletedTask;
-    }
-
-    public List<string> GetBookmarkSyncErrorList() => new();
-
-    [RelayCommand]
-    private async Task CopyBookmarkSyncErrorsAsync()
-    {
-        AddLog("信息", "书签模块已停用，无错误可复制");
-        await Task.CompletedTask;
-    }
-
-    [RelayCommand]
-    private async Task LoadBookmarkCountAsync()
-    {
-        await LoadBookmarkStatsAsync();
     }
 }

@@ -47,71 +47,29 @@ public interface IAiChatService
 /// </summary>
 public sealed class AiChatService : IAiChatService
 {
-    private static readonly HttpClient Http = new() { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
     private readonly ISettingsService _settings;
+    private readonly OpenAiCompatibleChatClient _client;
 
-    public AiChatService(ISettingsService settings) => _settings = settings;
-
-    public bool IsConfigured
+    public AiChatService(ISettingsService settings)
     {
-        get
-        {
-            if (string.IsNullOrWhiteSpace(_settings.AiBaseUrl) || string.IsNullOrWhiteSpace(_settings.AiModel))
-                return false;
-            if (!string.IsNullOrWhiteSpace(_settings.AiApiKey)) return true;
-            var url = _settings.AiBaseUrl;
-            return url.Contains("127.0.0.1") || url.Contains("localhost", StringComparison.OrdinalIgnoreCase);
-        }
+        _settings = settings;
+        _client = new OpenAiCompatibleChatClient(settings);
     }
 
-    public async Task<string> ChatAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
+    public bool IsConfigured => _client.IsConfigured;
+
+    public Task<string> ChatAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
     {
         if (!IsConfigured)
             throw new InvalidOperationException("AI 未配置：请在设置中选择 Provider 并填写 Base URL / 模型");
 
-        var baseUrl = _settings.AiBaseUrl!.Trim().TrimEnd('/');
-        if (!baseUrl.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase))
+        return _client.CompleteAsync(new OpenAiChatRequest
         {
-            if (baseUrl.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
-                baseUrl += "/chat/completions";
-            else
-                baseUrl += "/v1/chat/completions";
-        }
-
-        var body = new
-        {
-            model = _settings.AiModel!.Trim(),
-            temperature = 0.3,
-            messages = new object[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userPayload }
-            }
-        };
-
-        var timeoutSeconds = Math.Clamp(_settings.AiTimeoutSeconds, 30, 900);
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, baseUrl);
-        var key = _settings.AiApiKey?.Trim();
-        if (!string.IsNullOrEmpty(key))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-
-        try
-        {
-            using var resp = await Http.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
-            var text = await resp.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
-                throw new HttpRequestException($"AI HTTP {(int)resp.StatusCode}");
-            using var doc = JsonDocument.Parse(text);
-            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            throw new TimeoutException($"AI 超时（{timeoutSeconds}s），可在设置中调大超时");
-        }
+            SystemPrompt = systemPrompt,
+            UserContent = userPayload,
+            Temperature = 0.5,
+            MaxTokens = 1600
+        }, ct);
     }
 }
 
@@ -145,7 +103,6 @@ public class AiSettingsSyncService
             ["AiTimeoutSeconds"] = _settings.AiTimeoutSeconds,
             ["AiInsightsEnabled"] = _settings.AiInsightsEnabled,
             ["BrowserAutoPush"] = _settings.BrowserAutoPush,
-            ["BrowserBookmarkSyncEnabled"] = _settings.BrowserBookmarkSyncEnabled,
             ["BrowserSyncEnabled"] = _settings.BrowserSyncEnabled,
             ["WebDAVUrl"] = _settings.WebDAVUrl,
             ["WebDAVUsername"] = _settings.WebDAVUsername,
@@ -222,32 +179,4 @@ public class AiSettingsSyncService
             return false;
         }
     }
-}
-
-/// <summary>书签 AI 整理已停用：保留类型以免引用断裂，调用一律返回空提案。</summary>
-public class BookmarkTidyAiService
-{
-    private readonly IAiChatService _ai;
-    private readonly BookmarkLibraryService _library;
-
-    public BookmarkTidyAiService(IAiChatService ai, BookmarkLibraryService library)
-    {
-        _ai = ai;
-        _library = library;
-    }
-
-    public sealed record TidyProposal(string Url, string OldTitle, string NewTitle, string Category, string Reason);
-
-    public Task<List<TidyProposal>> ProposeAsync(
-        IEnumerable<BookmarkLibraryNode> targets,
-        IReadOnlyList<string> existingCategories,
-        IProgress<string>? progress = null,
-        CancellationToken ct = default)
-    {
-        progress?.Report("书签智能整理模块已停用");
-        return Task.FromResult(new List<TidyProposal>());
-    }
-
-    public Task ApplyProposalsAsync(IEnumerable<TidyProposal> proposals, CancellationToken ct = default)
-        => Task.CompletedTask;
 }

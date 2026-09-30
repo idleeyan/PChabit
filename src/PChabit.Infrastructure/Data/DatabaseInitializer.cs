@@ -70,6 +70,11 @@ public static class DatabaseInitializer
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NetBytesUp", "INTEGER");
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NetBytesDown", "INTEGER");
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "MetricsVersion", "INTEGER");
+            // 行为语义层 P0：活动标签 / 夜间 / 起止（均可空，脚本可重复执行）
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "LabelMinutesJson", "TEXT");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NightMinutes", "REAL");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "FirstActiveTime", "TEXT");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "LastActiveTime", "TEXT");
 
             await MigrateTableColumnsAsync(connection, "AppSessions", "Duration", "INTEGER NOT NULL DEFAULT 0");
             await MigrateTableColumnsAsync(connection, "AppSessions", "ActiveDuration", "INTEGER NOT NULL DEFAULT 0");
@@ -431,6 +436,32 @@ public static class DatabaseInitializer
             Log.Information("InsightReports 表创建成功");
         }
 
+        if (!tables.Contains("AiInsightSnapshots"))
+        {
+            Log.Information("创建 AiInsightSnapshots 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE AiInsightSnapshots (
+                    Id TEXT PRIMARY KEY,
+                    PeriodKey TEXT NOT NULL,
+                    PeriodLabel TEXT NOT NULL DEFAULT '',
+                    PeriodStart TEXT NOT NULL,
+                    PeriodEnd TEXT NOT NULL,
+                    Summary TEXT,
+                    FindingsJson TEXT,
+                    PlanJson TEXT,
+                    DiagnosisJson TEXT,
+                    RisksJson TEXT,
+                    Model TEXT,
+                    PromptVersion TEXT NOT NULL DEFAULT 'v2',
+                    CreatedAt TEXT NOT NULL
+                );
+                CREATE INDEX IX_AiInsightSnapshots_PeriodKey ON AiInsightSnapshots (PeriodKey);
+                CREATE INDEX IX_AiInsightSnapshots_CreatedAt ON AiInsightSnapshots (CreatedAt);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("AiInsightSnapshots 表创建成功");
+        }
+
         if (!tables.Contains("DailySummaries"))
         {
             Log.Information("创建 DailySummaries 表");
@@ -502,6 +533,47 @@ public static class DatabaseInitializer
                 CREATE UNIQUE INDEX IX_HardwareSamples_Timestamp ON HardwareSamples (Timestamp);";
             await createCmd.ExecuteNonQueryAsync();
             Log.Information("HardwareSamples 表创建成功");
+        }
+
+        // 网络流量统计：系统分钟样本 + 进程日/小时聚合
+        if (!tables.Contains("NetworkTrafficSamples"))
+        {
+            Log.Information("创建 NetworkTrafficSamples 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE NetworkTrafficSamples (
+                    Id TEXT NOT NULL CONSTRAINT PK_NetworkTrafficSamples PRIMARY KEY,
+                    Timestamp TEXT NOT NULL,
+                    BytesUp INTEGER NOT NULL DEFAULT 0,
+                    BytesDown INTEGER NOT NULL DEFAULT 0,
+                    PeakUpBps REAL NOT NULL DEFAULT 0,
+                    PeakDownBps REAL NOT NULL DEFAULT 0,
+                    SampleCount INTEGER NOT NULL DEFAULT 0,
+                    LastUpdated TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IX_NetworkTrafficSamples_Timestamp ON NetworkTrafficSamples (Timestamp);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("NetworkTrafficSamples 表创建成功");
+        }
+
+        if (!tables.Contains("ProcessNetworkUsages"))
+        {
+            Log.Information("创建 ProcessNetworkUsages 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE ProcessNetworkUsages (
+                    Date TEXT NOT NULL,
+                    Hour INTEGER NOT NULL,
+                    ProcessName TEXT NOT NULL,
+                    BytesUp INTEGER NOT NULL DEFAULT 0,
+                    BytesDown INTEGER NOT NULL DEFAULT 0,
+                    PeakBytesPerSec INTEGER NOT NULL DEFAULT 0,
+                    LastUpdated TEXT NOT NULL,
+                    CONSTRAINT PK_ProcessNetworkUsages PRIMARY KEY (Date, Hour, ProcessName)
+                );
+                CREATE INDEX IX_ProcessNetworkUsages_Date ON ProcessNetworkUsages (Date);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("ProcessNetworkUsages 表创建成功");
         }
     }
 

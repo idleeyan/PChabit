@@ -95,112 +95,18 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     protected override async Task<DashboardStats> LoadStatsOnBackgroundAsync()
     {
         var today = DateTime.Today;
-        var dateKey = today.ToString("yyyy-MM-dd");
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
 
-        // 1. 优先从 DailySummary 预聚合表查询
-        try
-        {
-            var summary = await dbContext.DailySummaries
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.Date == dateKey);
-
-            if (summary != null)
-            {
-                Log.Information("仪表盘数据从 DailySummary 预聚合表加载: {Date}, Keys={Keys}, Clicks={Clicks}",
-                    dateKey, summary.TotalKeys, summary.TotalMouseClicks);
-                var stats = BuildStatsFromSummary(summary);
-
-                // 今日尚未写入 DailySummary 时，用实时会话补齐
-                if (stats.TodayWebPages == "0")
-                {
-                    try
-                    {
-                        var webCount = await dbContext.WebSessions
-                            .AsNoTracking()
-                            .CountAsync(s => s.StartTime >= today && s.StartTime < today.AddDays(1) && !s.IsLegacy);
-                        stats.TodayWebPages = webCount.ToString();
-                    }
-                    catch { /* WebSessions 查询失败不影响主流程 */ }
-                }
-
-                return stats;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "DailySummary 查询失败，回退到实时查询");
-        }
-
-        // 2. 今天尚未结束，fallback 实时查询
-        Log.Information("DailySummary 未找到 {Date}，仪表盘使用实时查询", dateKey);
+        // 今日必须走实时会话：DailySummary 可能被网络流量写成「仅 NetBytes」空壳
+        //（TopApps=[]、ActiveMinutes=0），且日终聚合才补齐——读它会把仪表盘显示成 0。
         return await BuildStatsFromRawDataAsync(dbContext, today);
-    }
-
-    private static DashboardStats BuildStatsFromSummary(DailySummary summary)
-    {
-        var hours = (int)(summary.ActiveMinutes / 60);
-        var minutes = (int)(summary.ActiveMinutes % 60);
-
-        var stats = new DashboardStats
-        {
-            TodayActiveTime = $"{hours}小时 {minutes}分钟",
-            TodayKeyPresses = summary.TotalKeys.ToString("N0"),
-            TodayMouseClicks = summary.TotalMouseClicks.ToString("N0"),
-            TodayWebPages = summary.WebPages.ToString("N0"),
-            ProductivityScore = 0 // DailySummary 不存储生产力分数
-        };
-
-        // 解析 TopApps JSON
-        try
-        {
-            if (!string.IsNullOrEmpty(summary.TopApps) && summary.TopApps != "[]")
-            {
-                var topApps = System.Text.Json.JsonSerializer.Deserialize<List<TopAppEntry>>(summary.TopApps);
-                if (topApps != null && topApps.Count > 0)
-                {
-                    stats.MostUsedApp = topApps[0].Name;
-                    stats.TopAppsRaw = topApps.Select(x => (x.Name, x.Minutes)).ToList();
-                }
-            }
-        }
-        catch { /* JSON 解析失败，忽略 */ }
-
-        // 解析 HourlyKeyDistribution JSON
-        try
-        {
-            if (!string.IsNullOrEmpty(summary.HourlyKeyDistribution) && summary.HourlyKeyDistribution != "[]")
-            {
-                var hourlyKeys = System.Text.Json.JsonSerializer.Deserialize<List<int>>(summary.HourlyKeyDistribution);
-                if (hourlyKeys != null)
-                {
-                    for (int i = 0; i < Math.Min(hourlyKeys.Count, 24); i++)
-                    {
-                        var activity = Math.Min(100, hourlyKeys[i] / 10);
-                        stats.HourlyActivity.Add(new HourlyActivityData
-                        {
-                            Hour = $"{i}:00",
-                            Activity = activity,
-                            Category = activity > 40 ? "高效" : activity > 20 ? "中等" : "低效"
-                        });
-                    }
-                }
-            }
-        }
-        catch { /* JSON 解析失败，忽略 */ }
-
-        return stats;
-    }
-
-    private sealed class TopAppEntry
-    {
-        public string Name { get; set; } = string.Empty;
-        public double Minutes { get; set; }
     }
 
     private static async Task<DashboardStats> BuildStatsFromRawDataAsync(PChabitDbContext dbContext, DateTime today)
     {
         var tomorrow = today.AddDays(1);
+        var now = DateTime.Now;
+        var isToday = today == DateTime.Today;
 
         var appSessions = await dbContext.AppSessions
             .AsNoTracking()
@@ -217,31 +123,32 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             .Where(s => s.Date >= today && s.Date < tomorrow)
             .ToListAsync();
 
+        // 排除 Legacy 切片，与日聚合 / 历史分析口径一致
         var webSessions = await dbContext.WebSessions
             .AsNoTracking()
-            .Where(s => s.StartTime >= today && s.StartTime < tomorrow)
+            .Where(s => s.StartTime >= today && s.StartTime < tomorrow && !s.IsLegacy)
             .ToListAsync();
 
         Log.Information("仪表盘数据加载: AppSessions={AppCnt}, KeyboardSessions={KbCnt}({KbKeys}次按键), MouseSessions={MsCnt}({MsClicks}次点击), WebSessions={WebCnt}",
             appSessions.Count, keyboardSessions.Count, keyboardSessions.Sum(s => s.TotalKeyPresses),
             mouseSessions.Count, mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount),
             webSessions.Count);
-        
-        var totalMinutes = appSessions
-            .Where(s => s.EndTime.HasValue)
-            .Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes);
-        
+
+        double SessionMinutes(AppSession s) => SessionActiveMinutes(s, isToday ? now : today);
+
+        var totalMinutes = appSessions.Sum(SessionMinutes);
+
         var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
         var totalClicks = mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
         var totalWebPages = webSessions.Count;
-        
+
         var hours = (int)(totalMinutes / 60);
         var minutes = (int)(totalMinutes % 60);
 
         var productiveMinutes = appSessions
             .Where(s => IsProductiveCategory(s.Category))
-            .Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0);
-        
+            .Sum(SessionMinutes);
+
         var stats = new DashboardStats
         {
             TodayActiveTime = $"{hours}小时 {minutes}分钟",
@@ -254,30 +161,32 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         // 计算 TopApps
         var topApps = appSessions
             .GroupBy(s => s.ProcessName)
-            .Select(g => new { ProcessName = g.Key, Duration = g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
+            .Select(g => new { ProcessName = g.Key, Duration = g.Sum(SessionMinutes) })
             .OrderByDescending(x => x.Duration)
             .Take(5)
             .ToList();
-        
+
         if (topApps.Any())
         {
             stats.MostUsedApp = topApps.First().ProcessName;
             stats.TopAppsRaw = topApps.Select(x => (x.ProcessName, x.Duration)).ToList();
         }
 
-        // 计算 HourlyActivity
+        // 计算 HourlyActivity（今日未来小时不画）
         for (int i = 0; i < 24; i++)
         {
             var hourStart = today.AddHours(i);
             var hourEnd = hourStart.AddHours(1);
-            var hourMinutes = appSessions
-                .Where(s => s.StartTime < hourEnd && (s.EndTime == null || s.EndTime > hourStart))
-                .Sum(s =>
-                {
-                    var start = s.StartTime < hourStart ? hourStart : s.StartTime;
-                    var end = s.EndTime == null || s.EndTime > hourEnd ? hourEnd : s.EndTime.Value;
-                    return (end - start).TotalMinutes;
-                });
+            if (isToday && hourStart >= now) break;
+
+            var clipEnd = isToday && hourEnd > now ? now : hourEnd;
+            var hourMinutes = appSessions.Sum(s =>
+            {
+                var start = s.StartTime < hourStart ? hourStart : s.StartTime;
+                var end = SessionEnd(s, isToday ? now : today);
+                if (end > clipEnd) end = clipEnd;
+                return Math.Max(0, (end - start).TotalMinutes);
+            });
             stats.HourlyActivity.Add(new HourlyActivityData
             {
                 Hour = $"{i}:00",
@@ -289,7 +198,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         // 计算 CategoryDistribution
         var categories = appSessions
             .GroupBy(s => s.Category ?? "其他")
-            .Select(g => new { Name = g.Key, Duration = g.Sum(s => s.EndTime.HasValue ? (s.EndTime!.Value - s.StartTime).TotalMinutes : 0) })
+            .Select(g => new { Name = g.Key, Duration = g.Sum(SessionMinutes) })
             .OrderByDescending(x => x.Duration)
             .Take(5)
             .ToList();
@@ -302,7 +211,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             .OrderByDescending(x => x.Count)
             .Take(5)
             .ToList();
-        
+
         if (topSites.Any())
         {
             stats.MostVisitedSite = topSites.First().Domain ?? "无数据";
@@ -313,6 +222,23 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         }
 
         return stats;
+    }
+
+    /// <summary>会话有效时长（分钟）：优先 ActiveDuration；未结束会话仅今日按 clock 截断计入。</summary>
+    private static double SessionActiveMinutes(AppSession s, DateTime clock)
+    {
+        if (s.ActiveDuration > TimeSpan.Zero)
+            return Math.Max(0, s.ActiveDuration.TotalMinutes);
+        return Math.Max(0, (SessionEnd(s, clock) - s.StartTime).TotalMinutes);
+    }
+
+    private static DateTime SessionEnd(AppSession s, DateTime clock)
+    {
+        if (s.EndTime.HasValue) return s.EndTime.Value;
+        // 未结束：仅今日累计到当前时刻；历史日视为未闭合，不计
+        if (clock > s.StartTime && s.StartTime.Date == DateTime.Today)
+            return clock;
+        return s.StartTime;
     }
 
     protected override async Task ApplyStatsOnUIAsync(DashboardStats stats)

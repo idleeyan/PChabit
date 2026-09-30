@@ -85,6 +85,14 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
+                <NavigationViewItem
+                    Content="网络流量"
+                    Tag="NetworkTraffic">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE839;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+
                 <!-- 分析 -->
                 <NavigationViewItem
                     Content="分析"

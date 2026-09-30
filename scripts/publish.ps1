@@ -115,7 +115,23 @@ try {
         Write-Host "PChabit.exe  大小: $([math]::Round($exeInfo.Length / 1MB, 2)) MB  时间: $($exeInfo.LastWriteTime)" -ForegroundColor Green
     }
 
-    $totalSize = (Get-ChildItem -Path $publishDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
+    
+    # 语言资源校验：只允许 zh-CN / en-us
+    $langDirs = Get-ChildItem -Path $publishDir -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName 'Microsoft.ui.xaml.dll.mui') }
+    $keepLangs = @('zh-CN', 'en-us')
+    $extra = $langDirs | Where-Object { $keepLangs -notcontains $_.Name }
+    if ($extra) {
+        Write-Warning "发现多余 WinUI 语言目录，正在清理: $($extra.Name -join ', ')"
+        $extra | Remove-Item -Recurse -Force
+    }
+    $remain = (Get-ChildItem -Path $publishDir -Directory |
+        Where-Object { Test-Path (Join-Path $_.FullName 'Microsoft.ui.xaml.dll.mui') }).Name
+    Write-Host "WinUI 语言目录: $($remain -join ', ')" -ForegroundColor Green
+    if ($remain | Where-Object { $keepLangs -notcontains $_ }) {
+        throw "语言目录未收敛到 zh-CN/en-us: $($remain -join ', ')"
+    }
+$totalSize = (Get-ChildItem -Path $publishDir -Recurse -File | Measure-Object -Property Length -Sum).Sum
     Write-Header "发布完成!"
     Write-Host "输出目录: $publishDir" -ForegroundColor Green
     Write-Host "总大小: $([math]::Round($totalSize / 1MB, 2)) MB" -ForegroundColor Gray

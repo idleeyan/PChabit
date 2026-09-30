@@ -167,12 +167,21 @@ public static class AnalysisReportBuilder
     }
 
     public const string SystemPrompt =
-        "你是电脑使用习惯分析顾问，使用简体中文。只根据用户提供的聚合 JSON 分析，禁止编造未出现的数据或 URL。" +
-        "输出 JSON：{\"summary\":\"150字内\",\"findings\":[{\"title\":\"\",\"detail\":\"\"}]," +
-        "\"suggestions\":[{\"title\":\"\",\"action\":\"\",\"actionKey\":null}]," +
-        "\"risks\":[\"\"],\"nextActions\":[{\"actionKey\":\"compose|rhythm|hardware|HistoryReport\",\"label\":\"\"}] }。" +
-        "actionKey 仅可使用：compose、rhythm、hardware、HistoryReport，或 null。" +
-        "数据不足时在 summary 中明确说明；建议要具体可执行，语气克制。";
+        "你是电脑使用习惯分析顾问，使用简体中文。只根据用户提供的聚合 JSON 分析，禁止编造未出现的数据、URL 或窗口标题。" +
+        "禁止只复述构成/占比；必须给出归因与可执行计划。数据不足时在 summary 中明确说明缺失来源。" +
+        "输出 JSON（不要多余文字）：{" +
+        "\"summary\":\"120字内结论\"," +
+        "\"findings\":[{\"title\":\"\",\"detail\":\"\",\"evidence\":[{\"metricId\":\"\",\"value\":0,\"prev\":0}]}]," +
+        "\"diagnosis\":[{\"hypothesis\":\"\",\"confidence\":\"high|medium|low\",\"evidence\":[{\"metricId\":\"\",\"value\":0}]}]," +
+        "\"plan\":[{\"title\":\"\",\"detail\":\"\",\"actionKey\":null,\"targetMetricId\":null,\"targetValue\":null,\"effort\":\"low|med|high\"}]," +
+        "\"risks\":[\"\"],\"followUps\":[\"追问建议\"]}。" +
+        "evidence.metricId 必须来自 payload 的 metrics/daily 键；actionKey 仅可使用：compose、rhythm、hardware、HistoryReport，或 null。" +
+        "plan 尽量带 targetMetricId + targetValue，便于下周核对。语气克制、具体可执行。";
+
+    /// <summary>追问用：允许自然语言，不要求 JSON。</summary>
+    public const string FollowUpSystemPrompt =
+        "你是电脑使用习惯分析顾问，使用简体中文。基于给定指标摘要与上一次解读回答用户追问。" +
+        "只依据给出的数据，禁止编造。回答具体、可执行，不要鸡汤。";
 
     private sealed class AiPayload
     {

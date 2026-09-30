@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="PChabit.App.Views.NetworkTrafficPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:PChabit.App.ViewModels"
+    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+    </Page.Resources>
+
+    <ScrollViewer Padding="24">
+        <StackPanel Spacing="20" MaxWidth="1200">
+
+            <Grid>
+                <StackPanel Spacing="4">
+                    <TextBlock Style="{StaticResource PageTitleStyle}" Text="网络流量统计" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="系统分钟样本 + 进程小时聚合，数据落库可跨重启查询；口径为应用内 IP Helper 采样。" />
+                </StackPanel>
+                <StackPanel
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <ComboBox
+                        MinWidth="120"
+                        ItemsSource="{x:Bind ViewModel.PeriodOptions}"
+                        SelectedItem="{x:Bind ViewModel.SelectedPeriod, Mode=TwoWay}" />
+                    <Button Command="{x:Bind ViewModel.LoadCommand}" Content="刷新" />
+                </StackPanel>
+            </Grid>
+
+            <TextBlock
+                FontSize="12"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.RangeText, Mode=OneWay}" />
+
+            <Grid ColumnSpacing="12" RowSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="总流量" />
+                        <TextBlock FontSize="22" FontWeight="Bold" Text="{x:Bind ViewModel.TotalTrafficText, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="0" Grid.Column="1" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="上行" />
+                        <TextBlock FontSize="22" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Text="{x:Bind ViewModel.UpTrafficText, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="下行" />
+                        <TextBlock FontSize="22" FontWeight="Bold" Foreground="{StaticResource StatWebBrush}" Text="{x:Bind ViewModel.DownTrafficText, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="0" Grid.Column="3" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="日均" />
+                        <TextBlock FontSize="22" FontWeight="Bold" Text="{x:Bind ViewModel.DailyAvgText, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="涉及进程" />
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="{x:Bind ViewModel.ProcessCountText, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="分钟样本" />
+                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="{x:Bind ViewModel.SampleCountText, Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" Style="{StaticResource StatCardStyle}">
+                    <StackPanel Spacing="4">
+                        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="峰值速率（样本内）" />
+                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="{x:Bind ViewModel.PeakText, Mode=OneWay}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="按日流量" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.DayBars}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="14" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:DayTrafficBar">
+                                    <StackPanel Spacing="4" Width="48" ToolTipService.ToolTip="{x:Bind FullDay}">
+                                        <StackPanel Height="130" VerticalAlignment="Bottom" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="3">
+                                            <Border Width="14" Height="{x:Bind UpBarHeight}" VerticalAlignment="Bottom" Background="{StaticResource PrimaryBrush}" CornerRadius="3,3,0,0" />
+                                            <Border Width="14" Height="{x:Bind DownBarHeight}" VerticalAlignment="Bottom" Background="{StaticResource StatWebBrush}" CornerRadius="3,3,0,0" />
+                                        </StackPanel>
+                                        <TextBlock HorizontalAlignment="Center" FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind DayLabel}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="紫 = 上行，蓝 = 下行（柱高按区间峰值归一化）" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="12">
+                    <Grid>
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="进程流量排行" />
+                        <TextBlock HorizontalAlignment="Right" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.ProcessEmptyText, Mode=OneWay}" />
+                    </Grid>
+
+                    <Grid ColumnSpacing="8" Padding="8,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40" />
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="90" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource MetricLabelStyle}" Text="#" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource MetricLabelStyle}" Text="进程" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource MetricLabelStyle}" Text="上行" />
+                        <TextBlock Grid.Column="3" Style="{StaticResource MetricLabelStyle}" Text="下行" />
+                        <TextBlock Grid.Column="4" Style="{StaticResource MetricLabelStyle}" Text="合计" />
+                        <TextBlock Grid.Column="5" Style="{StaticResource MetricLabelStyle}" Text="峰值" />
+                        <TextBlock Grid.Column="6" Style="{StaticResource MetricLabelStyle}" Text="相对占比" />
+                    </Grid>
+
+                    <ListView MaxHeight="420" IsItemClickEnabled="False" SelectionMode="None" ItemsSource="{x:Bind ViewModel.ProcessRows}">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="local:ProcessTrafficRow">
+                                <Grid ColumnSpacing="8" Padding="4,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="40" />
+                                        <ColumnDefinition Width="160" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{x:Bind Rank}" />
+                                    <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="{x:Bind ProcessName}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="2" Foreground="{StaticResource PrimaryBrush}" Text="{x:Bind UpText}" />
+                                    <TextBlock Grid.Column="3" Foreground="{StaticResource StatWebBrush}" Text="{x:Bind DownText}" />
+                                    <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="{x:Bind TotalText}" />
+                                    <TextBlock Grid.Column="5" Text="{x:Bind PeakText}" />
+                                    <StackPanel Grid.Column="6" Spacing="2" VerticalAlignment="Center">
+                                        <Border Height="6" Width="{x:Bind BarWidth}" HorizontalAlignment="Left" Background="{StaticResource PrimarySoftBrush}" CornerRadius="3" />
+                                        <TextBlock FontSize="10" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind SharePercent}" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="今日小时分布（进程累计）" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourBars}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="local:HourTrafficBar">
+                                    <StackPanel Spacing="2" Width="28" ToolTipService.ToolTip="{x:Bind TotalText}">
+                                        <Border Height="{x:Bind BarHeight}" MinHeight="2" Background="{StaticResource SuccessBrush}" CornerRadius="2" Opacity="{x:Bind BarOpacity}" />
+                                        <TextBlock HorizontalAlignment="Center" FontSize="9" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind HourLabel}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="10">
+                    <Grid>
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="实时占用（IP Helper）" />
+                        <Button HorizontalAlignment="Right" Command="{x:Bind ViewModel.RefreshLiveCommand}" Content="刷新实时" />
+                    </Grid>
+                    <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.LiveSystemText, Mode=OneWay}" />
+                    <TextBlock FontSize="12" LineHeight="18" Text="{x:Bind ViewModel.LiveTopText, Mode=OneWay}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+            <TextBlock
+                FontSize="11"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Text="说明：系统分钟样本默认保留 30 天，进程小时记录保留 90 天。进程流量为用户态估算，可能与任务管理器略有差异；今日累计会落库并在启动时恢复种子。"
+                TextWrapping="Wrap" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

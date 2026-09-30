@@ -424,8 +424,13 @@
                                 PlaceholderText="sk-...（本地服务可填任意非空字符）" />
                             <TextBox
                                 x:Name="AiModelBox"
-                                Header="模型"
+                                Header="模型（解读）"
                                 PlaceholderText="glm-4-flash 或 qwen2.5 等"
+                                Text="" />
+                            <TextBox
+                                x:Name="AiModelFastBox"
+                                Header="快捷模型（追问，可空=同上）"
+                                PlaceholderText="留空则与解读模型相同"
                                 Text="" />
                             <ComboBox
                                 x:Name="AiProviderBox"
@@ -440,6 +445,14 @@
                                 SmallChange="30"
                                 LargeChange="60"
                                 Value="300" />
+                            <ToggleSwitch
+                                x:Name="AiStrictPrivacySwitch"
+                                Header="严格隐私（出域不含应用/分类名）"
+                                IsOn="False" />
+                            <ToggleSwitch
+                                x:Name="AiAutoWeeklyInsightSwitch"
+                                Header="每周自动 AI 解读"
+                                IsOn="False" />
                         </StackPanel>
                     </Border>
                 </StackPanel>
