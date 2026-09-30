@@ -33,20 +33,22 @@ public record AnalyticsPeriod(DateTime Start, DateTime EndExclusive, string Labe
         var t = (today ?? DateTime.Today).Date;
         return kind switch
         {
+            // 滚动窗：始终以「今天」为最新一天，避免自然周/自然月前段数据不足时与完整周期硬比
             AnalyticsPeriodKind.Today => new AnalyticsPeriod(t, t.AddDays(1), "今天"),
             AnalyticsPeriodKind.Yesterday => new AnalyticsPeriod(t.AddDays(-1), t, "昨天"),
-            AnalyticsPeriodKind.ThisWeek => WeekOf(t, "本周"),
-            AnalyticsPeriodKind.LastWeek => WeekOf(t.AddDays(-7), "上周"),
-            AnalyticsPeriodKind.Last7Days => new AnalyticsPeriod(t.AddDays(-6), t.AddDays(1), "近 7 天"),
-            AnalyticsPeriodKind.Last30Days => new AnalyticsPeriod(t.AddDays(-29), t.AddDays(1), "近 30 天"),
-            AnalyticsPeriodKind.ThisMonth => new AnalyticsPeriod(
-                new DateTime(t.Year, t.Month, 1),
-                t.AddDays(1),
-                $"{t.Month} 月"),
+            AnalyticsPeriodKind.ThisWeek => RollingDays(t, 7, "近 7 天"),
+            AnalyticsPeriodKind.LastWeek => RollingDays(t.AddDays(-7), 7, "前 7 天"),
+            AnalyticsPeriodKind.Last7Days => RollingDays(t, 7, "近 7 天"),
+            AnalyticsPeriodKind.Last30Days => RollingDays(t, 30, "近 30 天"),
+            AnalyticsPeriodKind.ThisMonth => RollingDays(t, 30, "近 30 天"),
             AnalyticsPeriodKind.Custom => throw new ArgumentException("自定义周期请使用 FromCustom(start, endExclusive)", nameof(kind)),
-            _ => WeekOf(t, "本周")
+            _ => RollingDays(t, 7, "近 7 天")
         };
     }
+
+    /// <summary>滚动 N 天：[today-N+1, today+1)，对比期为再往前 N 天。</summary>
+    private static AnalyticsPeriod RollingDays(DateTime today, int days, string label)
+        => new(today.AddDays(-(days - 1)), today.AddDays(1), label);
 
     /// <summary>自定义周期；endExclusive 必须晚于 start。</summary>
     public static AnalyticsPeriod FromCustom(DateTime start, DateTime endExclusive, string label = "自定义")
@@ -56,8 +58,8 @@ public record AnalyticsPeriod(DateTime Start, DateTime EndExclusive, string Labe
         return new AnalyticsPeriod(start.Date, endExclusive.Date, label);
     }
 
-    /// <summary>周一为一周起点。</summary>
-    private static AnalyticsPeriod WeekOf(DateTime anyDay, string label)
+    /// <summary>自然周（周一为起点）。仅保留给明确需要周历的场景。</summary>
+    public static AnalyticsPeriod CalendarWeek(DateTime anyDay, string label = "自然周")
     {
         var d = anyDay.Date;
         var diff = ((int)d.DayOfWeek + 6) % 7; // Mon=0

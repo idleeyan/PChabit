@@ -69,13 +69,13 @@ public partial class AnalyticsViewModel : ViewModelBase
     private AnalyticsAiResponseParser.ParsedAiResult? _lastParsed;
 
     [ObservableProperty]
-    private string _selectedPeriodKey = "本周";
+    private string _selectedPeriodKey = "近 7 天";
 
     public string[] PeriodOptions { get; } =
-        { "本周", "上周", "近 7 天", "近 30 天", "本月" };
+        { "近 7 天", "前 7 天", "近 30 天", "近 3 天", "今天" };
 
     [ObservableProperty]
-    private string _periodLabel = "本周";
+    private string _periodLabel = "近 7 天";
 
     [ObservableProperty]
     private string _periodRangeText = "";
@@ -736,14 +736,18 @@ public partial class AnalyticsViewModel : ViewModelBase
         {
             var kind = SelectedPeriodKey switch
             {
-                "上周" => AnalyticsPeriodKind.LastWeek,
-                "近 7 天" => AnalyticsPeriodKind.Last7Days,
+                "前 7 天" => AnalyticsPeriodKind.LastWeek,
                 "近 30 天" => AnalyticsPeriodKind.Last30Days,
-                "本月" => AnalyticsPeriodKind.ThisMonth,
-                _ => AnalyticsPeriodKind.ThisWeek
+                "近 3 天" => AnalyticsPeriodKind.Custom,
+                "今天" => AnalyticsPeriodKind.Today,
+                _ => AnalyticsPeriodKind.Last7Days
             };
 
-            var period = AnalyticsPeriod.FromKind(kind);
+            AnalyticsPeriod period;
+            if (kind == AnalyticsPeriodKind.Custom && SelectedPeriodKey == "近 3 天")
+                period = AnalyticsPeriod.FromCustom(DateTime.Today.AddDays(-2), DateTime.Today.AddDays(1), "近 3 天");
+            else
+                period = AnalyticsPeriod.FromKind(kind);
             var report = await AnalyticsEngine.BuildAsync(_dbContextFactory, period);
             _lastReport = report;
 

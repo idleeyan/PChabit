@@ -82,11 +82,11 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
     {
         new PeriodOption(AnalyticsPeriodKind.Today, "今天"),
         new PeriodOption(AnalyticsPeriodKind.Yesterday, "昨天"),
-        new PeriodOption(AnalyticsPeriodKind.ThisWeek, "本周"),
-        new PeriodOption(AnalyticsPeriodKind.LastWeek, "上周"),
-        new PeriodOption(AnalyticsPeriodKind.Last7Days, "近 7 天"),
+        new PeriodOption(AnalyticsPeriodKind.ThisWeek, "近 7 天"),
+        new PeriodOption(AnalyticsPeriodKind.LastWeek, "前 7 天"),
+        new PeriodOption(AnalyticsPeriodKind.Last7Days, "近 7 天(同前)"),
         new PeriodOption(AnalyticsPeriodKind.Last30Days, "近 30 天"),
-        new PeriodOption(AnalyticsPeriodKind.ThisMonth, "本月"),
+        new PeriodOption(AnalyticsPeriodKind.ThisMonth, "近 30 天(同前)"),
         new PeriodOption(AnalyticsPeriodKind.Custom, "自定义")
     };
 

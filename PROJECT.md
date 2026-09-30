@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.21.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.21.1**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
@@ -65,6 +65,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-09-30 | 3.21.1 | 修复分析周期：近 7 天/30 天改为以今天为终点的滚动窗，对比期为等长前窗；默认「近 7 天」；测试 94 通过；部署 D:\Tool 并启动验证 |
 | 2026-09-30 | 3.21.0 | 收尾：多模型档位、AI/规则洞察去重、习惯轨迹卡片；分析测试 92 通过；publish 3.21.0.0 |
 | 2026-09-30 | 3.20.0 | P3/P4：严格隐私、周自动解读、复制解读 Markdown、计划反馈、习惯轨迹入包；分析测试 89 通过；publish 3.20.0.0 |
 | 2026-09-30 | 3.19.0 | P2 闭环：AiInsightSnapshot 落库（#20）+ lastAiPlan 闭环 + 计划状态持久化 + 追问对话；分析测试 84 通过；publish 3.19.0.0 |

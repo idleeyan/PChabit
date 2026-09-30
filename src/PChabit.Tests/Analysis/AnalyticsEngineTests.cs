@@ -8,13 +8,43 @@ namespace PChabit.Tests.Analysis;
 public class AnalyticsEngineTests
 {
     [Fact]
-    public void ThisWeek_StartsOnMonday()
+    public void ThisWeek_IsRolling7DaysEndingToday()
     {
-        // 2026-09-16 是周三
+        // 2026-09-16 是周三：滚动 7 天 = 09-10 ~ 09-16，对比期为前 7 天
         var p = AnalyticsPeriod.FromKind(AnalyticsPeriodKind.ThisWeek, new DateTime(2026, 9, 16));
-        p.Start.DayOfWeek.Should().Be(DayOfWeek.Monday);
-        p.Start.Should().Be(new DateTime(2026, 9, 14));
-        p.EndExclusive.Should().Be(new DateTime(2026, 9, 21));
+        p.DayCount.Should().Be(7);
+        p.Start.Should().Be(new DateTime(2026, 9, 10));
+        p.EndExclusive.Should().Be(new DateTime(2026, 9, 17));
+
+        var prev = p.Previous();
+        prev.DayCount.Should().Be(7);
+        prev.Start.Should().Be(new DateTime(2026, 9, 3));
+        prev.EndExclusive.Should().Be(new DateTime(2026, 9, 10));
+    }
+
+    [Fact]
+    public void ThisWeek_OnWednesday_HasFullSevenDaysEndingToday()
+    {
+        // 用户场景：09-30 周三，若用自然周只有 3 天；滚动窗必须 7 天且含今天
+        var p = AnalyticsPeriod.FromKind(AnalyticsPeriodKind.ThisWeek, new DateTime(2026, 9, 30));
+        p.DayCount.Should().Be(7);
+        p.Start.Should().Be(new DateTime(2026, 9, 24));
+        p.EndExclusive.Should().Be(new DateTime(2026, 10, 1));
+        p.EndExclusive.AddDays(-1).Should().Be(new DateTime(2026, 9, 30));
+
+        var prev = p.Previous();
+        prev.Start.Should().Be(new DateTime(2026, 9, 17));
+        prev.EndExclusive.Should().Be(new DateTime(2026, 9, 24));
+        prev.DayCount.Should().Be(7);
+    }
+
+    [Fact]
+    public void LastWeek_IsPreviousRolling7()
+    {
+        var p = AnalyticsPeriod.FromKind(AnalyticsPeriodKind.LastWeek, new DateTime(2026, 9, 30));
+        p.Start.Should().Be(new DateTime(2026, 9, 17));
+        p.EndExclusive.Should().Be(new DateTime(2026, 9, 24));
+        p.DayCount.Should().Be(7);
     }
 
     [Fact]
