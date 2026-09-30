@@ -276,10 +276,13 @@ public sealed class OpenAiCompatibleChatClient
             body["stream"] = true;
 
         var req = new HttpRequestMessage(HttpMethod.Post, BuildEndpoint(cfg));
+        // Key 只去首尾空白（防粘贴时带换行），中间字符原样发送
         var key = cfg.ApiKey?.Trim();
         if (!string.IsNullOrEmpty(key))
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        Log.Information("AI 请求 → {Label} {Url} model={Model} keyLen={KeyLen}",
+            cfg.Label, BuildEndpoint(cfg), model, key?.Length ?? 0);
         return req;
     }
 

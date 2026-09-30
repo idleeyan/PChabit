@@ -459,10 +459,11 @@
                                 Header="云端 Base URL"
                                 PlaceholderText="https://api.deepseek.com 或 https://open.bigmodel.cn/api/paas/v4"
                                 Text="" />
-                            <PasswordBox
+                            <TextBox
                                 x:Name="AiApiKeyBox"
-                                Header="云端 API Key"
-                                PlaceholderText="sk-..." />
+                                Header="云端 API Key（明文保存）"
+                                PlaceholderText="sk-..."
+                                Text="" />
                             <TextBox
                                 x:Name="AiModelBox"
                                 Header="云端模型"

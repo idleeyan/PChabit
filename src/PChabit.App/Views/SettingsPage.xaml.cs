@@ -266,7 +266,7 @@ public sealed partial class SettingsPage : Page
         AiInsightsEnabledSwitch.Toggled += (s, e) => OnSettingChanged("AiInsightsEnabled", AiInsightsEnabledSwitch.IsOn);
         // 输入即保存（不依赖 LostFocus，避免点按钮时未落盘 → 401）
         AiBaseUrlBox.TextChanged += (s, e) => OnSettingChanged("AiBaseUrl", AiBaseUrlBox.Text);
-        AiApiKeyBox.PasswordChanged += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Password);
+        AiApiKeyBox.TextChanged += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Text);
         AiModelBox.TextChanged += (s, e) => OnSettingChanged("AiModel", AiModelBox.Text);
         AiModelFastBox.TextChanged += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
         AiProviderBox.SelectionChanged += (s, e) =>
@@ -320,7 +320,7 @@ public sealed partial class SettingsPage : Page
             AiTestResult.Text = "已保存，正在测试…";
             // 强制把当前控件值写入设置
             ViewModel.AiBaseUrl = AiBaseUrlBox.Text ?? "";
-            ViewModel.AiApiKey = AiApiKeyBox.Password ?? "";
+            ViewModel.AiApiKey = AiApiKeyBox.Text ?? "";
             ViewModel.AiModel = AiModelBox.Text ?? "";
             ViewModel.AiModelFast = AiModelFastBox.Text ?? "";
             ViewModel.AiLocalBaseUrl = AiLocalBaseUrlBox.Text ?? "";
@@ -332,9 +332,13 @@ public sealed partial class SettingsPage : Page
             ViewModel.SaveSetting("AiLocalBaseUrl");
             ViewModel.SaveSetting("AiLocalModel");
 
+            var key = ViewModel.AiApiKey ?? "";
             var svc = App.GetService<PChabit.Infrastructure.Services.IAnalyticsAiService>();
-            var cfgInfo = $"云端：{AiBaseUrlBox.Text} · 模型 {AiModelBox.Text} · Key {(string.IsNullOrWhiteSpace(AiApiKeyBox.Password) ? "未填" : $"已填({AiApiKeyBox.Password.Length}字符)")}\n"
-                          + $"本地：{AiLocalBaseUrlBox.Text} · 模型 {AiLocalModelBox.Text}";
+            var cfgInfo =
+                $"云端：{ViewModel.AiBaseUrl}\n" +
+                $"模型：{ViewModel.AiModel}\n" +
+                $"Key：{(key.Length == 0 ? "（空）" : key)}\n" +  // 明文显示，便于核对
+                $"本地：{ViewModel.AiLocalBaseUrl} · {ViewModel.AiLocalModel}";
             AiTestResult.Text = cfgInfo + "\n探测中…";
 
             // 用一段极短 prompt 测试
@@ -343,7 +347,8 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
-            AiTestResult.Text = $"❌ 测试失败：{ex.Message}";
+            AiTestResult.Text = AiTestResult.Text.Split('\n').FirstOrDefault()
+                                + "\n❌ 测试失败：" + ex.Message;
         }
     }
 
@@ -634,7 +639,7 @@ public sealed partial class SettingsPage : Page
 
         AiInsightsEnabledSwitch.IsOn = ViewModel.AiInsightsEnabled;
         AiBaseUrlBox.Text = ViewModel.AiBaseUrl ?? "";
-        AiApiKeyBox.Password = ViewModel.AiApiKey ?? "";
+        AiApiKeyBox.Text = ViewModel.AiApiKey ?? "";
         AiModelBox.Text = ViewModel.AiModel ?? "";
         AiModelFastBox.Text = ViewModel.AiModelFast ?? "";
         AiLocalBaseUrlBox.Text = ViewModel.AiLocalBaseUrl ?? "";
