@@ -269,14 +269,6 @@ public sealed partial class SettingsPage : Page
         AiApiKeyBox.TextChanged += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Text);
         AiModelBox.TextChanged += (s, e) => OnSettingChanged("AiModel", AiModelBox.Text);
         AiModelFastBox.TextChanged += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
-        AiProviderBox.SelectionChanged += (s, e) =>
-        {
-            if (_isLoading) return;
-            // 只记录 Provider 名称。禁止在此改写 BaseUrl/Model —— 那是配置被刷回默认的根因
-            var tag = (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
-                      ?? AiProviderBox.SelectedItem?.ToString() ?? "zhipu";
-            OnSettingChanged("AiProvider", tag);
-        };
         AiTimeoutSecondsBox.ValueChanged += (s, e) => OnSettingChanged("AiTimeoutSeconds", e.NewValue);
         AiStrictPrivacySwitch.Toggled += (s, e) => OnSettingChanged("AiStrictPrivacy", AiStrictPrivacySwitch.IsOn);
         AiAutoWeeklyInsightSwitch.Toggled += (s, e) => OnSettingChanged("AiAutoWeeklyInsight", AiAutoWeeklyInsightSwitch.IsOn);
@@ -302,19 +294,6 @@ public sealed partial class SettingsPage : Page
             "dual" => "当前：双端点 — 解读云端 · 追问本地（推荐）",
             _ => "当前：云端 — 解读与追问都走云端 API"
         };
-    }
-
-    private void AiFillProviderPreset_Click(object sender, RoutedEventArgs e)
-    {
-        if (_isLoading) return;
-        var tag = (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "zhipu";
-        if (!Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(tag, true, out var kind))
-            return;
-        var p = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
-        AiBaseUrlBox.Text = p.DefaultBaseUrl;
-        AiModelBox.Text = p.DefaultModel;
-        OnSettingChanged("AiBaseUrl", p.DefaultBaseUrl);
-        OnSettingChanged("AiModel", p.DefaultModel);
     }
 
     private void AiCopyTestResult_Click(object sender, RoutedEventArgs e)
@@ -681,12 +660,6 @@ public sealed partial class SettingsPage : Page
         AiModeDualRadio.IsChecked = mode == "dual";
         ApplyEndpointModeHint(mode);
 
-        AiProviderBox.Items.Clear();
-        foreach (var p in PChabit.Infrastructure.Services.AiProviderPresets.All)
-            AiProviderBox.Items.Add(new ComboBoxItem { Content = p.Label, Tag = p.Kind.ToString() });
-        var sel = AiProviderBox.Items.OfType<ComboBoxItem>()
-            .FirstOrDefault(i => string.Equals(i.Tag?.ToString(), ViewModel.AiProvider, StringComparison.OrdinalIgnoreCase));
-        if (sel != null) AiProviderBox.SelectedItem = sel;
         AiTimeoutSecondsBox.Value = ViewModel.AiTimeoutSeconds;
         AiStrictPrivacySwitch.IsOn = ViewModel.AiStrictPrivacy;
         AiAutoWeeklyInsightSwitch.IsOn = ViewModel.AiAutoWeeklyInsight;

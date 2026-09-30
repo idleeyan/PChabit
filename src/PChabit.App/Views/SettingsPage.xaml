@@ -508,15 +508,6 @@
                                 MinHeight="72"
                                 PlaceholderText="点「保存并测试连接」后，结果可全选复制" />
 
-                            <ComboBox
-                                x:Name="AiProviderBox"
-                                Header="Provider 标签（不再自动改写 URL/模型）"
-                                HorizontalAlignment="Stretch"
-                                SelectedItem="智谱" />
-                            <Button
-                                HorizontalAlignment="Stretch"
-                                Content="按 Provider 填充默认 URL / 模型（会覆盖当前值）"
-                                Click="AiFillProviderPreset_Click" />
                             <NumberBox
                                 x:Name="AiTimeoutSecondsBox"
                                 Header="请求超时（秒）"
