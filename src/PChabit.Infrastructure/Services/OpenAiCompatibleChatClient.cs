@@ -106,7 +106,7 @@ public sealed class OpenAiCompatibleChatClient
         return baseUrl + "/v1/chat/completions";
     }
 
-    /// <summary>非流式一次性调用。</summary>
+    /// <summary>非流式一次性调用。400 时自动降级重试（去掉 response_format / max_tokens）。</summary>
     public async Task<string> CompleteAsync(OpenAiChatRequest request, CancellationToken ct = default)
     {
         var cfg = Resolve(request.Slot, request.IsInsight);
@@ -119,15 +119,34 @@ public sealed class OpenAiCompatibleChatClient
 
         try
         {
-            using var req = BuildRequest(cfg, request, stream: false);
-            using var resp = await Http.SendAsync(req, timeoutCts.Token).ConfigureAwait(false);
-            var text = await resp.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode)
+            // 第一次：完整参数；本地端点默认不发 response_format（LM Studio 等常返回 400）
+            var minimalFirst = cfg.IsLocalHost;
+            using var req1 = BuildRequest(cfg, request, stream: false, minimal: minimalFirst);
+            using var resp1 = await Http.SendAsync(req1, timeoutCts.Token).ConfigureAwait(false);
+            var text1 = await resp1.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
+            if (resp1.IsSuccessStatusCode)
+                return ExtractContent(text1);
+
+            Log.Warning("AI HTTP {Status} via {Slot}: {Body}", (int)resp1.StatusCode, cfg.Label, Truncate(text1, 300));
+
+            // 400/404/422：去掉可选字段再试一次
+            if ((int)resp1.StatusCode is 400 or 404 or 422 && !minimalFirst)
             {
-                Log.Warning("AI HTTP {Status} via {Slot}", (int)resp.StatusCode, cfg.Label);
-                throw new HttpRequestException($"AI 服务（{cfg.Label}）返回 {(int)resp.StatusCode}");
+                using var req2 = BuildRequest(cfg, request, stream: false, minimal: true);
+                using var resp2 = await Http.SendAsync(req2, timeoutCts.Token).ConfigureAwait(false);
+                var text2 = await resp2.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
+                if (resp2.IsSuccessStatusCode)
+                {
+                    Log.Information("AI 降级请求成功（去掉 response_format/max_tokens）via {Slot}", cfg.Label);
+                    return ExtractContent(text2);
+                }
+                Log.Warning("AI 降级仍失败 {Status}: {Body}", (int)resp2.StatusCode, Truncate(text2, 300));
+                throw new HttpRequestException(
+                    $"AI 服务（{cfg.Label}）返回 {(int)resp2.StatusCode}：{Truncate(text2, 200)}");
             }
-            return ExtractContent(text);
+
+            throw new HttpRequestException(
+                $"AI 服务（{cfg.Label}）返回 {(int)resp1.StatusCode}：{Truncate(text1, 200)}");
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -148,7 +167,7 @@ public sealed class OpenAiCompatibleChatClient
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
-        using var req = BuildRequest(cfg, request, stream: true);
+        using var req = BuildRequest(cfg, request, stream: true, minimal: cfg.IsLocalHost);
         HttpResponseMessage? resp = null;
         string? fallbackContent = null;
         List<string>? streamed = null;
@@ -158,8 +177,9 @@ public sealed class OpenAiCompatibleChatClient
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync(timeoutCts.Token).ConfigureAwait(false);
-                Log.Warning("AI stream HTTP {Status} via {Slot}", (int)resp.StatusCode, cfg.Label);
-                throw new HttpRequestException($"AI 服务（{cfg.Label}）返回 {(int)resp.StatusCode}");
+                Log.Warning("AI stream HTTP {Status} via {Slot}: {Body}", (int)resp.StatusCode, cfg.Label, Truncate(body, 300));
+                throw new HttpRequestException(
+                    $"AI 服务（{cfg.Label}）返回 {(int)resp.StatusCode}：{Truncate(body, 200)}");
             }
 
             var contentType = resp.Content.Headers.ContentType?.MediaType ?? "";
@@ -210,7 +230,7 @@ public sealed class OpenAiCompatibleChatClient
         }
     }
 
-    private HttpRequestMessage BuildRequest(AiEndpointConfig cfg, OpenAiChatRequest request, bool stream)
+    private HttpRequestMessage BuildRequest(AiEndpointConfig cfg, OpenAiChatRequest request, bool stream, bool minimal = false)
     {
         var model = request.ModelOverride is { Length: > 0 } mo
             ? mo.Trim()
@@ -225,9 +245,11 @@ public sealed class OpenAiCompatibleChatClient
                 new { role = "user", content = request.UserContent }
             }
         };
-        if (request.MaxTokens is { } mt)
+        // 本地端点与降级请求不发可选字段（LM Studio/Ollama 对 response_format 等敏感）
+        var omitOptional = minimal || cfg.IsLocalHost;
+        if (request.MaxTokens is { } mt && !omitOptional)
             body["max_tokens"] = mt;
-        if (request.PreferJson)
+        if (request.PreferJson && !omitOptional)
             body["response_format"] = new { type = "json_object" };
         if (stream)
             body["stream"] = true;
@@ -238,6 +260,12 @@ public sealed class OpenAiCompatibleChatClient
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
         return req;
+    }
+
+    private static string Truncate(string s, int n)
+    {
+        s = s.Replace('\n', ' ').Replace('\r', ' ');
+        return s.Length <= n ? s : s[..n] + "…";
     }
 
     private static string ExtractContent(string json)
