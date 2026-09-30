@@ -271,11 +271,11 @@ public sealed partial class SettingsPage : Page
         AiModelFastBox.TextChanged += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
         AiProviderBox.SelectionChanged += (s, e) =>
         {
+            // 仅用户手动切换预设时填充；加载/编程选中不得覆盖已保存的 URL/模型
             if (_isLoading) return;
             var tag = (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? AiProviderBox.SelectedItem?.ToString() ?? "zhipu";
             OnSettingChanged("AiProvider", tag);
-            // 仅一键填空/点预设时覆盖，不无故清掉用户已填地址
             if (Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(tag, true, out var kind))
             {
                 var p = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
@@ -312,6 +312,27 @@ public sealed partial class SettingsPage : Page
         };
     }
 
+    private void AiCopyTestResult_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var text = AiTestResult.Text ?? "";
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                AiTestResult.Text = "（暂无测试结果）";
+                return;
+            }
+            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+            package.SetText(text);
+            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            AiTestResult.Text = text + "\n（已复制到剪贴板）";
+        }
+        catch (Exception ex)
+        {
+            AiTestResult.Text = $"复制失败：{ex.Message}";
+        }
+    }
+
     /// <summary>一键把界面上 AI 字段全部落盘，并探测实际请求端点。</summary>
     private async void AiTestConnection_Click(object sender, RoutedEventArgs e)
     {
@@ -337,17 +358,16 @@ public sealed partial class SettingsPage : Page
             var cfgInfo =
                 $"云端：{ViewModel.AiBaseUrl}\n" +
                 $"模型：{ViewModel.AiModel}\n" +
-                $"Key：{(key.Length == 0 ? "（空）" : key)}\n" +  // 明文显示，便于核对
+                $"Key：{(key.Length == 0 ? "（空）" : key)}\n" +
                 $"本地：{ViewModel.AiLocalBaseUrl} · {ViewModel.AiLocalModel}";
             AiTestResult.Text = cfgInfo + "\n探测中…";
 
-            // 用一段极短 prompt 测试
             var reply = await svc.ChatFastAsync("请只回复两个字：正常", "ping");
             AiTestResult.Text = cfgInfo + $"\n✅ 连接成功。模型回复：{reply.Trim()}";
         }
         catch (Exception ex)
         {
-            AiTestResult.Text = AiTestResult.Text.Split('\n').FirstOrDefault()
+            AiTestResult.Text = (AiTestResult.Text ?? "").Split('\n').FirstOrDefault()
                                 + "\n❌ 测试失败：" + ex.Message;
         }
     }
@@ -593,14 +613,19 @@ public sealed partial class SettingsPage : Page
 
         try
         {
-            // 每次进入设置页刷新软件信息，保证与当前程序集/CHANGELOG 一致
             LoadAboutInfo();
 
-            await ViewModel.InitializeAsync();
-            Log.Information("SettingsPage: InitializeAsync 完成");
-
-            LoadSettingsToUI();
-            _isLoading = false;
+            _isLoading = true;
+            try
+            {
+                await ViewModel.InitializeAsync();
+                Log.Information("SettingsPage: InitializeAsync 完成");
+                LoadSettingsToUI();
+            }
+            finally
+            {
+                _isLoading = false;
+            }
         }
         catch (Exception ex)
         {

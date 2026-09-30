@@ -418,7 +418,8 @@ public partial class SettingsViewModel : ViewModelBase
 
         }
         
-        _ = Task.Run(() => _settingsService.SaveAsync());
+        // 同步落盘：异步 Task.Run 会在退出/并发时丢设置
+        _settingsService.Save();
         Log.Information("SaveSetting: 设置 {PropertyName} 已保存", propertyName);
     }
 

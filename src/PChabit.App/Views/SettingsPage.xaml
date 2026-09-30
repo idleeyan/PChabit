@@ -496,11 +496,17 @@
                                 HorizontalAlignment="Stretch"
                                 Content="保存并测试连接"
                                 Click="AiTestConnection_Click" />
-                            <TextBlock
+                            <Button
+                                HorizontalAlignment="Stretch"
+                                Content="复制测试结果"
+                                Click="AiCopyTestResult_Click" />
+                            <TextBox
                                 x:Name="AiTestResult"
-                                FontSize="12"
+                                IsReadOnly="True"
+                                AcceptsReturn="True"
                                 TextWrapping="Wrap"
-                                Text="" />
+                                MinHeight="72"
+                                PlaceholderText="点「保存并测试连接」后，结果可全选复制" />
 
                             <ComboBox
                                 x:Name="AiProviderBox"

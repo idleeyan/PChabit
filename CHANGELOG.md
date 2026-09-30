@@ -13,6 +13,14 @@
 - `docs/发布产物语言资源说明.md`：构建输出路径示例由 net9.0 更正为 net10.0
 - `docs/AI深度解读升级计划.md`：双轨升级计划（项目习惯资产 + AI 深度解读）
 
+## [3.22.7] - 2026-09-30
+
+### 修复：配置重启被刷回智谱默认 + 测试结果不可复制
+- **根因**：加载设置时 `AiProviderBox.SelectedItem = …` 触发 SelectionChanged，把 Base URL/模型覆盖成预设（智谱/glm-4-flash）
+- 加载期间全程 `_isLoading` 保护；预设填充仅在用户手动切换 Provider 时
+- `SaveSetting` 改为**同步 Save()**，不再异步 fire-and-forget（退出竞态丢配置）
+- 测试结果改为可选中 TextBox +「复制测试结果」按钮
+
 ## [3.22.6] - 2026-09-30
 
 ### 优化：API Key 明文显示（个人软件不做遮掩）
