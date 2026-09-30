@@ -188,7 +188,27 @@ public static class AnalysisReportBuilder
 
     /// <summary>用户消息前缀：部分模型只看 user，再次锁定语言。</summary>
     public const string UserLanguagePreamble =
-        "请严格用简体中文输出。若输出 JSON，字符串字段一律中文，禁止英文正文。\n\n";
+        "【语言】必须全文简体中文。以下 JSON 的 key 是英文字段名，" +
+        "但你写出来的所有 title/detail/summary/risks/followUps 等字符串值必须是中文。\n\n";
+
+    /// <summary>用户消息后缀：结尾再钉一次。</summary>
+    public const string UserLanguageSuffix =
+        "\n\n【最后强调】只输出简体中文 JSON。禁止英文正文、禁止 markdown 代码块、禁止解释。";
+
+    /// <summary>英文输出检测（字母显著多于汉字）。</summary>
+    public static bool LooksMostlyEnglish(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var letters = 0;
+        var han = 0;
+        foreach (var ch in text)
+        {
+            if (!char.IsLetter(ch)) continue;
+            if (ch >= 0x4e00 && ch <= 0x9fff) han++;
+            else letters++;
+        }
+        return letters > 30 && han < letters / 3;
+    }
 
     private sealed class AiPayload
     {

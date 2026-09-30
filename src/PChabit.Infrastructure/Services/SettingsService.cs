@@ -771,53 +771,57 @@ public class SettingsService : ISettingsService
                 if (loadedSettings != null)
                 {
                     _settings = loadedSettings;
-                    Log.Information("设置已加载");
+                    Log.Information("设置已加载: {Path}", _settingsPath);
+                    return;
                 }
             }
-
-            // 启动时对齐快捷方式：若已开启自启动但快捷方式丢失/路径过期，补写
-            ApplySettings();
+            // 文件不存在：保持默认，但不覆盖已有内存配置
+            Log.Information("设置文件不存在，使用默认: {Path}", _settingsPath);
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "加载设置失败，使用默认设置");
-            _settings = new AppSettings();
+            // 绝不整体清空：解析失败时保留当前 _settings，避免把用户 API 配置刷成默认
+            Log.Error(ex, "加载设置失败，保留当前配置不重置: {Path}", _settingsPath);
         }
     }
-    
+
     public async Task SaveAsync()
     {
         try
         {
             var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(_settingsPath, json);
-            Log.Information("设置已保存");
-            
+            var tmp = _settingsPath + ".tmp";
+            await File.WriteAllTextAsync(tmp, json);
+            File.Move(tmp, _settingsPath, overwrite: true);
+            Log.Information("设置已保存: {Path}", _settingsPath);
+
             ApplySettings();
-            
+
             SettingsChanged?.Invoke(this, new SettingsChangedEventArgs());
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "保存设置失败");
+            Log.Error(ex, "保存设置失败: {Path}", _settingsPath);
         }
     }
-    
+
     public void Save()
     {
         try
         {
             var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_settingsPath, json);
-            Log.Information("设置已保存");
-            
+            var tmp = _settingsPath + ".tmp";
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, _settingsPath, overwrite: true);
+            Log.Information("设置已保存: {Path}", _settingsPath);
+
             ApplySettings();
-            
+
             SettingsChanged?.Invoke(this, new SettingsChangedEventArgs());
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "保存设置失败");
+            Log.Error(ex, "保存设置失败: {Path}", _settingsPath);
         }
     }
     

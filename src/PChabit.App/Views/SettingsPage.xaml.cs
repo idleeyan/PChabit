@@ -271,19 +271,11 @@ public sealed partial class SettingsPage : Page
         AiModelFastBox.TextChanged += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
         AiProviderBox.SelectionChanged += (s, e) =>
         {
-            // 仅用户手动切换预设时填充；加载/编程选中不得覆盖已保存的 URL/模型
             if (_isLoading) return;
+            // 只记录 Provider 名称。禁止在此改写 BaseUrl/Model —— 那是配置被刷回默认的根因
             var tag = (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? AiProviderBox.SelectedItem?.ToString() ?? "zhipu";
             OnSettingChanged("AiProvider", tag);
-            if (Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(tag, true, out var kind))
-            {
-                var p = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
-                AiBaseUrlBox.Text = p.DefaultBaseUrl;
-                AiModelBox.Text = p.DefaultModel;
-                OnSettingChanged("AiBaseUrl", p.DefaultBaseUrl);
-                OnSettingChanged("AiModel", p.DefaultModel);
-            }
         };
         AiTimeoutSecondsBox.ValueChanged += (s, e) => OnSettingChanged("AiTimeoutSeconds", e.NewValue);
         AiStrictPrivacySwitch.Toggled += (s, e) => OnSettingChanged("AiStrictPrivacy", AiStrictPrivacySwitch.IsOn);
@@ -310,6 +302,19 @@ public sealed partial class SettingsPage : Page
             "dual" => "当前：双端点 — 解读云端 · 追问本地（推荐）",
             _ => "当前：云端 — 解读与追问都走云端 API"
         };
+    }
+
+    private void AiFillProviderPreset_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading) return;
+        var tag = (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "zhipu";
+        if (!Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(tag, true, out var kind))
+            return;
+        var p = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
+        AiBaseUrlBox.Text = p.DefaultBaseUrl;
+        AiModelBox.Text = p.DefaultModel;
+        OnSettingChanged("AiBaseUrl", p.DefaultBaseUrl);
+        OnSettingChanged("AiModel", p.DefaultModel);
     }
 
     private void AiCopyTestResult_Click(object sender, RoutedEventArgs e)
@@ -670,18 +675,12 @@ public sealed partial class SettingsPage : Page
         AiLocalBaseUrlBox.Text = ViewModel.AiLocalBaseUrl ?? "";
         AiLocalModelBox.Text = ViewModel.AiLocalModel ?? "";
         var mode = (ViewModel.AiEndpointMode ?? "cloud").ToLowerInvariant();
-        _isLoading = true;
-        try
-        {
-            AiModeCloudRadio.IsChecked = mode == "cloud";
-            AiModeLocalRadio.IsChecked = mode == "local";
-            AiModeDualRadio.IsChecked = mode == "dual";
-            ApplyEndpointModeHint(mode);
-        }
-        finally
-        {
-            _isLoading = false;
-        }
+        // 注意：这里绝不能改 _isLoading，否则外层保护会失效导致 Provider 覆盖配置
+        AiModeCloudRadio.IsChecked = mode == "cloud";
+        AiModeLocalRadio.IsChecked = mode == "local";
+        AiModeDualRadio.IsChecked = mode == "dual";
+        ApplyEndpointModeHint(mode);
+
         AiProviderBox.Items.Clear();
         foreach (var p in PChabit.Infrastructure.Services.AiProviderPresets.All)
             AiProviderBox.Items.Add(new ComboBoxItem { Content = p.Label, Tag = p.Kind.ToString() });

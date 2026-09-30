@@ -303,15 +303,11 @@ public sealed class OpenAiCompatibleChatClient
                 return "";
             var c0 = choices[0];
 
-            // chat: message.content / message.reasoning_content
+            // chat: 只要 content。reasoning_content 多为英文思考过程，不能当正文
             if (c0.TryGetProperty("message", out var msg))
             {
                 var content = ReadString(msg, "content");
                 if (!string.IsNullOrWhiteSpace(content)) return content;
-                var reasoning = ReadString(msg, "reasoning_content");
-                if (!string.IsNullOrWhiteSpace(reasoning)) return reasoning;
-                var reasoning2 = ReadString(msg, "reasoning");
-                if (!string.IsNullOrWhiteSpace(reasoning2)) return reasoning2;
             }
 
             // chat delta style

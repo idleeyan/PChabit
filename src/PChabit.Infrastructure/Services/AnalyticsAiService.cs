@@ -8,19 +8,15 @@ namespace PChabit.Infrastructure.Services;
 public interface IAnalyticsAiService
 {
     bool IsConfigured { get; }
-    /// <summary>当前解析到的端点描述，便于 UI 显示「正在用本地/云端」。</summary>
     string ActiveEndpointLabel { get; }
     Task<string> InterpretAsync(string systemPrompt, string userPayload, CancellationToken ct = default);
     IAsyncEnumerable<string> InterpretStreamAsync(string systemPrompt, string userPayload, CancellationToken ct = default);
-    /// <summary>追问用（双端点模式下优先本地）。</summary>
     Task<string> ChatFastAsync(string systemPrompt, string userPayload, CancellationToken ct = default);
 }
 
 /// <summary>
-/// 分析页「AI 深度解读」。支持本地 LM Studio + 云端双端点：
-/// - cloud：解读/追问都走云端
-/// - local：都走本地
-/// - dual：解读云端优先，追问本地优先
+/// 分析页「AI 深度解读」。支持本地 LM Studio + 云端双端点。
+/// 解读/追问均强制简体中文；偏英文时自动加约束重试。
 /// </summary>
 public sealed class AnalyticsAiService : IAnalyticsAiService
 {
@@ -41,8 +37,7 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         {
             var insight = _client.Resolve(AiEndpointSlot.Auto, isInsight: true);
             var chat = _client.Resolve(AiEndpointSlot.Auto, isInsight: false);
-            var mode = _client.EndpointMode;
-            return mode switch
+            return _client.EndpointMode switch
             {
                 "dual" => $"双端点：解读→{insight.Label} · 追问→{chat.Label}",
                 "local" => $"本地：{insight.Label}",
@@ -51,21 +46,11 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         }
     }
 
-    public async Task<string> InterpretAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
+    public Task<string> InterpretAsync(string systemPrompt, string userPayload, CancellationToken ct = default)
     {
         if (!IsConfigured)
             throw new InvalidOperationException("AI 深度解读未配置或未启用（设置 → 分析 AI）。云端需填 Key；本地端点可留空 Key。");
-
-        return await _client.CompleteAsync(new OpenAiChatRequest
-        {
-            SystemPrompt = systemPrompt,
-            UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
-            Temperature = 0.3,
-            MaxTokens = 2000,
-            PreferJson = true,
-            IsInsight = true,
-            Slot = AiEndpointSlot.Auto
-        }, ct).ConfigureAwait(false);
+        return CompleteChineseAsync(systemPrompt, userPayload, preferJson: true, isInsight: true, ct);
     }
 
     public async IAsyncEnumerable<string> InterpretStreamAsync(
@@ -78,18 +63,11 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
 
         var cfg = _client.Resolve(AiEndpointSlot.Auto, isInsight: true);
 
-        // 本地端点优先非流式：LM Studio 流式解析差异大，容易「跑完为空」
+        // 本地端点优先非流式
         if (cfg.IsLocalHost)
         {
-            var text = await _client.CompleteAsync(new OpenAiChatRequest
-            {
-                SystemPrompt = systemPrompt,
-                UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
-                Temperature = 0.3,
-                MaxTokens = 2000,
-                IsInsight = true,
-                Slot = AiEndpointSlot.Auto
-            }, ct).ConfigureAwait(false);
+            var text = await CompleteChineseAsync(systemPrompt, userPayload, preferJson: true, isInsight: true, ct)
+                .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(text))
                 yield return text;
             yield break;
@@ -98,8 +76,8 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
         await foreach (var chunk in _client.StreamAsync(new OpenAiChatRequest
         {
             SystemPrompt = systemPrompt,
-            UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
-            Temperature = 0.3,
+            UserContent = WrapUser(userPayload),
+            Temperature = 0.2,
             MaxTokens = 2000,
             PreferJson = true,
             Stream = true,
@@ -115,17 +93,49 @@ public sealed class AnalyticsAiService : IAnalyticsAiService
     {
         if (!IsConfigured)
             throw new InvalidOperationException("AI 深度解读未配置或未启用（设置 → 分析 AI）。");
-
         var fast = _settings.AiModelFast;
-        return _client.CompleteAsync(new OpenAiChatRequest
+        return CompleteChineseAsync(systemPrompt, userPayload, preferJson: false, isInsight: false, ct, fast);
+    }
+
+    private static string WrapUser(string payload)
+        => AnalysisReportBuilder.UserLanguagePreamble + payload + AnalysisReportBuilder.UserLanguageSuffix;
+
+    private async Task<string> CompleteChineseAsync(
+        string systemPrompt,
+        string userPayload,
+        bool preferJson,
+        bool isInsight,
+        CancellationToken ct,
+        string? modelOverride = null)
+    {
+        var first = await _client.CompleteAsync(new OpenAiChatRequest
         {
             SystemPrompt = systemPrompt,
-            UserContent = AnalysisReportBuilder.UserLanguagePreamble + userPayload,
-            Temperature = 0.5,
-            MaxTokens = 1200,
-            ModelOverride = string.IsNullOrWhiteSpace(fast) ? null : fast,
-            IsInsight = false,
+            UserContent = WrapUser(userPayload),
+            Temperature = 0.2,
+            MaxTokens = 2000,
+            PreferJson = preferJson,
+            ModelOverride = string.IsNullOrWhiteSpace(modelOverride) ? null : modelOverride,
+            IsInsight = isInsight,
             Slot = AiEndpointSlot.Auto
-        }, ct);
+        }, ct).ConfigureAwait(false);
+
+        if (!AnalysisReportBuilder.LooksMostlyEnglish(first))
+            return first;
+
+        Log.Warning("AI 输出偏英文，中文强制重试");
+        var second = await _client.CompleteAsync(new OpenAiChatRequest
+        {
+            SystemPrompt = "【上次你用了英文，这是错误的】必须只用简体中文，只输出 JSON，禁止英文句子。" + systemPrompt,
+            UserContent = WrapUser(userPayload),
+            Temperature = 0.1,
+            MaxTokens = 2000,
+            PreferJson = preferJson,
+            ModelOverride = string.IsNullOrWhiteSpace(modelOverride) ? null : modelOverride,
+            IsInsight = isInsight,
+            Slot = AiEndpointSlot.Auto
+        }, ct).ConfigureAwait(false);
+
+        return string.IsNullOrWhiteSpace(second) ? first : second;
     }
 }

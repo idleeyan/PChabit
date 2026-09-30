@@ -13,6 +13,14 @@
 - `docs/发布产物语言资源说明.md`：构建输出路径示例由 net9.0 更正为 net10.0
 - `docs/AI深度解读升级计划.md`：双轨升级计划（项目习惯资产 + AI 深度解读）
 
+## [3.22.8] - 2026-09-30
+
+### 修复：设置被刷回智谱默认（根因）
+- **根因**：`LoadSettingsToUI` 内部把 `_isLoading` 提前置 false，随后 `AiProviderBox.SelectedItem` 赋值触发 SelectionChanged，将 Base URL/模型覆盖为智谱预设
+- Provider 下拉**只保存标签**，不再自动改写 URL/模型；需改用「按 Provider 填充默认 URL/模型」按钮（显式覆盖）
+- `SettingsService.Load()` 失败时**不再清空**为默认值；保存改为临时文件原子替换
+- 中文输出：偏英文自动强制重试；不再把 `reasoning_content` 当正文
+
 ## [3.22.7] - 2026-09-30
 
 ### 修复：配置重启被刷回智谱默认 + 测试结果不可复制
