@@ -408,15 +408,50 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         CornerRadius="8"
                         Padding="16,4">
-                        <StackPanel Spacing="8">
+                        <StackPanel Spacing="12">
                             <ToggleSwitch
                                 x:Name="AiInsightsEnabledSwitch"
                                 Header="启用 AI 深度解读"
                                 IsOn="False" />
+
+                            <!-- 端点模式：置顶醒目三选一 -->
+                            <Border
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                BorderThickness="2"
+                                CornerRadius="10"
+                                Padding="14,12">
+                                <StackPanel Spacing="10">
+                                    <TextBlock
+                                        FontSize="15"
+                                        FontWeight="SemiBold"
+                                        Text="端点模式（必选，易被忽略请先设这里）" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="决定「AI 深度解读 / 追问」走哪套接口。本地 = LM Studio；云端 = API Key。"
+                                        TextWrapping="Wrap" />
+                                    <RadioButtons
+                                        x:Name="AiEndpointModeRadio"
+                                        MaxColumns="1">
+                                        <RadioButton x:Name="AiModeCloudRadio" Content="云端 — 解读与追问都走云端 API" />
+                                        <RadioButton x:Name="AiModeLocalRadio" Content="本地 — 都走 LM Studio（可空 Key）" />
+                                        <RadioButton x:Name="AiModeDualRadio" Content="双端点 — 解读云端 · 追问本地（推荐）" />
+                                    </RadioButtons>
+                                    <TextBlock
+                                        x:Name="AiEndpointModeHint"
+                                        FontSize="12"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        Text="当前：云端"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
                             <TextBox
                                 x:Name="AiBaseUrlBox"
-                                Header="Base URL（OpenAI 兼容）"
-                                PlaceholderText="https://api.openai.com/v1 或 http://127.0.0.1:11434/v1"
+                                Header="Base URL（OpenAI 兼容 / 主配置）"
+                                PlaceholderText="https://api.openai.com/v1 或 http://127.0.0.1:1234/v1"
                                 Text="" />
                             <PasswordBox
                                 x:Name="AiApiKeyBox"
@@ -432,18 +467,11 @@
                                 Header="快捷模型（追问，可空=同上）"
                                 PlaceholderText="留空则与解读模型相同"
                                 Text="" />
-                            <ComboBox
-                                x:Name="AiEndpointModeBox"
-                                Header="端点模式"
-                                HorizontalAlignment="Stretch">
-                                <ComboBoxItem Content="云端（单端点）" Tag="cloud" />
-                                <ComboBoxItem Content="本地 LM Studio（单端点）" Tag="local" />
-                                <ComboBoxItem Content="双端点：解读云端 · 追问本地" Tag="dual" />
-                            </ComboBox>
                             <TextBlock
                                 FontSize="12"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="双端点模式下可同时保留本地与云端配置。"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Text="云端槽（双端点/云端模式用）"
                                 TextWrapping="Wrap" />
                             <TextBox
                                 x:Name="AiCloudBaseUrlBox"
@@ -457,6 +485,12 @@
                                 x:Name="AiCloudModelBox"
                                 Header="云端模型（空=用上方主配置）"
                                 Text="" />
+                            <TextBlock
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Text="本地槽（双端点/本地模式用 · LM Studio）"
+                                TextWrapping="Wrap" />
                             <TextBox
                                 x:Name="AiLocalBaseUrlBox"
                                 Header="本地 Base URL（LM Studio）"
@@ -469,7 +503,7 @@
                                 Text="" />
                             <ComboBox
                                 x:Name="AiProviderBox"
-                                Header="Provider"
+                                Header="Provider 预设（填充上方主配置）"
                                 HorizontalAlignment="Stretch"
                                 SelectedItem="智谱" />
                             <NumberBox

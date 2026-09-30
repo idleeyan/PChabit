@@ -287,17 +287,31 @@ public sealed partial class SettingsPage : Page
         AiTimeoutSecondsBox.ValueChanged += (s, e) => OnSettingChanged("AiTimeoutSeconds", e.NewValue);
         AiStrictPrivacySwitch.Toggled += (s, e) => OnSettingChanged("AiStrictPrivacy", AiStrictPrivacySwitch.IsOn);
         AiAutoWeeklyInsightSwitch.Toggled += (s, e) => OnSettingChanged("AiAutoWeeklyInsight", AiAutoWeeklyInsightSwitch.IsOn);
-        AiEndpointModeBox.SelectionChanged += (s, e) =>
-        {
-            if (_isLoading) return;
-            var tag = (AiEndpointModeBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "cloud";
-            OnSettingChanged("AiEndpointMode", tag);
-        };
+        AiModeCloudRadio.Checked += (_, _) => OnEndpointModePicked("cloud");
+        AiModeLocalRadio.Checked += (_, _) => OnEndpointModePicked("local");
+        AiModeDualRadio.Checked += (_, _) => OnEndpointModePicked("dual");
         AiCloudBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiCloudBaseUrl", AiCloudBaseUrlBox.Text);
         AiCloudApiKeyBox.LostFocus += (s, e) => OnSettingChanged("AiCloudApiKey", AiCloudApiKeyBox.Password);
         AiCloudModelBox.LostFocus += (s, e) => OnSettingChanged("AiCloudModel", AiCloudModelBox.Text);
         AiLocalBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiLocalBaseUrl", AiLocalBaseUrlBox.Text);
         AiLocalModelBox.LostFocus += (s, e) => OnSettingChanged("AiLocalModel", AiLocalModelBox.Text);
+    }
+
+    private void OnEndpointModePicked(string mode)
+    {
+        if (_isLoading) return;
+        ApplyEndpointModeHint(mode);
+        OnSettingChanged("AiEndpointMode", mode);
+    }
+
+    private void ApplyEndpointModeHint(string mode)
+    {
+        AiEndpointModeHint.Text = mode switch
+        {
+            "local" => "当前：本地 — 解读与追问都走 LM Studio",
+            "dual" => "当前：双端点 — 解读云端 · 追问本地（推荐）",
+            _ => "当前：云端 — 解读与追问都走云端 API"
+        };
     }
 
     private async void OnViewChangelogClick(object sender, RoutedEventArgs e)
@@ -595,13 +609,18 @@ public sealed partial class SettingsPage : Page
         AiCloudModelBox.Text = ViewModel.AiCloudModel ?? "";
         AiLocalBaseUrlBox.Text = ViewModel.AiLocalBaseUrl ?? "";
         AiLocalModelBox.Text = ViewModel.AiLocalModel ?? "";
-        foreach (var item in AiEndpointModeBox.Items.OfType<ComboBoxItem>())
+        var mode = (ViewModel.AiEndpointMode ?? "cloud").ToLowerInvariant();
+        _isLoading = true;
+        try
         {
-            if (string.Equals(item.Tag?.ToString(), ViewModel.AiEndpointMode, StringComparison.OrdinalIgnoreCase))
-            {
-                AiEndpointModeBox.SelectedItem = item;
-                break;
-            }
+            AiModeCloudRadio.IsChecked = mode == "cloud";
+            AiModeLocalRadio.IsChecked = mode == "local";
+            AiModeDualRadio.IsChecked = mode == "dual";
+            ApplyEndpointModeHint(mode);
+        }
+        finally
+        {
+            _isLoading = false;
         }
         AiProviderBox.Items.Clear();
         foreach (var p in PChabit.Infrastructure.Services.AiProviderPresets.All)
