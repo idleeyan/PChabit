@@ -264,17 +264,18 @@ public sealed partial class SettingsPage : Page
         TaskbarUsageSwitch.Toggled += (s, e) => OnSettingChanged("TaskbarShowUsage", TaskbarUsageSwitch.IsOn);
 
         AiInsightsEnabledSwitch.Toggled += (s, e) => OnSettingChanged("AiInsightsEnabled", AiInsightsEnabledSwitch.IsOn);
-        AiBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiBaseUrl", AiBaseUrlBox.Text);
-        AiApiKeyBox.LostFocus += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Password);
-        AiModelBox.LostFocus += (s, e) => OnSettingChanged("AiModel", AiModelBox.Text);
-        AiModelFastBox.LostFocus += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
+        // 输入即保存（不依赖 LostFocus，避免点按钮时未落盘 → 401）
+        AiBaseUrlBox.TextChanged += (s, e) => OnSettingChanged("AiBaseUrl", AiBaseUrlBox.Text);
+        AiApiKeyBox.PasswordChanged += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Password);
+        AiModelBox.TextChanged += (s, e) => OnSettingChanged("AiModel", AiModelBox.Text);
+        AiModelFastBox.TextChanged += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
         AiProviderBox.SelectionChanged += (s, e) =>
         {
             if (_isLoading) return;
             var tag = (AiProviderBox.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? AiProviderBox.SelectedItem?.ToString() ?? "zhipu";
             OnSettingChanged("AiProvider", tag);
-            // 回填 URL/模型到输入框
+            // 仅一键填空/点预设时覆盖，不无故清掉用户已填地址
             if (Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(tag, true, out var kind))
             {
                 var p = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
@@ -290,11 +291,8 @@ public sealed partial class SettingsPage : Page
         AiModeCloudRadio.Checked += (_, _) => OnEndpointModePicked("cloud");
         AiModeLocalRadio.Checked += (_, _) => OnEndpointModePicked("local");
         AiModeDualRadio.Checked += (_, _) => OnEndpointModePicked("dual");
-        AiCloudBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiCloudBaseUrl", AiCloudBaseUrlBox.Text);
-        AiCloudApiKeyBox.LostFocus += (s, e) => OnSettingChanged("AiCloudApiKey", AiCloudApiKeyBox.Password);
-        AiCloudModelBox.LostFocus += (s, e) => OnSettingChanged("AiCloudModel", AiCloudModelBox.Text);
-        AiLocalBaseUrlBox.LostFocus += (s, e) => OnSettingChanged("AiLocalBaseUrl", AiLocalBaseUrlBox.Text);
-        AiLocalModelBox.LostFocus += (s, e) => OnSettingChanged("AiLocalModel", AiLocalModelBox.Text);
+        AiLocalBaseUrlBox.TextChanged += (s, e) => OnSettingChanged("AiLocalBaseUrl", AiLocalBaseUrlBox.Text);
+        AiLocalModelBox.TextChanged += (s, e) => OnSettingChanged("AiLocalModel", AiLocalModelBox.Text);
     }
 
     private void OnEndpointModePicked(string mode)
@@ -312,6 +310,41 @@ public sealed partial class SettingsPage : Page
             "dual" => "当前：双端点 — 解读云端 · 追问本地（推荐）",
             _ => "当前：云端 — 解读与追问都走云端 API"
         };
+    }
+
+    /// <summary>一键把界面上 AI 字段全部落盘，并探测实际请求端点。</summary>
+    private async void AiTestConnection_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            AiTestResult.Text = "已保存，正在测试…";
+            // 强制把当前控件值写入设置
+            ViewModel.AiBaseUrl = AiBaseUrlBox.Text ?? "";
+            ViewModel.AiApiKey = AiApiKeyBox.Password ?? "";
+            ViewModel.AiModel = AiModelBox.Text ?? "";
+            ViewModel.AiModelFast = AiModelFastBox.Text ?? "";
+            ViewModel.AiLocalBaseUrl = AiLocalBaseUrlBox.Text ?? "";
+            ViewModel.AiLocalModel = AiLocalModelBox.Text ?? "";
+            ViewModel.SaveSetting("AiBaseUrl");
+            ViewModel.SaveSetting("AiApiKey");
+            ViewModel.SaveSetting("AiModel");
+            ViewModel.SaveSetting("AiModelFast");
+            ViewModel.SaveSetting("AiLocalBaseUrl");
+            ViewModel.SaveSetting("AiLocalModel");
+
+            var svc = App.GetService<PChabit.Infrastructure.Services.IAnalyticsAiService>();
+            var cfgInfo = $"云端：{AiBaseUrlBox.Text} · 模型 {AiModelBox.Text} · Key {(string.IsNullOrWhiteSpace(AiApiKeyBox.Password) ? "未填" : $"已填({AiApiKeyBox.Password.Length}字符)")}\n"
+                          + $"本地：{AiLocalBaseUrlBox.Text} · 模型 {AiLocalModelBox.Text}";
+            AiTestResult.Text = cfgInfo + "\n探测中…";
+
+            // 用一段极短 prompt 测试
+            var reply = await svc.ChatFastAsync("请只回复两个字：正常", "ping");
+            AiTestResult.Text = cfgInfo + $"\n✅ 连接成功。模型回复：{reply.Trim()}";
+        }
+        catch (Exception ex)
+        {
+            AiTestResult.Text = $"❌ 测试失败：{ex.Message}";
+        }
     }
 
     private async void OnViewChangelogClick(object sender, RoutedEventArgs e)
@@ -604,9 +637,6 @@ public sealed partial class SettingsPage : Page
         AiApiKeyBox.Password = ViewModel.AiApiKey ?? "";
         AiModelBox.Text = ViewModel.AiModel ?? "";
         AiModelFastBox.Text = ViewModel.AiModelFast ?? "";
-        AiCloudBaseUrlBox.Text = ViewModel.AiCloudBaseUrl ?? "";
-        AiCloudApiKeyBox.Password = ViewModel.AiCloudApiKey ?? "";
-        AiCloudModelBox.Text = ViewModel.AiCloudModel ?? "";
         AiLocalBaseUrlBox.Text = ViewModel.AiLocalBaseUrl ?? "";
         AiLocalModelBox.Text = ViewModel.AiLocalModel ?? "";
         var mode = (ViewModel.AiEndpointMode ?? "cloud").ToLowerInvariant();

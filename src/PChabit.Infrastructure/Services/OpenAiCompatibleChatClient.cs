@@ -44,35 +44,16 @@ public sealed class OpenAiCompatibleChatClient
         "本地");
 
     /// <summary>
-    /// 云端端点。规则：整组生效，禁止「URL/Key/模型」跨主配置与云端槽混搭。
-    /// - 填了独立云端 BaseURL → 必须独立填模型，否则视为未配置（避免 401/串模型）
-    /// - 未填独立云端 BaseURL → 整体用主配置（AiBaseUrl/AiApiKey/AiModel）
+    /// 云端端点 = 主配置三件套（BaseUrl / ApiKey / Model）整组生效。
+    /// 不再维护独立「云端槽」，避免主配置与云端配置混搭导致 401。
     /// </summary>
-    public AiEndpointConfig CloudConfig
-    {
-        get
-        {
-            var url = (_settings.AiCloudBaseUrl ?? "").Trim();
-            if (url.Length > 0)
-            {
-                // 独立云端槽：Key 可回退主 Key（同一服务商常见），模型必须独立
-                var key = !string.IsNullOrWhiteSpace(_settings.AiCloudApiKey)
-                    ? _settings.AiCloudApiKey
-                    : _settings.AiApiKey ?? "";
-                var model = (_settings.AiCloudModel ?? "").Trim();
-                return new AiEndpointConfig(url, key, model, "云端");
-            }
+    public AiEndpointConfig CloudConfig => new(
+        _settings.AiBaseUrl ?? "",
+        _settings.AiApiKey ?? "",
+        _settings.AiModel ?? "",
+        "云端");
 
-            // 无独立云端地址 → 主配置即云端
-            return new AiEndpointConfig(
-                _settings.AiBaseUrl ?? "",
-                _settings.AiApiKey ?? "",
-                _settings.AiModel ?? "",
-                "云端");
-        }
-    }
-
-    /// <summary>主配置与云端槽同义（避免第三套配置）。</summary>
+    /// <summary>与 CloudConfig 同义。</summary>
     public AiEndpointConfig PrimaryConfig => CloudConfig;
 
     public string EndpointMode => string.IsNullOrWhiteSpace(_settings.AiEndpointMode)

@@ -448,67 +448,62 @@
                                 </StackPanel>
                             </Border>
 
+                            <TextBlock
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Text="云端配置（API Key 必填）"
+                                TextWrapping="Wrap" />
                             <TextBox
                                 x:Name="AiBaseUrlBox"
-                                Header="Base URL（OpenAI 兼容 / 主配置）"
-                                PlaceholderText="https://api.openai.com/v1 或 http://127.0.0.1:1234/v1"
+                                Header="云端 Base URL"
+                                PlaceholderText="https://api.deepseek.com 或 https://open.bigmodel.cn/api/paas/v4"
                                 Text="" />
                             <PasswordBox
                                 x:Name="AiApiKeyBox"
-                                Header="API Key"
-                                PlaceholderText="sk-...（本地服务可填任意非空字符）" />
+                                Header="云端 API Key"
+                                PlaceholderText="sk-..." />
                             <TextBox
                                 x:Name="AiModelBox"
-                                Header="模型（解读）"
-                                PlaceholderText="glm-4-flash 或 qwen2.5 等"
+                                Header="云端模型"
+                                PlaceholderText="deepseek-chat / glm-4-flash / gpt-4o-mini"
                                 Text="" />
                             <TextBox
                                 x:Name="AiModelFastBox"
-                                Header="快捷模型（追问，可空=同上）"
-                                PlaceholderText="留空则与解读模型相同"
+                                Header="追问快捷模型（可空=同云端模型）"
+                                PlaceholderText="留空则与云端模型相同"
                                 Text="" />
                             <TextBlock
                                 FontSize="12"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                Text="云端配置（主配置，整组生效）"
-                                TextWrapping="Wrap" />
-                            <TextBlock
-                                FontSize="11"
-                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                Text="未填「云端 Base URL」时，直接用下方 Base URL / Key / 模型；填了独立云端地址则必须单独填模型，避免混搭导致 401。"
-                                TextWrapping="Wrap" />
-                            <TextBox
-                                x:Name="AiCloudBaseUrlBox"
-                                Header="云端 Base URL（可空=用下方主配置）"
-                                PlaceholderText="留空 = 与 Base URL 主配置相同"
-                                Text="" />
-                            <PasswordBox
-                                x:Name="AiCloudApiKeyBox"
-                                Header="云端 API Key（空=用上方主配置）" />
-                            <TextBox
-                                x:Name="AiCloudModelBox"
-                                Header="云端模型（独立 URL 时必填）"
-                                Text="" />
-                            <TextBlock
-                                FontSize="12"
-                                FontWeight="SemiBold"
-                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                Text="本地槽（双端点/本地模式用 · LM Studio）"
+                                Text="本地配置（LM Studio · Key 可空）"
                                 TextWrapping="Wrap" />
                             <TextBox
                                 x:Name="AiLocalBaseUrlBox"
-                                Header="本地 Base URL（LM Studio）"
+                                Header="本地 Base URL"
                                 PlaceholderText="http://127.0.0.1:1234/v1"
                                 Text="" />
                             <TextBox
                                 x:Name="AiLocalModelBox"
                                 Header="本地模型"
-                                PlaceholderText="qwen2.5-7b-instruct 等"
+                                PlaceholderText="与 LM Studio 加载名完全一致"
                                 Text="" />
+
+                            <Button
+                                x:Name="AiTestButton"
+                                HorizontalAlignment="Stretch"
+                                Content="保存并测试连接"
+                                Click="AiTestConnection_Click" />
+                            <TextBlock
+                                x:Name="AiTestResult"
+                                FontSize="12"
+                                TextWrapping="Wrap"
+                                Text="" />
+
                             <ComboBox
                                 x:Name="AiProviderBox"
-                                Header="Provider 预设（填充上方主配置）"
+                                Header="Provider 预设（一键填云端 URL/模型）"
                                 HorizontalAlignment="Stretch"
                                 SelectedItem="智谱" />
                             <NumberBox

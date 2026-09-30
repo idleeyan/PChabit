@@ -410,25 +410,7 @@ public partial class SettingsViewModel : ViewModelBase
                 break;
             case "AiProvider":
                 _settingsService.AiProvider = AiProvider;
-                var preset = PChabit.Infrastructure.Services.AiProviderPresets.All
-                    .FirstOrDefault(p => string.Equals(p.Kind.ToString(), AiProvider, StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(p.Label, AiProvider, StringComparison.Ordinal));
-                // 若通过枚举名匹配
-                if (Enum.TryParse<PChabit.Infrastructure.Services.AiProviderKind>(AiProvider, true, out var kind))
-                    preset = PChabit.Infrastructure.Services.AiProviderPresets.Get(kind);
-                if (preset != null)
-                {
-                    if (string.IsNullOrWhiteSpace(AiBaseUrl) || AiBaseUrl.Contains("bigmodel") || AiBaseUrl.Contains("deepseek") || AiBaseUrl.Contains("1234/v1"))
-                    {
-                        AiBaseUrl = preset.DefaultBaseUrl;
-                        _settingsService.AiBaseUrl = AiBaseUrl;
-                    }
-                    if (string.IsNullOrWhiteSpace(AiModel) || AiModel is "gpt-4o-mini" or "glm-4-flash" or "deepseek-chat" or "local-model")
-                    {
-                        AiModel = preset.DefaultModel;
-                        _settingsService.AiModel = AiModel;
-                    }
-                }
+                // 预设仅用于「一键填充」，这里不再根据 URL 内容自动覆盖用户配置
                 break;
             case "AiTimeoutSeconds":
                 _settingsService.AiTimeoutSeconds = (int)Math.Clamp(AiTimeoutSeconds, 30, 900);

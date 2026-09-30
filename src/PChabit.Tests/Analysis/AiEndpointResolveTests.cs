@@ -97,21 +97,6 @@ public class AiEndpointResolveTests
     }
 
     [Fact]
-    public void CloudOverrides_ReplacePrimary()
-    {
-        var s = new FakeSettings
-        {
-            AiCloudBaseUrl = "https://api.deepseek.com",
-            AiCloudApiKey = "sk-ds",
-            AiCloudModel = "deepseek-chat"
-        };
-        var c = new OpenAiCompatibleChatClient(s);
-        var cloud = c.Resolve(AiEndpointSlot.Cloud, true);
-        cloud.Model.Should().Be("deepseek-chat");
-        cloud.BaseUrl.Should().Contain("deepseek");
-    }
-
-    [Fact]
     public void LocalWithoutKey_IsUsable()
     {
         var cfg = new AiEndpointConfig("http://127.0.0.1:1234/v1", "", "m", "本地");
@@ -157,60 +142,58 @@ public class AiEndpointResolveTests
     }
 
     [Fact]
-    public void CloudSlot_IndependentUrl_RequiresOwnModel()
+    public void CloudConfig_IsPrimaryTripleOnly()
     {
-        // 只填云端 URL、删掉云端模型 → 不得拿主配置模型去凑，避免 401/串模型
+        // 云端 = AiBaseUrl/AiApiKey/AiModel 整组，不再与独立云端槽混搭
         var s = new FakeSettings
         {
-            AiBaseUrl = "https://api.openai.com/v1",
-            AiApiKey = "sk-primary",
-            AiModel = "gpt-4o-mini",
-            AiCloudBaseUrl = "https://api.deepseek.com",
-            AiCloudApiKey = "sk-ds",
-            AiCloudModel = "" // 用户删了云端模型
+            AiBaseUrl = "https://api.deepseek.com",
+            AiApiKey = "sk-ds",
+            AiModel = "deepseek-chat",
+            AiCloudBaseUrl = "https://other.example",
+            AiCloudApiKey = "sk-other",
+            AiCloudModel = "other-model"
         };
         var c = new OpenAiCompatibleChatClient(s);
         var cloud = c.Resolve(AiEndpointSlot.Cloud, true);
-        cloud.IsUsable.Should().BeFalse(); // 缺模型
-        cloud.Model.Should().Be("");
-    }
-
-    [Fact]
-    public void CloudSlot_NoIndependentUrl_UsesPrimaryGroup()
-    {
-        var s = new FakeSettings
-        {
-            AiBaseUrl = "https://api.openai.com/v1",
-            AiApiKey = "sk-primary",
-            AiModel = "gpt-4o-mini",
-            AiCloudBaseUrl = "",
-            AiCloudModel = ""
-        };
-        var c = new OpenAiCompatibleChatClient(s);
-        var cloud = c.Resolve(AiEndpointSlot.Cloud, true);
+        cloud.BaseUrl.Should().Contain("deepseek");
+        cloud.Model.Should().Be("deepseek-chat");
+        cloud.ApiKey.Should().Be("sk-ds");
         cloud.IsUsable.Should().BeTrue();
-        cloud.Model.Should().Be("gpt-4o-mini");
-        cloud.ApiKey.Should().Be("sk-primary");
     }
 
     [Fact]
-    public void Dual_CloudIncomplete_FallsBackLocal_Not401()
+    public void CloudMissingModel_NotUsable_LocalFallback()
     {
         var s = new FakeSettings
         {
             AiEndpointMode = "dual",
-            AiBaseUrl = "",
-            AiApiKey = "",
-            AiModel = "",
-            AiCloudBaseUrl = "https://api.deepseek.com",
-            AiCloudApiKey = "",
-            AiCloudModel = "",
+            AiBaseUrl = "https://api.deepseek.com",
+            AiApiKey = "sk-ds",
+            AiModel = "", // 模型被删
             AiLocalBaseUrl = "http://127.0.0.1:1234/v1",
             AiLocalModel = "qwen"
         };
         var c = new OpenAiCompatibleChatClient(s);
-        var insight = c.Resolve(AiEndpointSlot.Auto, true);
-        insight.Label.Should().Be("本地");
-        insight.IsUsable.Should().BeTrue();
+        c.Resolve(AiEndpointSlot.Cloud, true).IsUsable.Should().BeFalse();
+        var auto = c.Resolve(AiEndpointSlot.Auto, true);
+        auto.Label.Should().Be("本地");
+    }
+
+    [Fact]
+    public void DualMode_InsightUsesCloud_FollowUpUsesLocal_V2()
+    {
+        var s = new FakeSettings
+        {
+            AiEndpointMode = "dual",
+            AiBaseUrl = "https://api.openai.com/v1",
+            AiApiKey = "sk-primary",
+            AiModel = "gpt-4o-mini",
+            AiLocalBaseUrl = "http://127.0.0.1:1234/v1",
+            AiLocalModel = "qwen2.5-7b"
+        };
+        var c = new OpenAiCompatibleChatClient(s);
+        c.Resolve(AiEndpointSlot.Auto, true).Label.Should().Be("云端");
+        c.Resolve(AiEndpointSlot.Auto, false).Label.Should().Be("本地");
     }
 }
