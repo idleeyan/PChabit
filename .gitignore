@@ -29,6 +29,9 @@ bld/
 # Workbuddy (local AI assistant data)
 .workbuddy/
 
+# AI 维护文档（智能体记忆，仅本地使用，不公开）
+AI_MAINTENANCE.md
+
 # Internal documentation (not for public)
 docs/
 
