@@ -60,6 +60,8 @@
 | SQLite WAL 锁冲突（#5） | 卡顿、并发异常 | 启用 WAL；退出时 checkpoint 需异步，避免阻塞关闭 |
 | **文本文件双重编码（#26）** | 中文变「鏇存柊鏃ュ織」 | 根因是 GBK↔UTF-8 有损转换（字节被替换为 `?`、PUA 字符混入），**机器不可逆**，只能按语义重写 |
 | 版本号遗漏 | 用户装了旧版找不到新功能 | 改代码即改 `<Version>`，且版本号显示在 UI 上 |
+| **sln 级 dotnet publish 混入测试产物（#28）** | 发布目录出现 BuildHost/CodeCoverage/TestPlatform 多语言，文件数 700+ | 发布必须指定 `PChabit.App.csproj` 路径；发布后查关键文件：e_sqlite3.dll、Assets\*.png（13 个）、FileVersion、文件数（基线 467） |
+| **e_sqlite3/Assets png 未进 publish（#28）** | 指定项目发布后启动数据全空（缺 e_sqlite3）；图标缺失 | csproj `CopySqliteAndAssetsToPublish`（AfterTargets=Publish）已补；手动复制到 bin 的原生库 publish 不会自动带 |
 
 ---
 
@@ -67,6 +69,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-10-03 | 3.26.2 | **发布流程修复 + 重新打包部署**：发现 sln 级 `dotnet publish` 把 PChabit.Tests 的测试平台文件（BuildHost-net472/netcore、CodeCoverage、TestPlatform 多语言 satellite）混入产物（722 文件）；指定 App 项目发布后 e_sqlite3.dll 与 Assets\*.png 又缺失（CopyNativeSqliteToOutput 只复制到 bin、png Content 未设 CopyToOutputDirectory）。修复：发布命令改指定 csproj 路径 + csproj 新增 `CopySqliteAndAssetsToPublish`（AfterTargets=Publish，补 e_sqlite3/png、清 BuildHost），产物 467 文件。robocopy /MIR（/XD WebView2）部署 D:\Tool\PChabit，PURGE 清掉历史 BuildHost 46 文件。冒烟：进程存活 85 线程、热键/便签/数据库迁移/仪表盘/桌面+任务栏小组件全绿，12:17 后日志 0 ERR 0 WRN（旧实例「批量落库失败」ERR 消失，3.26.2 修复生效）。陷阱 28 新增 |
 | 2026-10-03 | — | **补提交 3.23.0–3.26.2 到 GitHub**：一次提交 `31f5c18`（43 文件，+7218/−405）覆盖桌面悬浮插件、便签系统、仪表盘升级与 3.26.1/3.26.2 修复；`git push` 直接成功，远端 master 与本地同步（此前文档误判「需 PAT」，实际本机凭据可用）。推送前 Release 编译 0 错误 |
 | 2026-10-03 | 3.26.2 | 修 `WebSessions.Id` UNIQUE 冲突（长期静默丢数据）：`EnqueueSaveWebSession` 无条件 Add，与周期落库的 `FindAsync`+更新路径冲突——同一会话（同一 Id）先入队 Add、再被周期落库 Add，两条操作落在同批次共用一个 `DbContext` 时对同一 Id 执行两次 INSERT。改为先查后插/更新；并给 `ProcessDataAsync` 加**逐条隔离重试**（原实现下一条脏数据会丢整批最多 50 条） |
 | 2026-10-03 | 3.26.1 | 修「仪表盘与应用统计页分类不同步」（3.25.0 引入的回归）：仪表盘用 `AppCategoryResolver` 硬编码映射，绕过了 `ProgramCategoryMappings`（198 条用户可自定义）。改为与应用统计页**同源**——同一张映射表 + 复用 `AppStatsEngine.BuildCategoryMap`/`NormalizeProcessName`/`DefaultColorFor`，解析优先级完全一致（映射表 → `AppSession.Category` → 未分类）；分类配色也统一取自 `ProgramCategories.Color`，不再用硬编码色板。验证：`MuMuNxDevice.exe`→娱乐、`QwenWorkCN.exe`→AI 助手，与应用统计页一致 |

@@ -195,6 +195,27 @@
         <Message Text="閻庣懓鎲¤ぐ鍐囬弻銉ョ?e_sqlite3.dll 闂?$(SqliteNativeDestDir)" Importance="normal" Condition="'@(_SqliteNativeCandidate)' != ''" />
     </Target>
 
+    <!--
+        Publish 后处理（2026-10-03 新增）：
+        1) e_sqlite3.dll：CopyNativeSqliteToOutput 只复制到 bin，publish 不自动带
+           （deps.json 无 runtimeTargets 声明），缺它则启动后所有页面数据为空（陷阱 11）
+        2) Assets\*.png：图标被 pri 引用，SOP 2 要求发布产物齐全；bin 有而 publish 缺，补复制
+        3) BuildHost-net472/netcore：bin 历史遗留的 Roslyn 测试宿主，与运行无关，从发布目录清理
+    -->
+    <Target Name="CopySqliteAndAssetsToPublish" AfterTargets="Publish">
+        <PropertyGroup>
+            <_NativeSqliteSrc>$(OutDir)runtimes\win-x64\native\e_sqlite3.dll</_NativeSqliteSrc>
+        </PropertyGroup>
+        <Copy SourceFiles="$(_NativeSqliteSrc)" DestinationFolder="$(PublishDir)runtimes\win-x64\native\" SkipUnchangedFiles="true" Condition="Exists('$(_NativeSqliteSrc)')" />
+        <ItemGroup>
+            <_AssetPngForPublish Include="$(OutDir)Assets\*.png" />
+        </ItemGroup>
+        <Copy SourceFiles="@(_AssetPngForPublish)" DestinationFolder="$(PublishDir)Assets\" SkipUnchangedFiles="true" Condition="'@(_AssetPngForPublish)' != ''" />
+        <RemoveDir Directories="$(PublishDir)BuildHost-net472" Condition="Exists('$(PublishDir)BuildHost-net472')" />
+        <RemoveDir Directories="$(PublishDir)BuildHost-netcore" Condition="Exists('$(PublishDir)BuildHost-netcore')" />
+        <Message Text="[PCH-PUB] e_sqlite3.dll 与 Assets png 已补齐到发布目录，BuildHost 已清理" Importance="high" />
+    </Target>
+
     <ItemGroup>
         <ProjectReference Include="..\PChabit.Application\PChabit.Application.csproj" />
         <ProjectReference Include="..\PChabit.Infrastructure\PChabit.Infrastructure.csproj" />

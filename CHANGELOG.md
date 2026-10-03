@@ -10,6 +10,7 @@
 
 ### 杂项
 - 清理根目录遗留的 `PChabit.exe_20261002_095322.nettrace` 诊断转储，并将 `*.nettrace` 加入 `.gitignore`（该类文件会在项目根反复生成）
+- **发布流程修复**（陷阱 28）：`dotnet publish` 必须指定 `PChabit.App.csproj` 路径——sln 级发布会把 PChabit.Tests 的测试平台文件（BuildHost/CodeCoverage/多语言 satellite）混入产物（文件数 410→700+）；csproj 新增 `CopySqliteAndAssetsToPublish`（AfterTargets=Publish）补齐 `e_sqlite3.dll` 与 `Assets\*.png`（publish 不自动带）并清理 BuildHost。发布基线：467 文件 / e_sqlite3 在 / 13 png 齐全。版本仍 3.26.2（仅发布配置修复，无运行逻辑变更）
 
 ### 已知问题
 - `CHANGELOG.md` 中 **3.21.1 及更早**（约 100 个版本、309 行）仍存双重编码残留。根因是历史上的 GBK 与 UTF-8 转换经过有损环节：部分字节被替换为 `?`，私用区字符（U+E000–U+F8FF）混入，字节信息已丢失，**机器无法逆转**（`gb18030` 往返后仍解不出合法 UTF-8）。
