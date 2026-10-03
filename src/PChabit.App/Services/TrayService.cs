@@ -24,6 +24,12 @@ public class TrayService : IDisposable
 
     public event EventHandler? ExitRequested;
 
+    /// <summary>3.24.0：托盘「新建便签」。</summary>
+    public event EventHandler? NewNoteRequested;
+
+    /// <summary>3.24.0：托盘「便签列表」。</summary>
+    public event EventHandler? ShowNotesRequested;
+
     public bool IsMinimizedToTray { get; private set; }
     
     private const int WM_USER = 0x0400;
@@ -373,6 +379,8 @@ public class TrayService : IDisposable
         var menu = CreatePopupMenu();
         
         AppendMenu(menu, MF_STRING, 1, "显示窗口");
+        AppendMenu(menu, MF_STRING, 3, "新建便签");
+        AppendMenu(menu, MF_STRING, 4, "便签列表");
         AppendMenu(menu, MF_SEPARATOR, 0, "");
         AppendMenu(menu, MF_STRING, 2, "退出");
         
@@ -393,6 +401,14 @@ public class TrayService : IDisposable
             {
                 case 1:
                     RestoreWindow();
+                    break;
+                case 3:
+                    Log.Information("托盘菜单点击: 新建便签");
+                    NewNoteRequested?.Invoke(this, EventArgs.Empty);
+                    break;
+                case 4:
+                    RestoreWindow();
+                    ShowNotesRequested?.Invoke(this, EventArgs.Empty);
                     break;
                 case 2:
                     Log.Information("托盘菜单点击: 退出");

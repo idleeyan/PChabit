@@ -93,6 +93,14 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
+                <NavigationViewItem
+                    Content="便签"
+                    Tag="Notes">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xED15;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+
                 <!-- 分析 -->
                 <NavigationViewItem
                     Content="分析"

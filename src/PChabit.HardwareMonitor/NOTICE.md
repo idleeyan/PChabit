@@ -39,3 +39,11 @@ SOFTWARE.
 - `TrafficLogger` 相关调用已移除（v1 不采集每日流量历史）。
 
 任何对本模块的再分发须保留本声明。
+
+---
+
+**补充（UI 行为归因）**：`PChabit.App` 中的 `Services\TaskbarWidget.cs`（3.9.x）与
+`Services\DesktopWidget.cs`（3.23.0，桌面硬件信息悬浮窗：置顶维护、鼠标穿透、手动拖拽、
+位置/屏幕记忆、显示变更防抖等）的**行为规格同样照抄 LiteMonitor 的 UI 层**
+（TaskbarStrategyWin11 / TaskbarRenderer / MainForm_Transparent / MainFormBizHelper / MainFormWinHelper），
+技术实现为纯 Win32 + GDI 重写（未复制上游 WinForms 代码）。LiteMonitor 的 MIT 许可与版权声明同上。

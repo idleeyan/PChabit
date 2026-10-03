@@ -63,10 +63,32 @@ public partial class DataCollectionService : IDisposable
 
     private void EnqueueSaveWebSession(WebSession session)
     {
-        EnqueueOperation(dbContext =>
+        EnqueueOperation(async dbContext =>
         {
-            dbContext.WebSessions.Add(session);
-            return Task.CompletedTask;
+            // 3.26.2 修复：原先无条件 Add，但周期落库
+            // （SaveActiveWebSessionsPeriodicallyAsync）可能已把同一 Id 的行写入库，
+            // 且两个操作会落在同一批次共用一个 DbContext。
+            // 于是 SaveChanges 时同一 Id 被 INSERT 两次 → UNIQUE constraint failed: WebSessions.Id。
+            // 改为「先查后插/更新」，与周期落库路径保持一致。
+            var existing = await dbContext.WebSessions.FindAsync(session.Id);
+            if (existing == null)
+            {
+                dbContext.WebSessions.Add(session);
+            }
+            else
+            {
+                // 行已存在：只更新可变字段，避免重复插入
+                existing.EndTime = session.EndTime;
+                existing.Duration = session.Duration;
+                existing.ActiveDuration = session.ActiveDuration;
+                existing.IdleDuration = session.IdleDuration;
+                existing.ScrollDepth = session.ScrollDepth;
+                existing.ClickCount = session.ClickCount;
+                existing.HasFormInteraction = session.HasFormInteraction;
+                existing.IsActiveTab = session.IsActiveTab;
+                existing.Title = session.Title;
+                existing.Favicon = session.Favicon;
+            }
         }, $"保存网页会话 {session.Domain}");
     }
 

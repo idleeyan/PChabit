@@ -73,6 +73,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     private TrayService? _trayService;
     private Microsoft.UI.Xaml.DispatcherTimer? _trayDisplayTimer;
     private TaskbarWidget? _taskbarWidget;
+    // 桌面悬浮插件字段/驱动见 App.DesktopWidget.cs（3.23.0 分部类拆分）
     private double _todayActiveMinutes;
     private DateTime _todayUsageCacheTime = DateTime.MinValue;
     private bool _isExiting;
@@ -365,6 +366,7 @@ public partial class App : Microsoft.UI.Xaml.Application
             _window!.DispatcherQueue.TryEnqueue(() =>
             {
                 InitializeTrayService();
+                InitializeStickyNotes();
                 StartMonitoring();
             });
 
@@ -562,8 +564,9 @@ public partial class App : Microsoft.UI.Xaml.Application
             Log.Information("进程网络流量监视已启动");
 
             // 进程 CPU/内存/磁盘/GPU 占用（硬件卡片最大占用进程）
-            _serviceProvider!.GetRequiredService<PChabit.HardwareMonitor.Hardware.ProcessResourceMonitor>().Start();
-            Log.Information("进程资源占用监视已启动");
+            // 3.24.0 性能优化：不再随程序启动常驻（PDH GPU 计数器每轮约 0.18 核），
+            // 改为硬件监控页打开时 Start、离开页面 Stop（见 HardwareMonitorViewModel）。
+            Log.Information("进程资源占用监视：按需启动（硬件监控页）");
 
             // 网络流量历史落库（独立统计页数据源）
             _serviceProvider!.GetRequiredService<NetworkTrafficPersistenceService>().Start();
@@ -574,6 +577,7 @@ public partial class App : Microsoft.UI.Xaml.Application
             _hardwareSampleWriter.Start();
 
             StartTrayDisplayTimer();
+            StartDesktopWidgetTimer();
 
         }
         catch (Exception ex)
@@ -686,6 +690,8 @@ public partial class App : Microsoft.UI.Xaml.Application
 
         return (row1, row2);
     }
+
+    // 桌面硬件悬浮插件（3.23.0）驱动已拆分至 App.DesktopWidget.cs
 
     private static TaskbarMetricColor LoadColor(float? v) =>
         v.HasValue && !float.IsNaN(v.Value)
@@ -898,6 +904,8 @@ public partial class App : Microsoft.UI.Xaml.Application
                 _trayDisplayTimer = null;
                 _taskbarWidget?.Dispose();
                 _taskbarWidget = null;
+
+                StopDesktopWidgetTimer();
             }
             catch (Exception ex)
             {
@@ -915,8 +923,12 @@ public partial class App : Microsoft.UI.Xaml.Application
 
             try
             {
+                StopStickyNotes();
             }
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "停止便签热键/同步失败");
+            }
         }
         catch (Exception ex)
         {
@@ -941,6 +953,8 @@ public partial class App : Microsoft.UI.Xaml.Application
             {
                 try
                 {
+                    // 悬浮窗由 UI 线程创建，DestroyWindow 必须同线程（步骤 2 已停 1s 定时器）
+                    DisposeDesktopWidgetOnUiThread();
                     _window.Close();
                     Log.Information("窗口已关闭");
                 }

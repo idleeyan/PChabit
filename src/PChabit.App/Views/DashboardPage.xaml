@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <Page
     x:Class="PChabit.App.Views.DashboardPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -10,259 +10,506 @@
     Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
     mc:Ignorable="d">
 
+    <Page.Resources>
+        <!-- 卡片悬停：用 VisualState 而非代码-behind 硬写资源键，主题切换不再闪白 -->
+        <Style x:Key="HoverableCardStyle" TargetType="Border" BasedOn="{StaticResource StatCardStyle}">
+            <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+    </Page.Resources>
+
     <ScrollViewer Padding="24">
-        <StackPanel Spacing="24">
-            
-            <!-- 页面标题 -->
+        <StackPanel Spacing="20">
+
+            <!-- ============ 页面标题 ============ -->
             <TextBlock
                 Style="{StaticResource PageTitleStyle}"
                 Text="仪表盘" />
-            
-            <!-- ======================================== -->
-            <!-- 统计卡片区域                                -->
-            <!-- ======================================== -->
-            <Grid ColumnSpacing="20" RowSpacing="20">
+
+            <!-- ============ 状态条：效率总分 + 基线偏离 + 数据截止时刻 ============ -->
+            <Border Style="{StaticResource CardStyle}">
+                <Grid ColumnSpacing="20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 效率总分（大数字） -->
+                    <StackPanel Spacing="2" VerticalAlignment="Center">
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="今日效率评分" />
+                        <TextBlock
+                            FontSize="34"
+                            FontWeight="SemiBold"
+                            Foreground="{StaticResource PrimaryBrush}"
+                            Text="{x:Bind ViewModel.EfficiencyScore, Mode=OneWay, FallbackValue=0}" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.EfficiencyLevel, Mode=OneWay}" />
+                    </StackPanel>
+
+                    <Rectangle
+                        Grid.Column="1"
+                        Width="1"
+                        Margin="0,4"
+                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                    <!-- 中部：基线偏离 + 专注/切换/首末活跃 -->
+                    <StackPanel Grid.Column="2" Spacing="10" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.DeviationText, Mode=OneWay}" />
+                        </StackPanel>
+
+                        <!-- 专注 / 切换 / 首末活跃：来自 DailySummary 扩展字段 -->
+                        <StackPanel Orientation="Horizontal" Spacing="18">
+                            <StackPanel Spacing="1">
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="专注" />
+                                <TextBlock
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind ViewModel.FocusMinutesText, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="1">
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="应用切换" />
+                                <TextBlock
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind ViewModel.AppSwitchesText, Mode=OneWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="1">
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="活跃时段" />
+                                <TextBlock
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind ViewModel.ActiveWindowText, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="{x:Bind ViewModel.DataAsOfText, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ============ 空态：没有任何今日数据 ============ -->
+            <Border
+                x:Name="EmptyStateCard"
+                Style="{StaticResource CardStyle}"
+                Visibility="Collapsed">
+                <StackPanel Spacing="8" Padding="8">
+                    <FontIcon
+                        FontSize="28"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Glyph="&#xE721;" />
+                    <TextBlock
+                        FontSize="15"
+                        FontWeight="SemiBold"
+                        Text="今天还没有活动数据" />
+                    <TextBlock
+                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="开始使用电脑后，数据会自动出现在这里。建议在设置里确认「自动开始监控」已开启。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 今日速览（AI 或规则）+ 画像摘要 ============ -->
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="10">
+                    <Grid>
+                        <TextBlock
+                            FontSize="15"
+                            FontWeight="SemiBold"
+                            Text="今日速览" />
+                        <!-- 来源标签：让用户知道这段话是 AI 生成还是本地规则算的 -->
+                        <Border
+                            HorizontalAlignment="Right"
+                            Padding="8,2"
+                            Background="{ThemeResource LayerFillColorAltBrush}"
+                            CornerRadius="4"
+                            Visibility="{x:Bind ViewModel.HasSummarySource, Mode=OneWay}">
+                            <TextBlock
+                                FontSize="11"
+                                Text="{x:Bind ViewModel.SummarySource, Mode=OneWay}" />
+                        </Border>
+                    </Grid>
+
+                    <TextBlock
+                        FontSize="13"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.TodaySummary, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+
+                    <!-- 画像摘要：时型 + 今日活跃时段（数据不足时自动隐藏） -->
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Text="{x:Bind ViewModel.ProfileSummary, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.HasProfileSummary, Mode=OneWay}" />
+
+                    <ProgressRing
+                        Width="16"
+                        Height="16"
+                        HorizontalAlignment="Left"
+                        IsActive="{x:Bind ViewModel.IsSummaryLoading, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsSummaryLoading, Mode=OneWay}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 当前活动（3.28.0 实时） ============ -->
+            <Border
+                Style="{StaticResource CardStyle}"
+                Visibility="{x:Bind ViewModel.HasCurrentApp, Mode=OneWay}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border
+                        Width="32"
+                        Height="32"
+                        Background="{StaticResource SuccessSoftBrush}"
+                        CornerRadius="6">
+                        <Image
+                            Width="20"
+                            Height="20"
+                            Source="{x:Bind ViewModel.CurrentAppIcon, Mode=OneWay}"
+                            Stretch="Uniform" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="正在使用" />
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="{x:Bind ViewModel.CurrentAppSince, Mode=OneWay}" />
+                    </StackPanel>
+
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        FontSize="15"
+                        FontWeight="SemiBold"
+                        Text="{x:Bind ViewModel.CurrentAppName, Mode=OneWay}" />
+
+                    <!-- 实时刷新标识 -->
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="实时" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ============ 统计卡片（4 张，全部可点 + 键盘可达） ============ -->
+            <Grid ColumnSpacing="16" RowSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                
-                <!-- 卡片1: 今日活动时间 -->
+
+                <!-- 卡片1: 今日活动时间（3.25.1 补上点击，3.29.0 补上键盘可达） -->
                 <Border
+                    x:Name="ActiveTimeCard"
                     Grid.Column="0"
-                    Style="{StaticResource StatCardStyle}"
-                    PointerEntered="StatCard_PointerEntered"
-                    PointerExited="StatCard_PointerExited">
-                    <StackPanel Spacing="12">
-                        <Border Width="40" Height="40" Background="{StaticResource PrimarySoftBrush}" CornerRadius="8">
-                            <FontIcon FontSize="18" Foreground="{StaticResource PrimaryBrush}" Glyph="&#xE121;" />
-                        </Border>
+                    Style="{StaticResource HoverableCardStyle}"
+                    Tapped="ActiveTimeCard_Click"
+                    KeyDown="Card_KeyDown"
+                    IsTabStop="True"
+                    UseSystemFocusVisuals="True"
+                    ToolTipService.ToolTip="查看今日时间线">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <Border Width="36" Height="36" Background="{StaticResource PrimarySoftBrush}"
+                                    CornerRadius="8" HorizontalAlignment="Left">
+                                <FontIcon FontSize="16" Foreground="{StaticResource PrimaryBrush}" Glyph="&#xE121;" />
+                            </Border>
+                        </Grid>
                         <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="今日活动时间" />
                         <TextBlock Style="{StaticResource ValueTextStyle}" Text="{x:Bind ViewModel.TodayActiveTime, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="4"
+                                    Visibility="{x:Bind ViewModel.ActiveCompare.IsVisible, Mode=OneWay}">
+                            <FontIcon
+                                FontSize="10"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="{x:Bind ViewModel.ActiveCompare.Glyph, Mode=OneWay}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.ActiveCompare.Text, Mode=OneWay}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
-                
+
                 <!-- 卡片2: 键盘按键 -->
                 <Border
+                    x:Name="KeyboardCard"
                     Grid.Column="1"
-                    Style="{StaticResource StatCardStyle}"
-                    PointerEntered="StatCard_PointerEntered"
-                    PointerExited="StatCard_PointerExited"
-                    Tapped="KeyboardCard_Click">
-                    <StackPanel Spacing="12">
-                        <Border Width="40" Height="40" Background="{StaticResource SuccessSoftBrush}" CornerRadius="8">
-                            <FontIcon FontSize="18" Foreground="{StaticResource SuccessBrush}" Glyph="&#xE8D1;" />
-                        </Border>
+                    Style="{StaticResource HoverableCardStyle}"
+                    Tapped="KeyboardCard_Click"
+                    KeyDown="Card_KeyDown"
+                    IsTabStop="True"
+                    UseSystemFocusVisuals="True"
+                    ToolTipService.ToolTip="查看键鼠详情">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <Border Width="36" Height="36" Background="{StaticResource SuccessSoftBrush}"
+                                    CornerRadius="8" HorizontalAlignment="Left">
+                                <FontIcon FontSize="16" Foreground="{StaticResource SuccessBrush}" Glyph="&#xE8D1;" />
+                            </Border>
+                        </Grid>
                         <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="键盘按键" />
                         <TextBlock Style="{StaticResource ValueTextStyle}" Text="{x:Bind ViewModel.TodayKeyPresses, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="4"
+                                    Visibility="{x:Bind ViewModel.KeysCompare.IsVisible, Mode=OneWay}">
+                            <FontIcon
+                                FontSize="10"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="{x:Bind ViewModel.KeysCompare.Glyph, Mode=OneWay}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.KeysCompare.Text, Mode=OneWay}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
-                
+
                 <!-- 卡片3: 鼠标点击 -->
                 <Border
+                    x:Name="MouseCard"
                     Grid.Column="2"
-                    Style="{StaticResource StatCardStyle}"
-                    PointerEntered="StatCard_PointerEntered"
-                    PointerExited="StatCard_PointerExited"
-                    Tapped="MouseCard_Click">
-                    <StackPanel Spacing="12">
-                        <Border Width="40" Height="40" Background="{StaticResource WarningSoftBrush}" CornerRadius="8">
-                            <FontIcon FontSize="18" Foreground="{StaticResource WarningBrush}" Glyph="&#xE92E;" />
-                        </Border>
+                    Style="{StaticResource HoverableCardStyle}"
+                    Tapped="MouseCard_Click"
+                    KeyDown="Card_KeyDown"
+                    IsTabStop="True"
+                    UseSystemFocusVisuals="True"
+                    ToolTipService.ToolTip="查看键鼠详情">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <Border Width="36" Height="36" Background="{StaticResource WarningSoftBrush}"
+                                    CornerRadius="8" HorizontalAlignment="Left">
+                                <FontIcon FontSize="16" Foreground="{StaticResource WarningBrush}" Glyph="&#xE92E;" />
+                            </Border>
+                        </Grid>
                         <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="鼠标点击" />
                         <TextBlock Style="{StaticResource ValueTextStyle}" Text="{x:Bind ViewModel.TodayMouseClicks, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="4"
+                                    Visibility="{x:Bind ViewModel.ClicksCompare.IsVisible, Mode=OneWay}">
+                            <FontIcon
+                                FontSize="10"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="{x:Bind ViewModel.ClicksCompare.Glyph, Mode=OneWay}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.ClicksCompare.Text, Mode=OneWay}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
-                
+
                 <!-- 卡片4: 网页访问 -->
                 <Border
+                    x:Name="WebCard"
                     Grid.Column="3"
-                    Style="{StaticResource StatCardStyle}"
-                    PointerEntered="StatCard_PointerEntered"
-                    PointerExited="StatCard_PointerExited"
-                    Tapped="WebCard_Click">
-                    <StackPanel Spacing="12">
-                        <Border Width="40" Height="40" Background="{StaticResource InsightSoftBrush}" CornerRadius="8">
-                            <FontIcon FontSize="18" Foreground="{StaticResource InsightBrush}" Glyph="&#xE774;" />
-                        </Border>
+                    Style="{StaticResource HoverableCardStyle}"
+                    Tapped="WebCard_Click"
+                    KeyDown="Card_KeyDown"
+                    IsTabStop="True"
+                    UseSystemFocusVisuals="True"
+                    ToolTipService.ToolTip="查看网页访问详情">
+                    <StackPanel Spacing="10">
+                        <Grid>
+                            <Border Width="36" Height="36" Background="{StaticResource InsightSoftBrush}"
+                                    CornerRadius="8" HorizontalAlignment="Left">
+                                <FontIcon FontSize="16" Foreground="{StaticResource InsightBrush}" Glyph="&#xE774;" />
+                            </Border>
+                        </Grid>
                         <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="网页访问" />
                         <TextBlock Style="{StaticResource ValueTextStyle}" Text="{x:Bind ViewModel.TodayWebPages, Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="4"
+                                    Visibility="{x:Bind ViewModel.WebCompare.IsVisible, Mode=OneWay}">
+                            <FontIcon
+                                FontSize="10"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="{x:Bind ViewModel.WebCompare.Glyph, Mode=OneWay}" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind ViewModel.WebCompare.Text, Mode=OneWay}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>
-            
-            <!-- ======================================== -->
-            <!-- 中间区域：最常使用 + 活动分布                 -->
-            <!-- ======================================== -->
-            <Grid ColumnSpacing="20">
+
+            <!-- ============ 中部：最常使用的应用 + 分类分布 ============ -->
+            <Grid ColumnSpacing="16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                
+
                 <!-- 最常使用的应用 -->
                 <Border Style="{StaticResource CardStyle}">
-                    <StackPanel Spacing="16">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="最常使用的应用" />
+                    <StackPanel Spacing="14">
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="最常使用的应用" />
                         <Grid ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <Border
-                                Width="48"
-                                Height="48"
+                                Width="44"
+                                Height="44"
                                 Background="{StaticResource PrimarySoftBrush}"
                                 CornerRadius="8">
                                 <Image
-                                    Width="32"
-                                    Height="32"
+                                    Width="28"
+                                    Height="28"
                                     Source="{x:Bind ViewModel.MostUsedAppIcon, Mode=OneWay}"
                                     Stretch="Uniform" />
                             </Border>
-                            <StackPanel
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Spacing="4">
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
                                 <TextBlock
                                     FontWeight="SemiBold"
                                     FontSize="14"
                                     Text="{x:Bind ViewModel.MostUsedApp, Mode=OneWay}" />
                             </StackPanel>
                         </Grid>
+
+                        <!-- 分类分布（3.25.1 补上——此前 ViewModel 算好了但 XAML 从未绑定） -->
+                        <StackPanel Spacing="8" x:Name="CategoryPanel">
+                            <TextBlock
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="分类分布" />
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.CategoryDistribution, Mode=OneWay}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="viewModel:CategoryDistributionItem">
+                                        <Grid Margin="0,3" ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="44" />
+                                                <ColumnDefinition Width="36" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                Text="{x:Bind Name}" />
+                                            <ProgressBar
+                                                Grid.Column="1"
+                                                Height="6"
+                                                VerticalAlignment="Center"
+                                                Maximum="100"
+                                                Value="{x:Bind PercentageValue, Mode=OneWay}"
+                                                Foreground="{x:Bind Color}"
+                                                BorderThickness="0" />
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center"
+                                                FontSize="12"
+                                                FontWeight="SemiBold"
+                                                Text="{x:Bind Percentage}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
-                
+
                 <!-- 最常访问的网站 -->
                 <Border Style="{StaticResource CardStyle}" Grid.Column="1">
-                    <StackPanel Spacing="16">
+                    <StackPanel Spacing="14">
+                        <TextBlock FontSize="15" FontWeight="SemiBold" Text="最常访问的网站" />
                         <TextBlock
-                            FontSize="16"
                             FontWeight="SemiBold"
-                            Text="最常访问的网站" />
-                        <TextBlock
-                            FontWeight="Medium"
                             FontSize="14"
                             Text="{x:Bind ViewModel.MostVisitedSite, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
             </Grid>
-            
-            <!-- ======================================== -->
-            <!-- 应用使用排行                                -->
-            <!-- ======================================== -->
+
+            <!-- ============ 应用使用排行 ============ -->
             <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="16">
-                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="应用使用排行" />
-                    
+                <StackPanel Spacing="14">
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="应用使用排行" />
+
                     <TextBlock
                         x:Name="NoAppDataHint"
                         FontSize="13"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Text="暂无应用使用数据，开始使用电脑后数据将自动显示"
                         Visibility="Collapsed" />
-                    
+
                     <ItemsControl ItemsSource="{x:Bind ViewModel.TopApps, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="viewModel:AppUsageItem">
                                 <Grid
-                                    Margin="0,6"
-                                    Padding="12"
+                                    Margin="0,4"
+                                    Padding="10"
                                     Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    CornerRadius="8">
+                                    CornerRadius="8"
+                                    ColumnSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    
-                                    <!-- 应用图标 -->
-                                    <Image
-                                        Width="32"
-                                        Height="32"
-                                        Source="{x:Bind Icon, Mode=OneWay}" />
-                                    
-                                    <!-- 应用名称 -->
+
+                                    <Image Width="28" Height="28" Source="{x:Bind Icon, Mode=OneWay}" />
+
                                     <TextBlock
                                         Grid.Column="1"
-                                        Margin="12,0,0,0"
                                         VerticalAlignment="Center"
                                         FontWeight="Medium"
                                         Text="{x:Bind Name}" />
-                                    
-                                    <!-- 时长 -->
-                                    <TextBlock
-                                        Grid.Column="2"
-                                        VerticalAlignment="Center"
-                                        FontWeight="SemiBold"
-                                        FontSize="14"
-                                        Text="{x:Bind Duration}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
-            
-            <!-- ======================================== -->
-            <!-- 网站访问排行                                -->
-            <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="16">
-                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="网站访问排行" />
-                    
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.TopWebsites, Mode=OneWay}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="viewModel:WebsiteUsageItem">
-                                <Grid
-                                    Margin="0,6"
-                                    Padding="12"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    CornerRadius="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <!-- 网站图标 -->
+
+                                    <!-- 分类标签（3.26.1 起与应用统计页同源：ProgramCategoryMappings 映射表） -->
                                     <Border
-                                        Width="32"
-                                        Height="32"
-                                        Background="{StaticResource InsightBrush}"
-                                        CornerRadius="6">
-                                        <TextBlock
-                                            HorizontalAlignment="Center"
-                                            VerticalAlignment="Center"
-                                            FontSize="14"
-                                            FontWeight="SemiBold"
-                                            Foreground="White"
-                                            Text="{x:Bind FirstLetter}" />
-                                    </Border>
-                                    
-                                    <!-- 域名 -->
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        Margin="12,0,0,0"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind Domain}" />
-                                    
-                                    <!-- 访问次数 -->
-                                    <TextBlock
                                         Grid.Column="2"
-                                        Margin="12,0"
+                                        Margin="0,0,12,0"
+                                        Padding="8,2"
                                         VerticalAlignment="Center"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        FontSize="12"
-                                        Text="{x:Bind VisitsText}" />
-                                    
-                                    <!-- 时长 -->
+                                        Background="{x:Bind CategoryBrush}"
+                                        CornerRadius="4">
+                                        <TextBlock
+                                            FontSize="11"
+                                            Foreground="White"
+                                            Text="{x:Bind Category}" />
+                                    </Border>
+
                                     <TextBlock
                                         Grid.Column="3"
                                         VerticalAlignment="Center"
@@ -275,52 +522,118 @@
                     </ItemsControl>
                 </StackPanel>
             </Border>
-            
-            <!-- ======================================== -->
-            <!-- 每小时活动图                                -->
-            <!-- ======================================== -->
+
+            <!-- ============ 网站访问排行 ============ -->
             <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="16">
-                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时活动" />
-                    
-                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyActivity, Mode=OneWay}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="2" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="viewModel:HourlyActivityItem">
-                                    <StackPanel Width="40" Spacing="4">
-                                        <!-- 活动进度条 (垂直) -->
-                                        <ProgressBar
-                                            Height="80"
-                                            CornerRadius="2"
-                                            Foreground="{StaticResource PrimaryAccentBrush}"
-                                            Maximum="100"
-                                            Value="{x:Bind Activity}"
-                                            RenderTransformOrigin="0.5,0.5">
-                                            <ProgressBar.RenderTransform>
-                                                <RotateTransform Angle="-90" />
-                                            </ProgressBar.RenderTransform>
-                                        </ProgressBar>
-                                        
-                                        <!-- 小时标签 -->
+                <StackPanel Spacing="14">
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="网站访问排行" />
+
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.TopWebsites, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="viewModel:WebsiteUsageItem">
+                                <Grid
+                                    Margin="0,4"
+                                    Padding="10"
+                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                    CornerRadius="8"
+                                    ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border
+                                        Width="28"
+                                        Height="28"
+                                        Background="{StaticResource InsightBrush}"
+                                        CornerRadius="6">
                                         <TextBlock
                                             HorizontalAlignment="Center"
-                                            FontSize="10"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{x:Bind Hour}"
-                                            TextWrapping="NoWrap" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                                            VerticalAlignment="Center"
+                                            FontSize="13"
+                                            FontWeight="SemiBold"
+                                            Foreground="White"
+                                            Text="{x:Bind FirstLetter}" />
+                                    </Border>
+
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Text="{x:Bind Domain}" />
+
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        Margin="0,0,12,0"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        FontSize="12"
+                                        Text="{x:Bind VisitsText}" />
+
+                                    <TextBlock
+                                        Grid.Column="3"
+                                        VerticalAlignment="Center"
+                                        FontWeight="SemiBold"
+                                        FontSize="14"
+                                        Text="{x:Bind Duration}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
             </Border>
-            
+
+            <!-- ============ 每小时活动图（WebView2，3.26.0 替换旋转 ProgressBar） ============ -->
+            <Border Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="10">
+                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="每小时活动" />
+
+                    <!-- WebView2 承载柱状图。数据加载与 WebView 初始化解耦：
+                         即使 WebView2 初始化失败或很慢，上方统计数字仍照常呈现（陷阱 #13）。 -->
+                    <Grid Height="200">
+                        <WebView2
+                            x:Name="ActivityChartWebView"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch" />
+
+                        <!-- WebView2 不可用时的降级提示（原生条形仍能显示大致分布） -->
+                        <StackPanel
+                            x:Name="ChartFallbackPanel"
+                            Visibility="Collapsed"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="6">
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="图表组件不可用，已切换为基础视图" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 图例 -->
+                    <StackPanel Orientation="Horizontal" Spacing="14">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Border Width="9" Height="9" Background="{StaticResource SuccessBrush}" CornerRadius="2" />
+                            <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="高效（&gt;40 分钟）" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Border Width="9" Height="9" Background="{StaticResource WarningBrush}" CornerRadius="2" />
+                            <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="中等（20-40 分钟）" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Border Width="9" Height="9" Background="{StaticResource DangerBrush}" CornerRadius="2" />
+                            <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="低效（&lt;20 分钟）" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Border Width="9" Height="9" Background="{ThemeResource DividerStrokeColorDefaultBrush}" CornerRadius="2" />
+                            <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="未到时段" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </Page>

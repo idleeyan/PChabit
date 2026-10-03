@@ -1,13 +1,180 @@
-﻿# 鏇存柊鏃ュ織
+# 更新日志
 
-鎵€鏈夐噸瑕佺殑鏇存敼閮藉皢璁板綍鍦ㄦ鏂囦欢涓€?
+所有重要的更改都将记录在此文件中。
+
 ## [Unreleased]
 
-### 鏂囨。
-- `README.md` 鍏ㄩ潰閲嶅啓锛氳ˉ鍏呯‖浠剁洃鎺с€佸垎鏋愬鐩橀┚椹惰埍銆佹繁搴﹀懆鎶ヤ笌 AI 瑙ｈ銆佹祻瑙堝巻鍙蹭笌缃戠珯鍒嗙被銆?  浠诲姟鏍忓皬绐椼€佸叏灞€鎿嶄綔鏃ュ織绛夋ā鍧楋紱鍒犻櫎宸茬Щ闄ょ殑銆岀洰鏍囩鐞嗐€嶇珷鑺傚苟鍔犲崌绾ц鏄庯紱
-  寮€鍙戠幆澧冩洿鏂颁负 .NET 10 SDK + Windows App SDK 2.5.1锛涢」鐩粨鏋勮ˉ鍏?`PChabit.HardwareMonitor`
-- `AI_MAINTENANCE.md` 鏇存柊椤圭洰姒傝鎶€鏈爤锛?NET 10 / WinAppSDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x锛夈€?  椤圭洰缁撴瀯涓庡叧閿緷璧栫増鏈〃锛沗PublishReadyToRun` 绂佷护鐨勭増鏈鏄庡悓姝ワ紙鍘嗗彶淇璁板綍淇濇寔鍘熸牱鏈敼锛?- `docs/鍙戝竷浜х墿璇█璧勬簮璇存槑.md`锛氭瀯寤鸿緭鍑鸿矾寰勭ず渚嬬敱 net9.0 鏇存涓?net10.0
-- `docs/AI娣卞害瑙ｈ鍗囩骇璁″垝.md`锛氬弻杞ㄥ崌绾ц鍒掞紙椤圭洰涔犳儻璧勪骇 + AI 娣卞害瑙ｈ锛?
+### 修复
+- 便签启动清理竞态（P0）：`App.StickyNotes.cs` 的启动清理与 WebDAV 同步未等待数据库迁移完成即读写 `StickyNotes` 表，首启可能抛 `no such table: StickyNotes`。改为 `Task.WhenAny(_dbInitCompleted.Task, 15s 超时)` 兜底（与 `StartBackupService` 同一模式）
+- `CHANGELOG.md` 双重编码乱码：标题、`[Unreleased]` 与 3.24.0 至 3.22.0 区段已修复；3.21.1 及更早仍有残留（见下方「已知问题」）
+
+### 杂项
+- 清理根目录遗留的 `PChabit.exe_20261002_095322.nettrace` 诊断转储，并将 `*.nettrace` 加入 `.gitignore`（该类文件会在项目根反复生成）
+
+### 已知问题
+- `CHANGELOG.md` 中 **3.21.1 及更早**（约 100 个版本、309 行）仍存双重编码残留。根因是历史上的 GBK 与 UTF-8 转换经过有损环节：部分字节被替换为 `?`，私用区字符（U+E000–U+F8FF）混入，字节信息已丢失，**机器无法逆转**（`gb18030` 往返后仍解不出合法 UTF-8）。
+  - 已修复范围：文件标题、`[Unreleased]`、3.24.0 至 3.22.0 全部区段（关于页「更新日志」当前展示范围已完全可读）
+  - 剩余部分需按语义重写或从外部备份恢复，不做猜测性改写
+
+## [3.26.2] - 2026-10-03
+
+### 修复：网页会话批量落库 UNIQUE 约束冲突（长期存在的静默数据丢失）
+- **现象**：日志持续报 `SQLite Error 19: 'UNIQUE constraint failed: WebSessions.Id'`（实测单日 40+ 次），
+  报在 `批量处理数据操作失败` —— 意味着**整批（最多 50 条）数据全部未落库**
+- **根因**：`EnqueueSaveWebSession` 无条件 `dbContext.WebSessions.Add(session)`，
+  而周期落库 `SaveActiveWebSessionsPeriodicallyAsync` 已用 `FindAsync` 判断并正确处理更新。
+  同一会话（同一 Id）先入队 Add、随后又被周期落库 Add；两条操作落在同一批次、
+  共用同一个 `DbContext` 时，EF 在 `SaveChanges` 对同一 Id 执行两次 INSERT → UNIQUE 冲突
+- **修复**：
+  - `EnqueueSaveWebSession` 改为「先查后插/更新」，更新分支复用与周期落库相同的字段集合
+  - `ProcessDataAsync` 整批失败时**改为逐条隔离重试**（每条独立 `DbContext`）。
+    原实现下一条脏数据会让整批 50 条一起丢；现在最多损失一条
+- 效果：消除错误日志，同时不再出现「整批数据静默丢失」
+
+
+## [3.26.1] - 2026-10-03
+
+### 修复：仪表盘与应用统计页的应用分类不同步（3.26.0 引入的回归）
+- **现象**：同一进程在「仪表盘」与应用统计页显示不同分类。实测 `MuMuNxDevice.exe` 仪表盘显示「其他」/应用统计显示「娱乐」；`QwenWorkCN.exe` 仪表盘「其他」/应用统计「AI 助手」
+- **根因**：3.25.0（阶段 1）把仪表盘的分类改为 `AppCategoryResolver` 实时硬编码映射，
+  **绕过了 `ProgramCategoryMappings`（198 条有效映射，用户可在设置中自定义）**。
+  应用统计页走 `AppStatsEngine.ResolveCategory`：映射表优先 → 回落 `AppSession.Category`。
+  两页因此走了两套口径
+- **修复**：仪表盘改为与应用统计页**同源**——
+  - 新增 `LoadCategoryMapAsync` 读同一张 `ProgramCategories` + `ProgramCategoryMappings`，
+    直接复用 `AppStatsEngine.BuildCategoryMap` / `NormalizeProcessName` / `DefaultColorFor`
+  - 解析优先级与 `AppStatsEngine.ResolveCategory` 完全一致：映射表 → `AppSession.Category` → 「未分类」
+  - 回落值改为传入该进程真实的 `AppSession.Category`（此前传 null，会丢失历史数据的分类）
+- **分类配色也一并统一**：分类分布与 TopApps 分类标签的颜色取自 `ProgramCategories.Color`，
+  不再使用硬编码色板（`#512BD4` 等），因此两页配色也一致
+- 移除 3.25.0 引入的 `AppCategoryResolver` DI 注册（现已无用）
+
+### 验证
+- 编译 0 错误、154/154 全量测试通过
+- 以生产数据库复刻两页解析逻辑比对：`MuMuNxDevice.exe` → 娱乐、`QwenWorkCN.exe` → AI 助手、
+  `explorer.exe`/`cmd.exe` → 系统工具、`msedge.exe` → 浏览，**与应用统计页完全一致**
+- 全库核查：`AppCategoryResolver` 现仅在采集侧（`AppMonitor` 写入 `AppSession.Category`）使用，
+  这是它应在的唯一位置
+
+
+## [3.26.0] - 2026-10-03
+
+仪表盘升级阶段 2–6（布局 / 图表 / AI / 实时化 / 打磨）。阶段 1 见 3.25.0。
+
+### 新增：顶部状态条
+- **今日效率评分**（大数字 + 等级文本），来自 `EfficiencyCalculator` 四维加权，与「分析」页同源
+- **相对个人基线的偏离**（如「高于平时 12%」）；样本不足时显示「基线样本积累中」而非给出不可信的百分比
+- **专注时长 / 应用切换 / 活跃时段**三项，取自 `DailySummary` 扩展字段；字段未产出时显示「--」而非 0（「真的是 0」与「还没数据」是两件事）
+- **数据截止时刻**，避免把累计值误读为此刻的实时值
+
+### 新增：环比与实时
+- 四张统计卡各带**环比昨日同时段**的涨跌标记（▲/▼/●）。截断到「昨日的当前时刻」——直接用昨日全天数据会在午后打开时造成「大幅下降」的假跌
+- **「当前活动」条**：显示正在使用的应用（图标 + 开始时刻），带「实时」标识
+- **30 秒自动刷新**，进入页面启动、离开即停（对齐 3.24.0「进页面才 Start、离开即 Stop」的省电思路）。选 30 秒而非 1 秒：3.24.0 已证明高频采样代价明显
+- 图表数据变化时局部推送，不重建页面，因此滚动位置与悬停态保持不变
+
+### 新增：今日速览（AI 或规则）
+- 调 `IAnalyticsAiService.ChatFastAsync` 生成一句话状态概括 + 一句可执行建议
+- **未配置 AI 时自动降级为规则摘要**（最常使用应用 + 效率分 + 专注 + 相对平时），不显示空卡片
+- 摘要来源以标签明示（AI / 规则），让用户知道这段话怎么来的
+- 附**习惯画像摘要**（时型判定 + 今日活跃时段）
+
+### 改进：图表全面替换
+- **每小时活动改用 WebView2 柱状图**，替换原先「竖向 ProgressBar 旋转 -90 度」的取巧做法。24 根圆角矩形并排的锯齿问题消失
+- **未到的时段画灰色占位**，与「真的零活跃」明确区分（此前未来小时根本不画，横轴不完整）
+- 按真实分钟数绘制（原先是百分比），Y 轴含义改为「分」
+- **主题自适应**：随应用深浅色切换图表的画布、网格线、坐标轴与文字颜色（既有 `hardware-trend.html` 硬编码深色）
+- WebView2 初始化失败时显示降级提示，**数据加载与图表初始化解耦**（陷阱 #13），数字照常呈现
+- 页面离开时释放 WebView2
+
+### 改进：交互与视觉
+- **「今日活动时间」卡片补上点击**（跳转时间线页）——此前四张卡只有三张可点，而这张恰是最该深挖的
+- **键盘可达**：四张卡均可 Tab 聚焦、Enter/空格触发（此前只能用鼠标）
+- **悬停效果改用主题资源 + `HoverableCardStyle`**，替换代码-behind 硬写 `Application.Current.Resources[...]`——后者绕过主题系统，深浅色切换时闪白
+- **补上分类分布可视化**：`CategoryDistribution` 此前在 ViewModel 算好了百分比与配色，但 XAML 从未绑定（死代码），现以进度条形式呈现
+- TopApps 行内补分类标签（来自 `AppCategoryResolver`）
+- 新增空态：无任何今日数据时显示引导文案而非「0小时 0分钟」
+
+### 修复
+- **定时器重入竞态**（陷阱 27）：`DbSafeViewModel.LoadDataAsync` 的 `if (IsLoading) return` 非原子，
+  两个 tick 可能先后通过检查后并发查询。改用 `Interlocked.Exchange` 做原子防重入
+- 键盘路径无法构造 `TappedRoutedEventArgs`，故将四张卡的行为拆为无参方法，鼠标与键盘共用
+- 派生文本属性（`FocusMinutesText` 等）为组合计算，`x:Bind OneWay` 不会自动刷新，改为手动 `OnPropertyChanged` 抬升
+
+### 验证
+- 编译 0 错误；**154/154 全量测试通过**
+- 全程两次撞上陷阱 #21（1 个 C# 错误引发 6 个 XAML 假错误含 WMC9999），均按「先修 C# 再看 XAML」解决
+- 启动日志确认：效率评分与聚合表读取正常（`SummaryMetricsVersion=2`）、实时刷新已启动（30 秒）、
+  未配置/异常时 AI 速览自动降级为规则摘要且不阻塞页面
+- **AI 速览实测降级原因**：所用 DeepSeek 模型返回 `content:""` 但带 `reasoning_content`（思考模型特征），
+  属既有的 3.22.2 场景。降级路径按设计接住，用户看到的是规则摘要而非错误
+
+
+## [3.25.0] - 2026-10-03
+
+### 重构：仪表盘数据层口径收口（阶段 1/6）
+- **改读日聚合表的扩展指标**：从 `DailySummaries` 取 `FocusMinutesV2`（专注）、`AppSwitches`（应用切换）、`FirstActiveTime`/`LastActiveTime`（首末活跃），这些字段此前一个都没用上
+- **效率评分改用 `EfficiencyCalculator`**：删除仪表盘自建的 `ProductivityScore` 与硬编码 `IsProductiveCategory`（只认「开发/开发工具/办公/办公软件」4 个字符串），改用项目统一的四维加权评分，与「分析」页同源同值
+- **应用分类改用 `AppCategoryResolver`**：删除 `GetAppCategory` 的 `Contains("code")` 关键词猜测。现按 12 类归类（开发/AI 助手/浏览/办公/沟通/媒体创作/设计/云盘下载/娱乐/系统工具/生产力/其他），且分组改为 `(ProcessName, ExecutablePath)` 复合键，同名不同路径的应用不再被错误合并
+- **接入个人基线**：用 `HabitDayLoader`（近 28 天）+ `PersonalBaselineBuilder` 计算活跃时长相对 P50 的偏离度；样本不足 3 天时返回 `null` 而非给出不可信的百分比
+- **分类分布与 TopApps 分类同源**：原先两套分类口径不一致（一个用 `s.Category` 字符串、一个用关键词匹配），现统一走 Resolver
+- 评分与基线计算各自 try-catch 降级（异常时页面不空白），日志记录失败原因
+
+### 修复
+- **测试项目自 3.23.0 起无法编译**：`AiEndpointResolveTests.FakeSettings` 未实现 `ISettingsService` 新增的 24 个成员（`DesktopWidget*` 16 个 + `StickyNotes*` 8 个），补齐后 **154/154 全量测试通过**。此前一直无人运行测试，故问题未暴露
+- `AppCategoryResolver` 在 App 层 DI 缺失（App 未调用基础设施的 `AddTaiInfrastructure`），显式补 `AddSingleton`（陷阱 #3 形态）
+
+### 移除
+- `AppUsageItem.Percentage` 字段：数据源按分类而非按应用计算，占比已无意义，且 XAML 本就未绑定
+
+
+## [3.24.0] - 2026-10-02
+
+### 新增：便签功能 P0（全局热键快速录入 → SQLite → 便签管理页 → WebDAV 同步）
+- **全局快捷键**：`Ctrl+Alt+N` 呼出快速录入窗（420×260 无边框置顶小便签，定位鼠标所在屏幕），`Ctrl+Enter` 保存、`Esc` 隐藏留草稿、失焦 1.5s 自动处理（空白直接隐藏/有内容按设置保存）；`Ctrl+Alt+B` 打开主窗口便签页；热键可在设置中自定义，注册失败在设置页红字提示
+- **快速录入窗**：纸质便签外观 5 色切换（黄/粉/蓝/绿/灰），内容 500ms debounce 暂存 `%LOCALAPPDATA%\PChabit\note-draft.json`，崩溃/重启不丢字、再次呼出自动恢复；单例复用（Hide 而非 Close，Alt+F4 拦截为隐藏）
+- **便签管理页**（导航新增「便签」）：全部/置顶/颜色筛选、关键词搜索、卡片列表（置顶/改色/归档/还原/删除）、编辑对话框（Ctrl+Enter 保存）、回收站（还原/彻底删除/清空回收站带确认）
+- **存储**：Core 层 `StickyNote` 实体 + `IStickyNoteService`，Infrastructure 层 SQLite `StickyNotes` 表（增量 CREATE TABLE IF NOT EXISTS）；回收站 30 天保留（可配置），启动清理过期记录
+- **WebDAV 同步**：复用现有 WebDAV 配置，JSON 墓碑删除 + 时间戳 LWW 合并；双开关（功能总开关 + 同步开关），未配置静默降级；启动后 30s 首次、之后 15 分钟周期、保存后 30s debounce 触发
+- **入口**：托盘菜单新增「新建便签」「便签列表」；设置页新增「便签」卡片（总开关/两个热键/失焦保存/回收站保留天数/同步开关+立即同步+上次同步时间）
+
+### 优化：常驻 CPU 占用降低约 66%
+- 硬件监控采样周期 2000ms → 5000ms；GPU 性能计数器上限 160 且只保留 3D/VideoDecode 引擎；计数器 Exists 结果缓存（排查数据：GPU 644 个实例含 168 Copy/128 3D，NextValue 单次 370ms、Exists 460ms，而进程枚举仅 15-19ms）
+- 硬件监控改为进入页面才 Start、离开即 Stop（移除启动时常驻 ProcessResourceMonitor.Start()）
+- 桌面悬浮窗内容签名 `_contentSig` 无变化跳过重绘
+- 实测空闲 CPU 从约 1.62%（整机）降至 0.43~0.55%（12 逻辑核）
+
+## [3.23.2] - 2026-10-02
+
+### 改进：悬浮窗文字阴影 + 渲染光滑度（渲染架构升级）
+- **渲染管线从 LWA_COLORKEY 色键透明升级为 UpdateLayeredWindow per-pixel alpha**（WS_EX_LAYERED + 32bpp 顶向下 PARGB DIB + GDI+）：色键方案下文字抗锯齿边缘是"文字色与色键底色混合"的不透明像素，在非色键色壁纸上带杂边，且无法表现半透明阴影
+- **文字增加投影**：所有文字（标题/标签/数值）统一绘制 1px 右下偏移的半透明黑色阴影；浅色主题不透明度 31%、深色主题 66%（白字在浅色花壁纸上靠重影勾边），花哨壁纸下可读性显著提升
+- **文字更光滑**：GDI 灰度抗锯齿改为 GDI+ `AntiAliasGridFit`（现代光栅化+网格微调），边缘像素写入真实 alpha 通道，与任意壁纸正确合成，无色键杂边/无 ClearType 彩色毛边（分层窗口不用 ClearType，与 WPF 透明窗口策略一致）
+- 药丸进度条、红点、resize grip 斜纹改由 GDI+ 抗锯齿绘制，圆头与斜线不再有硬锯齿；分隔线保持 1px 非 AA 锐利线
+- 资源管理：后备表面按窗口尺寸缓存复用（resize 时重建），Dispose 释放 GDI+ Font/Bitmap/Graphics 与 DIB/DC；色板统一改为 RGB 定义（GDI+ Color 原生 RGB，不再需要 BGR 换算）
+- 已截图验证浅/深两种主题：阴影、AA 边缘、三态药丸条、grip 均正常；resize/穿透/置顶等窗口行为不变
+
+## [3.23.1] - 2026-10-02
+
+### 改进：桌面悬浮窗 UI 全面完善（用户反馈三点）
+- **窗口支持调整大小**：非鼠标穿透状态下，窗口右边缘 / 下边缘 / 右下角（17px 角热区）可拖拽改变尺寸（WM_NCHITTEST 返回 HTRIGHT/HTBOTTOM/HTBOTTOMRIGHT）；WM_GETMINMAXINFO 限制最小尺寸（196×118 逻辑像素）；右下角绘制三条 45° 斜纹 resize grip（仅非穿透态显示，穿透态隐藏）；宽度与高度随位置一并记忆（新增 `DesktopWidgetWidth`/`DesktopWidgetHeight` 设置，默认 -1 兼容旧 JSON），重启精确恢复
+- **内容随窗口宽度等比缩放**：缩放系数 = 窗口逻辑宽 / 272（clamp 0.78~2.4），字体（13pt 标题 / 12pt 行）、行距、内边距、进度条全部联动放大，WM_SIZE 实时重建字体，解决小窗口文字模糊；未手动改过高度时窗口高度始终贴合内容
+- **进度条样式重做**：细条改为圆角药丸形（RoundRect 去边框 + 灰色胶囊槽）；阈值颜色分级——安全绿 → 预警琥珀（负载≥70% / 温度≥70°C）→ **危险鲜红（负载≥90% / 温度≥85°C），数值文字同色**；标题下增加分隔线
+- **网速拆分为「↓下载」「↑上传」两行**，各自独立药丸进度条；条长按自适应峰值计算（峰值每秒回落 3%，最低以 100KB/s 为基准），速率文本带 `/s` 后缀（如 `2.8M/s`）
+- 温度读数规整：无权限/无传感器返回的 0°C 与超量程值显示为 `--`，不再显示误导性的 `0°`
+- 修复：SetWindowPos 仅带 SWP_NOMOVE 时 cx/cy 仍会生效，高度校正漏传宽度会把窗口宽度置 0（三处改为显式传入当前宽度）
+- 修复：GDI COLORREF 为 0x00BBGGRR 字节序，全部条色/文本警告色按 BGR 重新换算（此前琥珀/鲜红被错误解释为蓝色）
+
+## [3.23.0] - 2026-10-02
+
+### 新增：桌面硬件信息悬浮插件（P0）
+- 桌面独立悬浮窗常驻显示 **CPU（含温度）/ 内存 / GPU（含温度）/ 显存 / 网速 / 磁盘活动 / 今日活跃**，每秒刷新，深浅主题自适应
+- 纯 Win32 + GDI 双缓冲 + LWA_COLORKEY 色键透明实现（机制照抄项目内 TaskbarWidget），无 WinUI/WinForms 窗口依赖；**行为规格照抄 [LiteMonitor](https://github.com/Diorser/LiteMonitor)（MIT）**：无任务栏按钮、不抢焦点、置顶（3s 强制重插 + 10s 轮询维护）、WS_EX_TRANSPARENT 鼠标穿透、手动 offset 拖拽、MouseUp 时 ClampToScreen + 保存、显示器 DeviceName + 坐标位置记忆、WM_DISPLAYCHANGE 500ms 防抖恢复
+- 悬浮窗可拖动，位置与所在屏幕自动记忆，重启精确恢复；贴边不弹开，仅完全跑出屏幕才拉回
+- 双击悬浮窗还原主窗口并跳转硬件监控页；主窗口最小化到托盘时悬浮窗仍常驻显示
+- 设置页新增「桌面悬浮插件」卡片：总开关 + 7 个显示项 + 置顶 / 鼠标穿透 / 限制拖出屏幕；设置保存后 1s 内即时生效，无需重启
+- 新增设置项 `DesktopWidget*` 共 13 项（默认关闭，其余默认值照抄 LiteMonitor：置顶开、穿透关、限屏开）；旧 settings.json 缺字段自动取默认值，向后兼容
+
 ## [3.22.10]
 
 ### 稳定性
@@ -21,56 +188,76 @@
 
 ## [3.22.8] - 2026-09-30
 
-### 淇锛氳缃鍒峰洖鏅鸿氨榛樿锛堟牴鍥狅級
-- **鏍瑰洜**锛歚LoadSettingsToUI` 鍐呴儴鎶?`_isLoading` 鎻愬墠缃?false锛岄殢鍚?`AiProviderBox.SelectedItem` 璧嬪€艰Е鍙?SelectionChanged锛屽皢 Base URL/妯″瀷瑕嗙洊涓烘櫤璋遍璁?- Provider 涓嬫媺**鍙繚瀛樻爣绛?*锛屼笉鍐嶈嚜鍔ㄦ敼鍐?URL/妯″瀷锛涢渶鏀圭敤銆屾寜 Provider 濉厖榛樿 URL/妯″瀷銆嶆寜閽紙鏄惧紡瑕嗙洊锛?- `SettingsService.Load()` 澶辫触鏃?*涓嶅啀娓呯┖**涓洪粯璁ゅ€硷紱淇濆瓨鏀逛负涓存椂鏂囦欢鍘熷瓙鏇挎崲
-- 涓枃杈撳嚭锛氬亸鑻辨枃鑷姩寮哄埗閲嶈瘯锛涗笉鍐嶆妸 `reasoning_content` 褰撴鏂?
+### 修复：设置卡片回填被污染（根因）
+- **根因**：`LoadSettingsToUI` 内部提前把 `_isLoading` 置回 `false`，随后 `AiProviderBox.SelectedItem` 赋值触发 `SelectionChanged`，将 Base URL 与模型覆盖为智能预设
+- Provider 下拉**只保存标签**，不再自动改写 URL/模型；「改默认」按钮按 Provider 填充默认 URL 与模型；「恢复」按钮（显式覆盖）
+- `SettingsService.Load()` 失败时**不再清空**为默认值；保存改为临时文件原子替换
+- 中文输出：偏英文自动强制重试；不再把 `reasoning_content` 当正文
+
 ## [3.22.7] - 2026-09-30
 
-### 淇锛氶厤缃噸鍚鍒峰洖鏅鸿氨榛樿 + 娴嬭瘯缁撴灉涓嶅彲澶嶅埗
-- **鏍瑰洜**锛氬姞杞借缃椂 `AiProviderBox.SelectedItem = 鈥 瑙﹀彂 SelectionChanged锛屾妸 Base URL/妯″瀷瑕嗙洊鎴愰璁撅紙鏅鸿氨/glm-4-flash锛?- 鍔犺浇鏈熼棿鍏ㄧ▼ `_isLoading` 淇濇姢锛涢璁惧～鍏呬粎鍦ㄧ敤鎴锋墜鍔ㄥ垏鎹?Provider 鏃?- `SaveSetting` 鏀逛负**鍚屾 Save()**锛屼笉鍐嶅紓姝?fire-and-forget锛堥€€鍑虹珵鎬佷涪閰嶇疆锛?- 娴嬭瘯缁撴灉鏀逛负鍙€変腑 TextBox +銆屽鍒舵祴璇曠粨鏋溿€嶆寜閽?
+### 修复：配置重复被污染回填为默认 + 测试结果不可复制
+- **根因**：加载设置时 `AiProviderBox.SelectedItem = ''` 触发 `SelectionChanged`，把 Base URL 与模型覆盖成预设（智谱/glm-4-flash）
+- 加载期间全程 `_isLoading` 保护；预设填充仅在用户手动切换 Provider 时
+- `SaveSetting` 改为**同步 Save()**，不再异步 fire-and-forget（退出态丢配置）
+- 测试结果改为可选中 TextBox + 「复制测试结果」按钮
+
 ## [3.22.6] - 2026-09-30
 
-### 浼樺寲锛欰PI Key 鏄庢枃鏄剧ず锛堜釜浜鸿蒋浠朵笉鍋氶伄鎺╋級
-- API Key 鏀逛负鏄庢枃 TextBox锛屾祴璇曠粨鏋滅洿鎺ユ墦鍗板畬鏁?Key锛屼究浜庡拰鏈嶅姟鍟嗘帶鍒跺彴鏍稿
-- 璇锋眰鏃ュ織杈撳嚭绔偣/妯″瀷/Key 闀垮害锛堜笉鍐?Key 鏄庢枃鍒版棩蹇楋級
+### 优化：API Key 明文显示（个人软件不做遮掩）
+- API Key 改为明文 TextBox，测试结果直接打板完整 Key，便于和服务商控制台核对
+- 请求日志输出端点/模型/Key 长度（不含 Key 明文与日志）
 
 ## [3.22.5] - 2026-09-30
 
-### 淇锛氳缃瓨涓嶄笂 / 401 鈥?绔偣閰嶇疆鏀舵暃
-- **鍒犳帀銆屼富閰嶇疆 + 浜戠閰嶇疆銆嶅弻杞?*锛氫簯绔?= Base URL / API Key / 妯″瀷 **涓€缁?*锛涙湰鍦?= LM Studio 涓€缁?- **杈撳叆鍗充繚瀛?*锛圱extChanged/PasswordChanged锛夛紝涓嶅啀渚濊禆澶辩劍鐐规寜閽墠钀界洏
-- **銆屼繚瀛樺苟娴嬭瘯杩炴帴銆?*锛氫竴閿惤鐩樺苟鎺㈡祴锛屾樉绀?URL/妯″瀷/Key 鏄惁宸插～ + 妯″瀷鍥炲鎴栭敊璇?- Provider 棰勮鏀逛负涓€閿～鍏咃紝**涓嶅啀鑷姩瑕嗙洊**鐢ㄦ埛宸插～鍦板潃
+### 修复：设置保存不落盘 / 401 — 端点配置收敛
+- **「云端 + 本地」双轮**配置：云端 = Base URL / API Key / 模型 **最终**生效；本地 = LM Studio 最终生效
+- **输入即保存**（TextChanged/PasswordChanged），不再依赖失焦按钮才落盘
+- **「保存并测试连接」**：一键落盘并探测，显示 URL/模型/Key 是否已填 + 模型回复或错误
+- Provider 预设改为「填充」，**不再自动覆盖**用户已填地址
 
 ## [3.22.4] - 2026-09-30
 
-### 淇锛氱鐐归厤缃贩鎼?401 + 瑙ｈ鑻辨枃绌鸿瘽
-- **浜戠妲芥暣缁勭敓鏁?*锛氱嫭绔嬩簯绔?URL 鏃跺繀椤诲崟鐙～妯″瀷锛岀姝笌涓婚厤缃?URL/妯″瀷涓茬敤锛涚己妯″瀷瑙嗕负鏈厤缃苟鍥為€€锛堜笉鍐嶅閿欒 Key 鍙?401锛?- 鏄惧紡鎸囧畾鏈湴/浜戠妲芥椂涓嶄覆妲?- **杈撳嚭寮哄埗绠€浣撲腑鏂?*锛歴ystem + user 鍓嶇紑鍙岄噸閿佸畾锛沜onfidence/effort 浠嶇敤鑻辨枃鏋氫妇
-- 瑙ｆ瀽澶辫触鏃跺尯鍒嗐€岀枒浼艰嫳鏂囪緭鍑?/ 鏈粨鏋勫寲銆嶏紝鍘熸枃鍙鍒讹紝涓嶅啀鎶婅嫳鏂囧爢褰撶粨璁?
+### 修复：端点配置混搭 401 + 解读英文空话
+- **云端整组生效**：独立云端 URL 时必须单独填写模型，禁止与主配置 URL/模型混用；缺模型视为未配置并回退（不再对错误 Key 报 401）
+- 显式指定本地/云端模型时不混淆
+- **输出强制简体中文**：system + user 前缀双重锁定，confidence/effort 仍用英文枚举
+- 解析失败时区分「英文空话输出」/「无结果结构」两类，附原文可复现
+
 ## [3.22.3] - 2026-09-30
 
-### 浼樺寲锛氱鐐规ā寮忔洿閱掔洰
-- 銆岀鐐规ā寮忋€嶇疆椤朵负楂樹寒鍗＄墖锛圓ccent 鎻忚竟 + 鏍囬鎻愮ず銆屽繀閫夈€嶏級
-- ComboBox 鏀逛负涓夊ぇ鍗曢€夛細浜戠 / 鏈湴 / 鍙岀鐐癸紙鎺ㄨ崘锛夛紝鏂囨璇存槑鐢ㄩ€?- 搴曢儴瀹炴椂鏄剧ず銆屽綋鍓嶏細鈥︺€嶆憳瑕侊紱浜戠妲?/ 鏈湴妲藉垎缁勬爣棰樺尯鍒?
+### 优化：端点模式一目了然
+- **「端点模式」置顶高亮卡片**：Accent 描边 + 标题提示，三选一必选
+- ComboBox 改为三大单一选项：云端 / 本地 / 双端点（推荐），文案说明差异
+- 底部实时显示「当前会：重复读取」
+
 ## [3.22.2] - 2026-09-30
 
-### 淇锛氭湰鍦?LM Studio 璺戝畬浣嗐€孉I 杩斿洖涓虹┖銆?- **鏈湴瑙ｈ鏀硅蛋闈炴祦寮?*锛氶伩鍏?LM Studio 娴佸紡瑙ｆ瀽宸紓瀵艰嚧绌烘鏂?- 瑙ｆ瀽鍏煎锛歚message.content` / `reasoning_content` / `delta.content` / `text`
-- 姝ｆ枃涓虹┖鏃舵姏閿欏苟闄勫師濮嬬墖娈碉紝涓嶅啀闈欓粯鏄剧ず銆岃繑鍥炰负绌恒€?
+### 修复：本地 LM Studio 跑完却「AI 返回为空」
+- **本地解读改非流式**：避免 LM Studio 流式解析差异导致空正文
+- 解析兼容 `message.content` / `reasoning_content` / `delta.content` / `text`
+- 正文为空时抛错并附原始片段，不再静默显示「返回为空」
+
 ## [3.22.1] - 2026-09-30
 
-### 淇锛氭湰鍦?AI 杩斿洖 400
-- 鏈湴绔偣锛圠M Studio/Ollama锛?*涓嶅啀鍙戦€?* `response_format` / `max_tokens`锛堝父瑙?400 璇卞洜锛?- 浜戠 400/404/422 鏃惰嚜鍔ㄩ檷绾ч噸璇曚竴娆★紙鍘绘帀鍙€夊瓧娈碉級
-- 閿欒淇℃伅甯︿笂鍝嶅簲浣撴憳瑕侊紝渚夸簬瀹氫綅銆屾ā鍨嬪悕涓嶅 / 璺緞涓嶅銆嶇瓑闂
+### 修复：本地 AI 返回 400
+- 本地端点（LM Studio/Ollama）**不再发送** `response_format` / `max_tokens`（常见 400 主因）
+- 云端 400/404/422 时自动降级重试一次（剥掉可疑字段）
+- 错误信息带回响应摘要，便于定位：模型名不对 / 路径不对 等问题
 
 ## [3.22.0] - 2026-09-30
 
-### 鏂板锛氭湰鍦?+ 浜戠鍙?AI 绔偣
-- **绔偣妯″紡**锛歚浜戠` / `鏈湴 LM Studio` / `鍙岀鐐筦
-  - **鍙岀鐐?*锛氭繁搴﹁В璇昏蛋浜戠锛岃拷闂蛋鏈湴锛堢己涓€鍒欒嚜鍔ㄥ洖閫€鍙︿竴绔級
-- **鏈湴妲?*锛欱ase URL锛堥粯璁?`http://127.0.0.1:1234/v1`锛? 妯″瀷锛圞ey 鍙┖锛?- **浜戠妲?*锛欱ase URL / API Key / 妯″瀷锛堝彲鐙珛浜庝富閰嶇疆锛岀┖鍒欏洖閫€涓婚厤缃級
-- 璁剧疆椤点€屽垎鏋?AI銆嶅鍔犵鐐规ā寮忎笌鏈湴/浜戠鍒嗙粍閰嶇疆锛涗袱濂楅厤缃彲鍚屾椂淇濈暀
-- 瑙ｆ瀽锛歚AiEndpointSlot` + `OpenAiCompatibleChatClient.Resolve`
+### 新增：本地 + 云端双 AI 端点
+- **端点模式**：云端 / 本地 LM Studio / 双端点
+  - **双端点**：深度解读走云端，画像追问走本地（缺失则自动回退另一侧）
+- **本地模式**：Base URL（默认 `http://127.0.0.1:1234/v1`）、模型，Key 可空
+- **云端模式**：Base URL / API Key / 模型（可独立于主配置，空则回退主配置）
+- 设置页分「AI 解读」与「本地/云端」分组配置，两套配置可同时保留
+- 解析：`AiEndpointSlot` + `OpenAiCompatibleChatClient.Resolve`
 
-### 娴嬭瘯
-- `AiEndpointResolveTests`锛?锛夛紱鍒嗘瀽濂椾欢 **100 閫氳繃**
+### 测试
+- `AiEndpointResolveTests`；分析模块 **100 通过**
+
 
 ## [3.21.1] - 2026-09-30
 
@@ -85,14 +272,14 @@
 - **澶氭ā鍨嬫。浣?*锛氳缃€屽揩鎹锋ā鍨嬶紙杩介棶锛夈€峘AiModelFast`锛岃拷闂敤蹇ā鍨嬨€佽В璇荤敤鍑嗘ā鍨嬶紱鐣欑┖鍒欏叡鐢?- **娲炲療鍘婚噸**锛歚AiInsightDeduper` 杩囨护涓庤鍒欐礊瀵熼噸鍙犵殑 AI 鍙戠幇锛堣鍒欎紭鍏堬級
 - **涔犳儻鍏绘垚杞ㄨ抗鍗＄墖**锛氬垎鏋愰〉灞曠ず杩?28 澶╁墠鍚庡崐瀵规瘮锛堝彉濂?鍙樺樊/绋冲畾 + 杩炵画鍛ㄦ暟锛?- 杩介棶鏀硅蛋 `ChatFastAsync`
 
-### 娴嬭瘯
+### 测试
 - `AiInsightDeduperTests`锛?锛夛紱鍒嗘瀽濂椾欢 **92 閫氳繃**
 
 ## [3.20.0] - 2026-09-30
 
 ### 鏂板锛氳嚜鍔ㄥ寲銆侀殣绉佷笌涔犳儻杞ㄨ抗锛圥3/P4锛?- **涓ユ牸闅愮妯″紡**锛堣缃級锛氬嚭鍩熸寚鏍囧寘鍘绘帀搴旂敤/鍒嗙被鏄剧ず鍚?- **姣忓懆鑷姩 AI 瑙ｈ**锛堣缃紑鍏筹級锛氬惎鍔ㄥ欢杩?2 鍒嗛挓妫€娴嬫湰鍛ㄦ槸鍚﹀凡璺戯紝鐢熸垚鍚庤惤搴撳苟閫氱煡
 - **澶嶅埗瑙ｈ**锛欰I 缁撴灉瀵煎嚭 Markdown锛堢粨璁?鍙戠幇/褰掑洜/璁″垝/椋庨櫓/鐢诲儚锛?- **鍙嶉瀛︿範**锛氬巻鍙茶鍒?done/skipped 缁熻娉ㄥ叆 `goals.planFeedback`锛岄檷浣庢棤鏁堝缓璁?- **`HabitTrajectoryBuilder`**锛氬闂?涓撴敞/鏍囩鍗犳瘮鐨?better/worse/stable 杞ㄨ抗鍏?AI 鍖咃紙闀挎湡鍙欎簨锛?- 璁剧疆椤垫柊澧炪€屼弗鏍奸殣绉併€嶃€屾瘡鍛ㄨ嚜鍔?AI 瑙ｈ銆嶅紑鍏?
-### 娴嬭瘯
+### 测试
 - `HabitTrajectoryAndFeedbackTests`锛?锛夛紱鍒嗘瀽濂椾欢 **89 閫氳繃**
 
 ## [3.19.0] - 2026-09-30
@@ -100,18 +287,18 @@
 ### 鏂板锛欰I 闂幆锛圥2锛?- **`AiInsightSnapshot` 瀹炰綋 + 琛?*锛圗F + `MigrateAnalysisTablesAsync` 鍙岃矾寰勶紝闄烽槺 #20锛?- **`AiInsightHistoryService`**锛氬悓鍛ㄦ湡瑕嗙洊淇濆瓨銆佹渶鏂?鎸夊懆鏈熸煡璇€佽鍒掔姸鎬?`pending/done/skipped` 钀藉簱銆佹竻绌?- 瑙ｈ鎴愬姛鍚庤嚜鍔ㄨ惤搴擄紱涓嬫瑙ｈ鑷姩甯︿笂 **lastAiPlan 涓庤揪鎴愮姸鎬?*
 - 璁″垝銆岄噰绾?/ 蹇界暐銆嶆寔涔呭寲
 - **杩介棶瀵硅瘽**锛氳緭鍏ユ + 鍥炵瓟鍗＄墖锛涗笂涓嬫枃 = 绮剧畝鎸囨爣鍖?+ 涓婃缁撹 + 褰撳墠璁″垝 + 鐢ㄦ埛闂锛坄FollowUpSystemPrompt`锛?
-### 娴嬭瘯
+### 测试
 - `AiInsightHistoryTests`锛?锛夛紱鍒嗘瀽濂椾欢 **84 閫氳繃**
 
 ## [3.18.0] - 2026-09-30
 
 ### 鏂板锛氫範鎯敾鍍忎笌涓汉鍩虹嚎锛圥1-A锛?- **`HabitProfile` / `HabitProfileBuilder`**锛氬鍨?鏃ュ瀷銆佸吀鍨嬭捣姝€佷笓娉ㄤ腑浣嶆暟銆佸闂翠腑浣嶆暟銆佸垏鎹㈠瘑搴︺€佺敓浜у姏鏍囩鍗犳瘮
-- **`PersonalBaseline` / `PersonalBaselineBuilder`**锛氬伐浣滄棩/鍛ㄦ湯 P50/P75/P90锛沗DeviationPct` / `IsElevated` / `IsLow`
+- **`PersonalBaseline` / `PersonalBaselineBuilder`**：工作日/周末 P50/P75/P90；`DeviationPct` / `IsElevated` / `IsLow`
 - **`HabitDayLoader`**锛氫粠 `DailySummaries` 杩?28 澶╄杞界敾鍍忓師鏂欙紙鏃犵獥鍙ｆ爣棰?URL锛?- 鍩虹嚎鏍锋湰涓嶈冻鏃剁姝€屽紓甯搞€嶇被缁撹锛坄Mature=false`锛?
 ### 鏂板锛欰I 鍖呭崌绾?+ 璁″垝闂幆 UI锛圥1-B锛?- `AiContextPack` 娉ㄥ叆 `profile` / `baseline` / `deviations` / `goals`锛堟瘡鏃ョ洰鏍囷級/ `lastAiPlan`
 - 瑙ｈ鍗＄墖锛?*鍙兘鍘熷洜**锛坉iagnosis+缃俊搴︼級銆?*鍛ㄨ鍒?*锛堥噰绾?蹇界暐锛夈€?*鍙拷闂?*锛坒ollowUps锛?- 璁″垝鐘舵€?`pending/done/skipped` 浼氬甫鍏ヤ笅娆¤В璇讳笂涓嬫枃
 
-### 娴嬭瘯
+### 测试
 - `HabitProfileBuilderTests` + `PersonalBaselineBuilderTests`锛?1锛夛紱鍒嗘瀽濂椾欢 **81 閫氳繃**
 
 ## [3.17.0] - 2026-09-30
@@ -133,8 +320,8 @@
 
 ### 绉婚櫎锛氫功绛炬ā鍧楀交搴曚笅绾?- 鍒犻櫎涔︾鍚屾鍏ㄩ摼璺唬鐮侊細
   - Core锛歚BrowserBookmark` / `PendingBookmarkChange` 瀹炰綋銆乣IBrowserBookmarkRepository`銆乣Core/Sync`锛坄BookmarkMergePlanner` / `BrowserSyncModels`锛?  - Infrastructure锛歚BookmarkHubService` / `BookmarkLibraryService` / `BookmarkSyncService` / `BookmarkTidyService` / `BrowserBookmarkRepository`
-  - App锛歚DataManagementViewModel.BookmarkSync.cs`锛汿ests锛歚BookmarkFolderSyncTests` / `BookmarkMergePlannerTests` / `BrowserDeletionDetectionTests`
-- `App.xaml.cs` 绉婚櫎 `StartBookmarkAutoSync` 涓庝功绛惧悓姝ュ畾鏃跺櫒锛沗BrowserSyncWebSocketHandler` 澶у箙绮剧畝
+  - App：`DataManagementViewModel.BookmarkSync.cs`；Tests：`BookmarkFolderSyncTests` / `BookmarkMergePlannerTests` / `BrowserDeletionDetectionTests`
+- `App.xaml.cs` 移除 `StartBookmarkAutoSync` 与书签同步定时器；`BrowserSyncWebSocketHandler` 大幅精简
 - `HistorySyncService` 鐢?`IBrowserBookmarkRepository` 鏀逛负鐩存帴娉ㄥ叆 `IDbContextFactory<PChabitDbContext>`
 - 娴忚鍣ㄤ功绛炬敼鐢卞悇娴忚鍣ㄨ嚜甯﹁处鍙峰悓姝ョ淮鎶わ紝PChabit 涓嶅啀浠嬪叆锛?*娴忚鍘嗗彶 `BrowserHistoryItems` 淇濈暀**
 
@@ -148,8 +335,8 @@
 - 鑷惎鐩爣浠?`Environment.ProcessPath` 涓哄噯锛堢己鐪佸洖閫€ `AppContext.BaseDirectory`锛夛紱鐩爣 exe 涓嶅瓨鍦ㄦ椂娓呯悊娈嬬暀鑷惎椤癸紝閬垮厤鐣欎笅澶辨晥璺緞
 - 鏂板渚濊禆 `Microsoft.Win32.Registry`
 
-### 鍏朵粬
-- 娓呯悊鏋勫缓鑴氭湰娈嬬暀锛歚publish.bat`銆乣scripts/fix_gcs.py`銆乣scripts/gen_gcs.py`銆乣scripts/test_xamlcompiler.bat`
+### 其他
+- 清理构建脚本残留：`publish.bat`、`scripts/fix_gcs.py`、`scripts/gen_gcs.py`、`scripts/test_xamlcompiler.bat`
 - 鏂板椤圭洰绱㈠紩鏂囨。 `PROJECT.md`
 
 ## [3.16.0] - 2026-09-25
@@ -171,7 +358,7 @@
 - 椤甸潰瀵艰埅銆佺洃鎺у惎鍋滅瓑鍏抽敭鎿嶄綔鍐欏叆 GlobalOpLog锛屼究浜庢帓鏌?
 ## [3.15.12] - 2026-09-20
 
-### 娓呯悊锛氫功绛炬ā鍧楁畫鐣欎唬鐮佷笌鍘嗗彶鏁版嵁
+### 清理：书签模块残留代码与历史数据
 - 鍒犻櫎 `BookmarkLibraryPage` / `BookmarkLibraryViewModel` 鍙婄浉鍏虫祴璇?- `BookmarkHubService` / `BookmarkTidyAiService` 鏀逛负鍋滅敤妗╋紙涓嶅啀鎺ㄩ€?鏁寸悊锛?- 鏁版嵁绠＄悊涔︾鐩稿叧鍛戒护鏀逛负鎻愮ず銆屾ā鍧楀凡鍋滅敤銆?- **娓呯┖鏈湴涔︾鍘嗗彶琛?*锛欱rowserBookmarks銆丳endingBookmarkChanges銆丅ookmarkSyncBaselines銆佷功绛剧浉鍏?BrowserSyncMetas
 - **淇濈暀**锛氭祻瑙堝巻鍙?`BrowserHistoryItems`锛堢害 2.5 涓囨潯锛屽巻鍙插垎鏋愰〉浠嶅彲鐢級
 - 娴忚鍣ㄤ晶涔︾鐢卞悇娴忚鍣ㄨ嚜甯﹀悓姝ョ淮鎶わ紝PChabit 涓嶅啀浠嬪叆
@@ -231,7 +418,7 @@
 - 缁撴灉椤垫彁绀恒€屽垪琛ㄥ彲涓婁笅婊氬姩鏌ョ湅鍏ㄩ儴鎻愭銆?- 杩涜涓棩蹇楄嚜鍔ㄦ粴鍒板簳閮?
 ## [3.15.3] - 2026-09-20
 
-### 浼樺寲锛氫功绛惧簱鏀逛负璧勬簮绠＄悊鍣ㄥ紡甯冨眬
+### 优化：书签库改为资源管理器式布局
 - **宸︿晶**锛氫粎鏂囦欢澶瑰鑸紙鍙睍寮€锛屽甫鏁伴噺寰芥爣锛?- **涓棿**锛氬綋鍓嶆枃浠跺す鍐呯殑瀛愭枃浠跺す + 涔︾锛堟枃浠跺す鍦ㄥ墠锛?- **鍙充晶**锛氬綋鍓嶈矾寰勪笌鍥炴敹绔?- 鏁伴噺鎻愮ず鏀逛负**寮鸿皟鑹?*锛堝 `2澶?路 5绛綻锛夛紝涓嶅啀涓庢爣棰樻贩鍦ㄤ竴璧烽毦鍒嗚鲸
 - 鍙屽嚮鍙充晶鏂囦欢澶硅繘鍏ワ紱鍙抽敭鏀寔鍒犻櫎/閲嶅懡鍚?绉诲姩/鏂板缓绛?
 ## [3.15.2] - 2026-09-20
@@ -259,7 +446,7 @@
 ### 淇锛氬垹闄ゆ棤娉曞悓姝?+ 浜戠娈嬬己鍐嶆璇垹
 - 鐜拌薄锛氭仮澶嶄功绛惧悗锛屽湪娴忚鍣ㄥ垹闄ゆ棤娉曚紶鍒板叾瀹冪锛涗笖鏃ュ織鍑虹幇 `-45`锛堜簯绔粎绾?30 鏉?vs 鍩虹嚎 168 鏉℃椂锛屽悎骞朵粛鎸夈€屼簯绔病鏈?鍒犻櫎銆嶇爫鎺夋潯鐩級
 - **鍚堝苟鏀逛负銆屼簯绔己澶变笉鍒犻櫎銆?*锛氬垹闄ゅ彧鏉ヨ嚜娴忚鍣ㄥ鍑哄姣旓紙DetectBrowserDeletions / FolderDeletions锛夋樉寮忚矾寰?- 鍩虹嚎鏈夈€佷簯绔?鏈湴閮芥棤鐨勬潯鐩篃浼氫繚杩涘悎骞堕泦锛岄槻涓?- **last_exports**锛氬啓鍥炴垚鍔熺殑娴忚鍣紝浠ュ悓姝ュ悗鏉冨▉闆嗗悎鏇存柊蹇収锛屽惁鍒欏垹闄ゆ娴嬫案杩滃涓嶄笂銆屼笂娆¤繕鍦ㄣ€嶇殑涔︾
-- 鐗堟湰 3.14.5
+- 版本 3.14.5
 
 ## [3.14.4] - 2026-09-20
 
@@ -274,7 +461,7 @@
 - 鏍瑰洜 2锛氭墿灞曠銆岄潪绌鸿烦杩囥€嶆湰鏄繚鎶ら€昏緫锛屽嵈鍐欏叆 `errors`锛屽鑷寸晫闈㈡樉绀哄悓姝ラ敊璇?- 淇锛?  - **璺緞瑙勮寖鍖?*锛氫功绛炬爮/鏀惰棌澶规爮/Bookmarks Bar 绛夋牴鍒悕鎶樺彔涓哄悓涓€閫昏緫鏍癸紝鍙備笌鏂囦欢澶瑰綊灞炰笌鍒犻櫎鍒ゅ畾
   - **鍒犻櫎鏉′欢鏀剁揣**锛氬悎骞堕泦涓粛鏈夊悓閫昏緫鏂囦欢澶规垨涔︾鎸傚湪璇ヨ矾寰勪笅 鈫?**涓嶄笅鍙戝垹闄?*
   - **閿欒鍒嗙骇**锛氭墿灞?`warnings` 瀛楁锛涢潪绌鸿烦杩囪 warning锛屾闈㈢浠呰繘搴︽棩蹇楋紝**涓嶈鍏ラ敊璇?*
-  - 鎵╁睍 **2.2.3**
+  - 扩展 **2.2.3**
 - **璇烽噸鏂板姞杞戒笁涓祻瑙堝櫒鎵╁睍 2.2.3 鍚庡啀鍚屾**
 
 ## [3.14.2] - 2026-09-19
@@ -314,7 +501,7 @@
 - **鍐欏洖鏈榻?*锛氭棫閫昏緫鍙笅鍙戝叏灞€ `ToAddLocal`锛孌B/浜戠瀵归綈鍚?Edge 鑻ヤ粛缂轰功绛撅紝鍚庣画鍚屾鏄剧ず銆屾棤闇€鍐欏洖銆嶏紝Edge 姘歌繙琛ヤ笉榻愩€傜幇**姣忔鍚屾鎶婂悎骞堕泦涔︾/鏂囦欢澶逛笅鍙戠粰鎵€鏈夊凡杩炴帴娴忚鍣?*锛涙墿灞曞垱寤哄墠鎸?URL 鏌ラ噸璺宠繃宸插瓨鍦ㄩ」
 - **Apply 姹囨€?*锛氱瓑寰呭悇娴忚鍣?`bookmarks_apply_result`锛堜笉鍐嶅彧璁ょ涓€涓級锛涙棩蹇楁寜娴忚鍣ㄨ緭鍑?+N/-N
 - **WebSocket SendAsync**锛氭寜 clientId 鐪熸鍙戦€侊紙鍘熷厛璇彂缁欑涓€涓繛鎺ワ級
-- 鎵╁睍 **tai-browser-extension 2.2.0**锛堝啓鍥炴煡閲嶏級
+- 扩展 **tai-browser-extension 2.2.0**（写回查重）
 - **璇峰湪 Chrome / Edge / 璞嗗寘 涓噸鏂板姞杞芥墿灞?*鍚庡啀鐐广€屽悓姝ヤ功绛俱€嶏紝Edge 浼氳ˉ榻愮己澶变功绛?
 ## [3.13.1] - 2026-09-18
 
@@ -368,7 +555,7 @@
 ### 浼樺寲锛氱‖浠剁洃鎺у崱鐗囧壇鎸囨爣瑙嗚琛ㄧ幇
 - 闂锛氬悓涓€纭欢鍗＄墖鍐咃紝浣跨敤鐜囨湁鑹叉潯锛屾俯搴?鏄惧瓨/纾佺洏璇诲啓/缃戦€熺瓑鍓寚鏍囧嚑涔庡彧鏈夋枃瀛楋紝闃堝€艰壊涓嶇洿瑙?- CPU锛氫娇鐢ㄧ巼澶у瓧+鏉★紱娓╁害鐙珛鑹叉潯锛?鈥?00掳C锛?- GPU锛氫娇鐢ㄧ巼 / 娓╁害 / 鏄惧瓨 涓夎鍚勮嚜銆屾爣绛?+ 闃堝€艰壊鏁板€?+ 缁嗚繘搴︽潯銆?- 鍐呭瓨锛氬崰鐢ㄧ櫨鍒嗘瘮鏉?+ 瀹归噺鏂囨
 - 纾佺洏锛氭椿鍔ㄧ巼 + 璇诲彇/鍐欏叆閫熷害鏉★紙绾?50/150 MB/s 榛?绾㈤槇鍊硷紝婊″埢搴﹂殢宄板€艰嚜閫傚簲锛?- 缃戠粶锛氫笅琛?涓婅閫熷害鏉?+ 浼氳瘽娴侀噺/IP
-- 鏃犱紶鎰熷櫒璇绘暟鏃朵腑鎬х伆銆佽繘搴︽潯涓虹┖锛堜笉鍐嶅亣缁匡級
+- 无传感器读数时中性灰、进度条为空（不再假绿）
 - ViewModel 琛ラ綈鍓寚鏍囨暟鍊肩粦瀹氾紙CpuTemp/GpuTemp/Disk*Mbps/Net*Mbps锛夊強璁＄畻灞炴€ч€氱煡
 
 ## [3.9.5] - 2026-09-18
@@ -405,8 +592,6 @@
 
 ### 鏂板锛氫换鍔℃爮杩涘害鏉?+ 鍙嚜瀹氫箟鎵樼洏鎮仠淇℃伅
 - 浠诲姟鏍忔寜閽簳閮ㄨ繘搴︽潯锛圛TaskbarList3锛夛細榛樿浠ャ€屼粖鏃ヤ娇鐢ㄨ繘搴︺€嶄负涓绘寚鏍囷紙浠婃棩娲昏穬鏃堕暱 梅 姣忔棩鐩爣锛夛紝鍙湪璁剧疆椤靛垏鎹负 CPU 鍗犵敤 / 鍐呭瓨鍗犵敤 / GPU 鍗犵敤 / 纾佺洏娲诲姩 / 涓嬭缃戦€?/ CPU 娓╁害锛涜繘搴﹂鑹诧細璐熻浇绫?鈮?0% 榛勩€佲墺90% 绾紝浠婃棩鐩爣杈炬垚鍚庤浆榛勬彁绀?- 鎵樼洏鎮仠鎻愮ず鍔ㄦ€佸寲锛欳PU / 鍐呭瓨 / GPU 鍗犵敤銆佷笂涓嬭缃戦€熴€佺鐩樻椿鍔ㄣ€丆PU/GPU 娓╁害銆佷粖鏃ヤ娇鐢ㄧ粺璁★紙宸茬敤鏃堕暱 / 姣忔棩鐩爣 / 鐧惧垎姣旓級锛岄€愰」鍙湪璁剧疆椤靛嬀閫夊紑鍏筹紱姣?5 绉掑埛鏂帮紝鏂囨湰鍙樺寲鎵嶆洿鏂帮紙鍏煎 Windows 128 瀛楃鎻愮ず涓婇檺锛?- 鏂板璁剧疆椤点€屼换鍔℃爮涓庢墭鐩樸€嶅崱鐗囷細杩涘害鏉″紑鍏炽€佷富鎸囨爣涓嬫媺銆佹瘡鏃ョ洰鏍囧皬鏃舵暟锛?.5~24锛夈€佹偓鍋滄彁绀哄紑鍏充笌 7 椤逛俊鎭嬀閫?- 浠婃棩娲昏穬鏃堕暱瀹炴椂鏌ヨ AppSessions锛圖ailySummary 浠呰仛鍚堟槰鏃ワ級锛?0 绉掔紦瀛樺噺灏?DB 寮€閿€
-
-
 
 ## [3.8.0] - 2026-09-18
 
@@ -476,7 +661,7 @@
 - clientId 鈫?鏄剧ず鍚嶆槧灏勶紝鏀规爣绛惧悗鏇挎崲鏃?ready 閿紝閬垮厤鍙屼唤
 - 鎵╁睍 2.1.0锛歱opup銆屾竻闄よ嚜瀹氫箟銆嶃€佹爣绛炬牎楠岋紙鈮?0 瀛楋級銆佺姸鎬佹枃妗堝尯鍒嗚嚜瀹氫箟/鑷姩
 - 鍗曟祴 `BrowserNameResolverTests` 12 椤?
-### 璇存槑
+### 说明
 - 3.4.x 涓棿鐗堟湰鍚杞姞鍥猴紙杩涚▼璇嗗埆銆佸垹闄や紶鎾€佸巻鍙茶秴鏃剁瓑锛夛紝鏉＄洰瑙佸悇 3.3.x锛涙湰鐗堝皢鑷畾涔夋爣绛捐兘鍔涙寮忓榻愪袱绔?- 鏃ф墿灞曪紙2.0.x锛夎繛鏂版闈細鏃?override 瀛楁鏃朵粛鎸夎繘绋嬩紭鍏堬紝琛屼负鍏煎
 
 ## [3.3.6] - 2026-09-16
@@ -496,7 +681,7 @@
 
 ### 淇锛氭祻瑙堝巻鍙插悓姝ワ紙鍚堝苟鑷?Browser history sync 椤圭洰锛?- 鏍瑰洜锛氬巻鍙插鍑哄叆搴撴椂 GetInt64 鐩存帴瑙ｆ瀽 visitTime锛岃眴鍖呯瓑鍥戒骇 Chromium 鐨?history API 杩斿洖瀛楃涓叉椂闂存埑锛屾姏 FormatException 瀵艰嚧鏁存壒鍘嗗彶涓㈠純锛圔rowserHistoryItems 闀挎湡涓?0锛?- 妗岄潰绔巻鍙茶В鏋愭敼涓哄閿欙細鏁板瓧/瀛楃涓叉椂闂存埑鍧囧彲瑙ｆ瀽锛圚andler + HistorySyncService 浜戠瑙ｆ瀽鍙屽淇锛?- 鎵╁睍绔鍑鸿鑼冨寲锛歂umber() 杞崲 lastVisitTime / visitCount
 - 浜戠鍘嗗彶鍚堝苟澧炲己锛氶櫎 pchabit/browser-history-v1.json 涓庢棫鍏ㄩ噺 browser-history-total.json 澶栵紝鏂板鑷姩鏋氫妇璇诲彇 Browser history sync 澧為噺鏂囦欢 browser-history-increment-*.json锛堥渶鏄庢枃锛汚ES 鍔犲瘑鏂囦欢闇€鍏堝湪鏃ф墿灞曞叧闂姞瀵嗛噸鏂板悓姝ワ級
-- 鎵╁睍 tai-browser-extension 鍗囪嚦 **2.0.2**
+- 扩展 tai-browser-extension 升至 **2.0.2**
 
 ## [3.3.2] - 2026-09-16
 
@@ -513,13 +698,13 @@
 - 浠?Chrome/Edge 绛夋祻瑙堝櫒鎵╁睍閲囬泦涔︾锛岀粡 WebSocket 鎺ㄩ€佸埌 PChabit
 - SQLite 鍋氬敮涓€鍚堝苟鏉冨▉锛坄BrowserBookmarks` 琛級锛岀粫寮€ `chrome.storage` 閰嶉闄愬埗
 - 涓夎矾鍚堝苟绠楁硶锛堟湰鏈?脳 浜戠 脳 涓婃鍩虹嚎锛夛細鏂板 / 鍒犻櫎 / 鏀瑰悕璺ㄨ澶囦紶鎾?- 棣栨鍚屾鍙仛骞堕泦锛?*涓嶄細浼犳挱鍒犻櫎**锛涙枃浠跺す姘镐笉鑷姩鍒犻櫎
-- 澶嶇敤宸叉湁 WebDAV 閰嶇疆锛屼簯鏂囦欢 `pchabit/browser-bookmarks-v3.json`
+- 复用已有 WebDAV 配置，云文件 `pchabit/browser-bookmarks-v3.json`
 - 鎵╁睍 `tai-browser-extension` 鍗囪嚦 **2.0.0**锛氭柊澧?`bookmarks` / `history` 鏉冮檺銆乣browser-sync.js` 瀵煎嚭/鍐欏洖妯″潡
 - 鏁版嵁绠＄悊椤垫柊澧炪€屾祻瑙堝櫒涔︾鏅鸿兘鍚屾銆嶅尯鍧楋細鍚屾涔︾ / 閲嶇疆鍩虹嚎 / 寮€鍏?/ 鑷姩鍚屾闂撮殧
 - 鍗曞厓娴嬭瘯瑕嗙洊鍚堝苟鍐崇瓥琛紙31 椤癸級
 
 ### 鎶€鏈?- 鏂拌〃锛歚BrowserBookmarks`銆乣BookmarkSyncBaselines`銆乣BrowserSyncMetas`
-- 鏂版湇鍔★細`BookmarkSyncService`銆乣BrowserSyncWebSocketHandler`銆乣BrowserBookmarkRepository`
+- 新服务：`BookmarkSyncService`、`BrowserSyncWebSocketHandler`、`BrowserBookmarkRepository`
 - 绾嚱鏁板悎骞跺櫒 `BookmarkMergePlanner`锛堝彲鍗曟祴锛?- WebSocket 娑堟伅鍒嗘祦锛歚browser_sync_*` / `bookmarks_*` 璧板悓姝ラ€氶亾锛屼笉杩涙椿鍔ㄧ粺璁?
 ## [3.2.2] - 2026-09-16
 
@@ -531,7 +716,7 @@
 - **寮€鏈鸿嚜鍚姩鏃犳晥**锛氳缃〉寮€鍏冲彧鏀逛簡 ViewModel 鍐呭瓨鍊硷紝浠庢湭璋冪敤 `SaveSetting` 钀界洏锛屽洜姝や笉浼氬啓 Startup 蹇嵎鏂瑰紡锛涚幇宸插湪姣忔璁剧疆鍙樻洿鍚庝繚瀛?- 鑷惎鍔ㄥ揩鎹锋柟寮忕敱鏃у悕 `Tai.lnk` 鏀逛负 `PChabit.lnk`锛屽苟鍦ㄦ瘡娆″簲鐢ㄨ缃椂鎸夊綋鍓?exe 璺緞閲嶅缓锛堥伩鍏嶅彂甯冭矾寰勫彉鏇村悗澶辨晥锛?- 搴旂敤鍚姩 `Load()` 鍚庝細鑷姩瀵归綈鑷惎鍔ㄥ揩鎹锋柟寮?
 ## [3.2.0] - 2026-09-16
 
-### 鍗囩骇
+### 升级
 - **鐩爣妗嗘灦**锛?NET 9 鈫?**.NET 10**锛坄net10.0` / `net10.0-windows10.0.22621.0`锛?- **SDK**锛歚global.json` 鍥哄畾 `10.0.401`
 - **渚濊禆**锛欵F Core / Microsoft.Extensions.DependencyInjection / System.Drawing.Common 鈫?`10.0.0`
 
@@ -543,7 +728,7 @@
 ### 淇
 - 绉婚櫎杩炴帴涓蹭腑鐨?`Journal Mode` 鍏抽敭瀛楋紙浼氬鑷存墦寮€閿紶璇︽儏鏃舵湭澶勭悊寮傚父宕╂簝锛?- `DbSafeViewModel.LoadDataAsync` 鎹曡幏鍔犺浇寮傚父锛岄伩鍏嶉〉闈㈡暟鎹け璐ユ嫋鍨繘绋?
 ### 璁剧疆椤?- 銆屽叧浜庛€嶅尯鎶€鏈爤 / 鐗堟湰 / 鏋勫缓淇℃伅 / 杩愯鏃舵敼涓轰粠绋嬪簭闆嗕笌杩愯鏃跺姩鎬佽鍙?- 鏂板銆屾渶鏂版洿鏂般€嶆憳瑕侊紝瀹炴椂璇诲彇 `CHANGELOG.md` 棣栦釜姝ｅ紡鐗堟湰灏忚妭
-- 杩涘叆璁剧疆椤垫椂鍒锋柊鍏充簬淇℃伅
+- 进入设置页时刷新关于信息
 
 ## [3.1.10] - 2026-09-12
 
@@ -553,12 +738,12 @@
 - 30s 鍛ㄦ湡淇濆瓨鏀逛负鍚屼竴 Session Id 鐨?upsert锛屼笉鍐嶅垏鐗囨柊寤鸿銆佷笉鍐嶉噸缃?StartTime/璁℃暟
 - content 淇 scroll direction 璁＄畻椤哄簭锛涙墿灞曞鍔犵绾块槦鍒楋紙涓婇檺 200 鏉★級
 
-#### 鍔熻兘锛圥1 娲昏穬鏃堕暱涓庡垎绫荤墿鍖栵級
+#### 功能（P1 活跃时长与分类物化）
 - 鏂板 visibility / idle / heartbeat 浜嬩欢锛屼細璇濆紩鎿庢寜 ActiveDuration 绱鏈夋晥娴忚
-- WebSession 澧炲姞 CategoryId / CategoryName / CategorySource / IdleDuration / IsLegacy
+- WebSession 增加 CategoryId / CategoryName / CategorySource / IdleDuration / IsLegacy
 - 钀藉簱鏃剁墿鍖栫綉绔欏垎绫伙紱WebSocketPort 浠庤缃敞鍏ワ紝鎵╁睍 popup 鍙敼绔彛
 
-#### 鍔熻兘锛圥2 鍒嗘瀽涓庡憟鐜帮級
+#### 功能（P2 分析与呈现）
 - 鏃堕棿绾垮悎骞剁綉椤典細璇濓紙鎸夊垎绫荤潃鑹诧級锛涗华琛ㄧ洏璇?DailySummary.WebPages
 - 缃戦〉缁熻椤典娇鐢ㄦ湁鏁堟祻瑙堟椂闀裤€佹湁鏁堟祻瑙堢巼锛涘垎绫荤瓫閫夎蛋鐗╁寲瀛楁
 - 姣忔棩鑱氬悎鍐欏叆 WebPages / WebDuration / WebActiveDuration锛涘鍑?Top 绔欑偣鎸夋湁鏁堟椂闀?- 鎼滅储寮曟搸鐧藉悕鍗曟墿灞曪紱鏃х煭鍒囩墖浼氳瘽鏍囪 IsLegacy
@@ -578,7 +763,7 @@
 ### 淇
 - 鏋勫缓绯荤粺锛氫慨澶?XAML 缂栬瘧鍣ㄥけ璐ュ鑷存棤娉曠敓鎴?`.g.i.cs` 鏂囦欢鐨勯棶棰橈紙闇€鍏堟瀯寤轰緷璧栭」鐩級
 
-### 娓呯悊锛堜唬鐮佽川閲忥級
+### 清理（代码质量）
 - 鍒犻櫎鍐椾綑椤甸潰锛?  - `MainPage.xaml` / `.xaml.cs`锛氭祴璇曢〉闈紝鏈娇鐢?  - `CategoryManagementPage.xaml` / `.xaml.cs`锛氭湭娉ㄥ唽鍒?NavigationService锛屽姛鑳藉凡琚?`CategoryManagementTab` 鏇夸唬
   - `HeatmapTab.xaml` / `.xaml.cs`锛氭湭浣跨敤锛宍HeatmapPage` 宸叉彁渚涘畬鏁村姛鑳?  - `InsightsTab.xaml` / `.xaml.cs`锛氭湭浣跨敤锛宍InsightsPage` 宸叉彁渚涘畬鏁村姛鑳?
 ## [3.0.1] - 2026-06-17
@@ -606,7 +791,7 @@
 - **global.json**: 8.0 鈫?9.0.315
 
 ### 鏂板
-- **DbSafeViewModel 鍩虹被**锛坄src/PChabit.App/ViewModels/DbSafeViewModel.cs`锛夛細
+- **DbSafeViewModel 基类**（`src/PChabit.App/ViewModels/DbSafeViewModel.cs`）：
   - 灏佽涓ら樁娈垫暟鎹姞杞芥ā寮忥紙Phase 1 绾跨▼姹?DB 鏌ヨ + Phase 2 UI 绾跨▼ ObservableCollection 鏇存柊锛?  - 8 涓?ViewModel 杩佺Щ锛欴ashboard/KeyboardDetails/Timeline/Insights/AppStats/WebDetails/Heatmap/Sankey
 - **DailySummary 瀹炰綋**锛氶鑱氬悎鏃ユ眹鎬绘暟鎹紝DbContext 宸叉敞鍐?- **SankeyViewModel 閲嶆瀯**锛氫粠鍗曢€夋棩鏈熸敼涓烘棩鏈熻寖鍥达紙StartDate/EndDate, DateTimeOffset?锛夛紝鏂板 TopN 灞炴€?
 ### 淇锛堝叧閿級
@@ -618,7 +803,7 @@
 
 ### 淇锛圵MC9999 缂栬瘧閿欒锛?- **WMC9999 鏍瑰洜涓庝慨澶?*锛?  - 鏍瑰洜閾撅細SankeyView.xaml 涓?XAML 缁戝畾閿欒 鈫?XAML 缂栬瘧鍣ㄥ皾璇曟湰鍦板寲閿欒娑堟伅 鈫?缂哄皯涓枃鍗槦绋嬪簭闆嗚祫婧?鈫?閿欒鎶ュ憡鏈哄埗鑷韩宕╂簝
   - 淇锛氫负 SankeyViewModel 娣诲姞 StartDate锛圖ateTimeOffset?锛夈€丒ndDate锛圖ateTimeOffset?锛夈€乀opN锛坕nt锛夊睘鎬?
-### 鏂囨。
+### 文档
 - **AI_MAINTENANCE.md**锛氭柊澧?14 鏉″凡鐭ラ櫡闃辨竻鍗曪紝渚涘悗缁?AI 鏅鸿兘浣撶淮鎶ゆ椂鍙傝€?- **MEMORY.md**锛氭洿鏂版妧鏈爤淇℃伅銆?4 鏉￠櫡闃辨竻鍗曘€佷袱闃舵鏁版嵁鍔犺浇鏋舵瀯銆佹瀯寤烘敞鎰忎簨椤?
 ### 鏁欒
 - **AI_MAINTENANCE.md 鏄」鐩敮涓€鐨勮法鏅鸿兘浣撶粡楠屼紶閫掓満鍒?*锛屼换浣?AI 鏅鸿兘浣撳湪淇敼浠ｇ爜鍓嶅繀椤诲畬鏁撮槄璇?- **14 鏉￠櫡闃变腑瓒呰繃鍗婃暟鏄灦鏋勭骇璁ょ煡闄烽槺**锛屾棤娉曢€氳繃闈欐€佸垎鏋愬彂鐜帮紝鍙兘閫氳繃鏂囨。璁板綍浼犻€?- **WMC9999 鏈韩涓嶆槸鏍瑰洜**锛岃€屾槸閿欒鎶ュ憡閾剧殑宕╂簝锛岀湡姝ｇ殑 XAML 缁戝畾閿欒琚帺钘?- **閫€鍑鸿矾寰勫睘浜庣儹璺緞**锛岀姝㈡槀璐垫搷浣滐紙濡?SQLite WAL checkpoint锛?
@@ -647,30 +832,29 @@
   - 淇 `InsightsViewModel.LoadDataAsync` 涓?`Insights` / `WeeklyScores` ObservableCollection 鍦ㄧ嚎绋嬫睜鏇存柊 鈥斺€?鏀圭敤 `RunOnUIThreadAsync` 鍖呰
   - 淇 `TimelineViewModel.LoadDataAsync` 涓?`HourGroups` / `Activities` / `BarSegments` 闆嗗悎鍦?Task.Run 绾跨▼鏇存柊 鈥斺€?鍏堝湪绾跨▼姹犳瀯閫犳暟鎹紝鍐嶇敤 `RunOnUIThreadAsync` 璋冨害鍒?UI 绾跨▼
   - 淇 `InsightsViewModel.RefreshAsync` / `PreviousDayAsync` / `NextDayAsync` 瑁歌皟鐢?`LoadDataAsync`
-- **`ViewModelBase.RunOnUIThreadAsync` 姝婚攣椋庨櫓**:
+- **`ViewModelBase.RunOnUIThreadAsync` 死锁风险**:
   - 鏀圭敤 `TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)` + `ConfigureAwait(false)`锛岄伩鍏嶅湪寮傚父璺緞涓婃閿?  - 澧炲姞 `HasThreadAccess` 鐭矾锛歎I 绾跨▼鐩存帴鎵ц锛岄伩鍏嶄笉蹇呰鐨?TryEnqueue
   - 澧炲姞 `TryEnqueue` 澶辫触鍥為€€
 
 ## [2.26.0] - 2026-06-14
 
-### 閲嶆瀯
+### 重构
 - **鏁版嵁绠＄悊鐣岄潰閲嶈璁?*: 瑙ｅ喅涓夌鏁版嵁鍑哄彛璇箟娣蜂贡闂锛堜簯绔?126M / 鏈湴瀵煎嚭 1.56M / 鏈湴澶囦唤 23M 澶у皬涓嶄竴鑷达級
   - 鍙栨秷銆屽浠界鐞?/ 鏁版嵁瀵煎嚭銆嶉《閮?Tab 缁撴瀯锛屾敼涓哄崟椤靛瀭鐩存粴鍔ㄧ殑 5 涓涔夋竻鏅板崱鐗囷細
     1. **鏁版嵁姒傝** 鈥?涓€鐪肩湅娓呮暟鎹簱澶у皬銆佹€昏褰曟暟銆佹暟鎹寖鍥淬€佹湰鍦?浜戠澶囦唤鐘舵€併€佹渶杩戝悓姝ユ椂闂?    2. **鏈湴鏁版嵁搴撳浠斤紙鐏鹃毦鎭㈠锛?* 鈥?ZIP 鍘嬬缉鏁翠釜 .db 鏂囦欢锛屼繚鐣?7 浠斤紝鍙竴閿繕鍘?    3. **鏁版嵁瀵煎嚭锛堝垎鏋?/ 杞Щ锛?* 鈥?澶嶇敤 IExportService 鏀寔 4 绉嶆牸寮忥紙json/markdown/csv/ai-prompt锛?    4. **浜戠鍚屾锛堝紓鍦板鐏撅級** 鈥?涓婁紶鏈湴 ZIP 鍒?WebDAV锛屼簯绔繚鐣?5 浠?    5. **鎿嶄綔鏃ュ織** 鈥?缁熶竴鏄剧ず鎵€鏈夋搷浣滆褰曪紙澶囦唤/瀵煎嚭/鍚屾/鎭㈠/鍒犻櫎/娓呯悊锛?
-### 鏀硅繘
+### 改进
 - **浜戠鍚屾鏍煎紡缁熶竴**: 涓嶅啀涓婁紶 JSON锛堟棫鐨?132-162M/鏂囦欢锛夛紝鏀逛负涓婁紶鏈湴 ZIP锛堢害 23M/鏂囦欢锛屼笌鏈湴澶囦唤鍚屾牸寮忥級
   - 鏃?.json 鏂囦欢缁х画鏀寔鍒楄〃灞曠ず鍜屽垹闄?  - 鏃?.json 鏂囦欢涓嶅啀鏀寔鎭㈠锛堟彁绀?宸插純鐢?锛夛紝閬垮厤涓嶅悓鏍煎紡鏁版嵁鍐茬獊
 - **浜戠鑷姩娓呯悊**: 涓婁紶鏂板浠藉悗鑷姩娓呯悊浜戠鏃ф枃浠讹紙榛樿淇濈暀鏈€鏂?5 涓紝鍙厤缃?1-20锛?- **鏁版嵁姒傝**: 椤甸潰椤堕儴鏂板 6 涓粺璁″崱鐗囷紙鏁版嵁搴撳ぇ灏?/ 鎬昏褰曟暟 / 鏁版嵁鑼冨洿 / 鏈湴澶囦唤鏁?/ 浜戠澶囦唤鏁?/ 鏈€杩戜簯鍚屾鏃堕棿锛?- **瀵煎嚭鏃ユ湡鎺т欢**: 鏇挎崲 DatePicker 涓?CalendarDatePicker锛屼慨澶?DateTime 鈫?DateTimeOffset 绫诲瀷涓嶅尮閰嶅鑷寸殑 XAML 缂栬瘧鍣ㄩ潤榛樺け璐?- **鏍煎紡鍖栨樉绀?*: BackupInfo 鍜?WebDAVFileInfo 鏂板 FormattedSize/FormattedModified/IsAutomaticText 璁＄畻灞炴€э紝XAML 涓嶅啀鐩存帴缁戝畾鍘熷 long/bool
 
-### 鍒犻櫎
+### 删除
 - `BackupTabContent.xaml/cs` 鍜?`ExportTabContent.xaml/cs`锛堝悎骞跺埌鍗曢〉锛?- 鏃х殑 `SyncToWebDAVAsync` 涓殑 JSON 搴忓垪鍖栭€昏緫锛? 涓?132-162M 鐨勬棫 .json 鏂囦欢鐣欏湪浜戠锛屽彲鎵嬪姩鍒犻櫎锛?
 ### 淇
 - **XAML 缂栬瘧鍣ㄩ潤榛樺け璐?*: DatePicker.SelectedDate 缁戝畾鍒?DateTime 鏃?XamlCompiler.exe 杩斿洖 exit 1 浣嗘棤浠讳綍閿欒杈撳嚭
   - 瑙ｅ喅锛氭敼鐢?CalendarDatePicker锛堟帴鍙?DateTimeOffset?锛屽彲涓?DateTime 浜掕浆锛?- **绫诲瀷涓嶅尮閰?*: `<Run Text="{Binding Size}" />` 涓?Size 鏄?long锛孹AML 缂栬瘧鍣ㄦ棤娉曞鐞?鈫?鏂板 FormattedSize/FormattedModified 瀛楃涓插睘鎬?
 ## [2.25.2] - 2026-06-13
 
-
-### 鏀硅繘
+### 改进
 - **鍥炬爣绯荤粺閲嶈璁★紙鏂瑰悜 A 路 鏄剧ず鍣?+ 杩涘害鐜級**: 鏇挎崲 LOGO 椋庢牸鐨勭畝鍗曟樉绀哄櫒鍥炬爣涓?鏄剧ず鍣?+ 杩涘害鐜?缁勫悎
   - 涓昏壊 `#1B3A6F`锛岃繍琛屾€佺豢 `#22C55E`锛屾殏鍋滄 `#F59E0B`
   - 鏇挎崲 `src/PChabit.App/Assets/` 涓嬫墍鏈?WinUI 璧勬簮锛圫toreLogo / Square44x44 / Square150x150 / LockScreenLogo / SplashScreen / Wide310x150 / Logo锛?  - 鏇挎崲 `extensions/tai-browser-extension/icons/` 涓?PNG + SVG锛堝簾寮冩棫鐨勭传娓愬彉 T 瀛楀崰浣嶏級
@@ -688,8 +872,8 @@
 - **閽╁瓙瀹夎鍦ㄦ棤娑堟伅寰幆鐨勫悗鍙扮嚎绋嬪鑷村洖璋冩案涓嶈Е鍙戯紙鏍瑰洜淇锛?*: StartMonitoring() 鍦?Task.Run 涓皟鐢紝瀵艰嚧 SetWindowsHookEx 鍦ㄧ嚎绋嬫睜绾跨▼涓婃墽琛屻€俉in32 浣庣骇閽╁瓙瑕佹眰瀹夎绾跨▼蹇呴』鏈夋秷鎭惊鐜紝鍚﹀垯鍥炶皟姘歌繙涓嶄細琚皟鐢?  - 鏀瑰洖浠撳簱鑰佷唬鐮佺殑鏂瑰紡锛氬湪 UI 绾跨▼涓婇€氳繃 DispatcherQueue.TryEnqueue 鍚屾鍚姩鐩戞帶鍣?  - StartMonitoring() 鏀逛负 _monitorManager.StartAllAsync().Wait() 鍚屾绛夊緟锛岀‘淇濋挬瀛愬湪 UI 绾跨▼瀹夎
 - **閽╁瓙鍋ュ悍妫€鏌ユ棤鑷姩鎭㈠**: MonitorManager 鐨勫仴搴锋鏌ュ彧璁板綍璀﹀憡涓嶉噸鍚挬瀛愶紝瀵艰嚧閽╁瓙琚?Windows 闈欓粯鍗歌浇鍚庢案涔呭け鏁?  - 娣诲姞鑷姩鎭㈠閫昏緫锛氳繛缁?娆℃娴嬪埌閽╁瓙5鍒嗛挓鏃犳椿鍔紝鑷姩 Stop+Start 閲嶅惎閽╁瓙
   - 娣诲姞閽╁瓙鏈繍琛屾娴嬶細IsRunning=false 浣?MonitorManager 杩樺湪杩愯鏃惰嚜鍔ㄩ噸鍚?- **杩涚▼鍚屾缂哄け**: 閿紶 Monitor 鐨?SetCurrentProcess 浠庢湭琚皟鐢紝ActiveProcess 姘歌繙涓?null
-  - IAppMonitor 娣诲姞 GetCurrentProcess() 鎺ュ彛鏂规硶
-  - IKeyboardMonitor/IMouseMonitor 娣诲姞 SetCurrentProcess() 鎺ュ彛鏂规硶
+  - IAppMonitor 添加 GetCurrentProcess() 接口方法
+  - IKeyboardMonitor/IMouseMonitor 添加 SetCurrentProcess() 接口方法
   - MonitorManager 娣诲姞 _processSyncTimer 姣忕灏?AppMonitor 鐨勫綋鍓嶈繘绋嬪悓姝ュ埌閿紶 Monitor
   - AppMonitor 瀹炵幇 GetCurrentProcess() 杩斿洖褰撳墠鍓嶅彴搴旂敤杩涚▼鍚?  - MouseMonitor 瀹炵幇 SetCurrentProcess() 瀛樺偍褰撳墠杩涚▼鍚?
 ## [2.23.0] - 2026-06-13
@@ -707,20 +891,20 @@
   - 娣诲姞璇婃柇鏃ュ織 `[KB-Hook]` 姣忔鎸夐敭鏃惰褰曪紝楠岃瘉鍥炶皟鏄惁鐪熺殑琚皟鐢?  - 淇 KeyboardMonitor.Stop() 涓敊璇殑 `_idleCheckTimer.Dispose()` 鈥斺€?Dispose 鍚庢棤娉曞啀 Start()
   - Stop() 鏀逛负鍙?Stop()锛屼笉 Dispose()锛岀‘淇?Start() 鏃?timer 浠嶅彲鐢?- **SetCurrentProcess 浠庢湭琚皟鐢?*: 閿紶 Monitor 姘歌繙鎷夸笉鍒板綋鍓嶆縺娲昏繘绋?  - AppMonitor 娣诲姞 `GetCurrentProcess()` 鍏紑鏂规硶
   - MonitorManager 娣诲姞 `_processSyncTimer` 姣忕灏?AppMonitor 鐨勫綋鍓嶈繘绋嬪悓姝ュ埌 KeyboardMonitor/MouseMonitor
-  - MouseMonitor 娣诲姞 `SetCurrentProcess()` 鎺ュ彛锛堝崰浣嶅疄鐜帮級
+  - MouseMonitor 添加 `SetCurrentProcess()` 接口（占位实现）
 
 ## [2.22.4] - 2026-06-13
 
 ### 淇
 - **EF Core 骞跺彂鏌ヨ瀵艰嚧鏁版嵁涓㈠け**: DashboardViewModel 鍜?KeyboardDetailsViewModel 浣跨敤 Task.WhenAll 鍦ㄥ悓涓€涓?DbContext 涓婂苟鍙戞煡璇?  - EF Core 涓嶆敮鎸佸悓涓€ DbContext 瀹炰緥涓婄殑骞跺彂鎿嶄綔锛屼細鎶涘嚭 InvalidOperationException
-  - DashboardViewModel: 鏀圭敤 IDbContextFactory + 椤哄簭 await
+  - DashboardViewModel: 改用 IDbContextFactory + 顺序 await
   - KeyboardDetailsViewModel: 涓洪敭鐩樺拰榧犳爣鏌ヨ鍒嗗埆鍒涘缓鐙珛 DbContext
 - **閽╁瓙鍋ュ悍妫€鏌ユ棤娉曟娴?鍍靛案閽╁瓙"**: 閽╁瓙琚?Windows 闈欓粯鍗歌浇鍚?IsRunning 浠嶄负 true
   - 娣诲姞 LastActivityTime 灞炴€у埌 IMonitor 鎺ュ彛鍜屾墍鏈?Monitor 瀹炵幇
   - 鍋ュ悍妫€鏌ユ敼涓猴細5 鍒嗛挓鏃犳椿鍔ㄨ涓洪挬瀛愬け鏁堬紝Stop + Start 閲嶅惎
   - 妫€鏌ラ棿闅斾粠 30 绉掕皟鏁翠负 60 绉掞紝杩炵画 3 娆℃娴嬪け璐ユ墠閲嶅惎
 
-### 鏀硅繘
+### 改进
 - **娣诲姞鏌ヨ璇婃柇鏃ュ織**: DashboardViewModel 鍜?KeyboardDetailsViewModel 鍦ㄦ暟鎹姞杞藉悗璁板綍浼氳瘽鏁伴噺鍜岀粺璁″€?  - 渚夸簬鎺掓煡"鏁版嵁鍦ㄥ簱浣嗛〉闈㈡樉绀轰负绌?鐨勯棶棰?
 ## [2.22.3] - 2026-06-13
 
@@ -736,12 +920,12 @@
 
 ### 淇
 - **閿紶缁熻鏁版嵁涓柇**: Win32 浣庣骇閽╁瓙鍥炶皟缂哄皯寮傚父淇濇姢锛屽紓甯稿鑷寸郴缁熼潤榛樺嵏杞介挬瀛愶紝閿紶鏁版嵁鍋滄閲囬泦
-  - KeyboardMonitor/MouseMonitor HookCallback 娣诲姞 try-catch 淇濇姢
+  - KeyboardMonitor/MouseMonitor HookCallback 添加 try-catch 保护
   - 娣诲姞 MonitorManager 閽╁瓙鍋ュ悍妫€鏌ワ紙姣?0绉掓娴嬶紝杩炵画3娆″け鏁堣嚜鍔ㄦ仮澶嶏級
-- **FlushAccumulatorsAsync 骞跺彂閲嶅叆**: 瀹氭椂鍣ㄥ洖璋冨彲鑳藉湪涓婁竴娆℃湭瀹屾垚鏃跺啀娆¤Е鍙戯紝娣诲姞 _isFlushing 浜掓枼鏍囧織
+- **FlushAccumulatorsAsync 并发重入**: 定时器回调可能在上一次未完成时再次触发，添加 _isFlushing 互斥标志
 - **Infrastructure 杩炴帴瀛楃涓?*: 淇 ServiceCollectionExtensions 涓?SQLite 涓嶆敮鎸佺殑 Pooling/Max Pool Size 鍙傛暟
 
-### 鏀硅繘
+### 改进
 - **鎵撳瓧閫熷害缁熻婵€娲?*: AverageTypingSpeed/PeakTypingSpeed 鍘熶负姝讳唬鐮侊紝浠庢湭璁＄畻
   - 鍦?OnKeyboardDataCollected 涓泦鎴愭墦瀛楃獊鍙戞娴嬶紙2绉掓棤鎸夐敭瑙嗕负绐佸彂缁撴潫锛?  - 绱姞鍣ㄦ柊澧?TypingBursts/PeakTypingSpeed/AverageTypingSpeed 瀛楁
   - Flush 鏃舵纭悎骞舵墦瀛楅€熷害鏁版嵁鍒?KeyboardSession
@@ -762,10 +946,10 @@
   - 鍗＄墖鑳屾櫙/杈规/鏂囨湰鑹茶嚜鍔ㄩ€傞厤娣辨祬涓婚
   - 杞壊鍥炬爣鑳屾櫙锛堣摑/缁?榛?绱級娣辨祬涓婚鑷姩璋冩殫
 
-### 鏀硅繘
+### 改进
 - **璁捐绯荤粺 v2.22**: 浠庣‖缂栫爜鑹插僵杩佺Щ鍒?WinUI ThemeResource 浣撶郴
-  - 鍗＄墖鏍峰紡 CardStyle 浣跨敤 CardBackgroundFillColorDefaultBrush
-  - 椤甸潰鑳屾櫙浣跨敤 SolidBackgroundFillColorBaseBrush
+  - 卡片样式 CardStyle 使用 CardBackgroundFillColorDefaultBrush
+  - 页面背景使用 SolidBackgroundFillColorBaseBrush
   - 鏂板 SectionTitleStyle銆丳ageSubtitleStyle 缁熶竴鏍峰紡
 - **UI 缁熶竴鍖?*: 鎵€鏈夐〉闈㈠崱鐗囩粺涓€浣跨敤 CardStyle
   - DashboardPage/GoalsPage/SettingsPage/AnalyticsPage 娑堥櫎纭紪鐮佽儗鏅壊
@@ -773,7 +957,7 @@
 
 ## [2.21.3] - 2026-06-13
 
-### 鏀硅繘
+### 改进
 - **鍒嗘瀽椤甸潰缁熶竴閲嶆瀯**: 鍙栨秷銆屽垎鏋愩€嶅鑸殑瀛愰〉闈㈠睍寮€缁撴瀯锛屽皢鍛ㄧ粺璁°€佺儹鍔涘浘銆佹櫤鑳芥礊瀵熴€佸簲鐢ㄦ祦鍚戝悎骞朵负鍗曚竴椤甸潰鐨勯《閮ㄦ爣绛鹃〉
 - 鏂板缓 HeatmapTab銆両nsightsTab UserControl锛屼繚鎸佸師鏈夊姛鑳介€昏緫涓嶅彉
 - 鏂板缓 AnalyticsPage 椤堕儴 NavigationView 4 鏍囩椤靛竷灞€锛堝懆缁熻/鐑姏鍥?鏅鸿兘娲炲療/搴旂敤娴佸悜锛?- ShellPage 绠€鍖栥€屽垎鏋愩€嶄负鐩存帴瀵艰埅椤癸紝绉婚櫎涓夊悕瀛愰」
@@ -783,12 +967,12 @@
 ### 淇
 - **鍚姩鍗￠】娣卞害浼樺寲**: 灏嗘墭鐩樺垵濮嬪寲銆佺洃鎺у惎鍔ㄣ€佸浠芥湇鍔′粠 `OnLaunched` 绉诲埌 `Window.Activated` 涓€娆℃€т簨浠朵腑锛?00ms 寤惰繜鍚庡紓姝ュ垵濮嬪寲锛岀‘淇濈獥鍙?UI 鍏堟覆鏌?- **浠〃鐩樺欢杩熷姞杞?*: `OnNavigatedTo` 涓?DB 鏌ヨ鏀圭敤 `DispatcherQueuePriority.Low` 寤惰繜鎵ц锛屽厛娓叉煋 UI 妗嗘灦鍐嶅姞杞芥暟鎹?- **鏇存柊鏃ュ織鍗℃淇**: 浠庣‖缂栫爜瓒呴暱瀛楃涓叉敼涓哄紓姝ヨ鍙?CHANGELOG.md + 鍒嗘 TextBlock 娓叉煋锛屾秷闄?WinUI 3 鍗?TextBlock Wrap 甯冨眬璁＄畻鍗℃
 
-### 鏀硅繘
+### 改进
 - CHANGELOG.md 绾冲叆 csproj Content 椤癸紝鑷姩澶嶅埗鍒拌緭鍑虹洰褰?- 鏇存柊鏃ュ織瀵硅瘽妗嗘坊鍔?ProgressRing 鍔犺浇鍔ㄧ敾鍜岄槻閲嶅鐐瑰嚮淇濇姢
 
 ## [2.21.1] - 2026-06-13
 
-### 璁剧疆椤甸潰鍗囩骇
+### 设置页面升级
 - **鍒嗙粍鍗＄墖璁捐**: 姣忎釜璁剧疆鍒嗙粍甯︽湁褰╄壊鍥炬爣澶达紙钃?缁?绱級
   - 鍩烘湰璁剧疆锛氳摑鑹?(#1E40AF) + 榻胯疆鍥炬爣
   - 鐩戞帶璁剧疆锛氱豢鑹?(#10B981) + 閿洏鍥炬爣
@@ -825,7 +1009,7 @@
   - 缃戦〉鍗＄墖锛氭祬绱儗鏅?+ 绱壊缃戦〉鍥炬爣
 - **鍗＄墖鍐呰竟璺?*: 缁熶竴璋冩暣涓?20px锛岀鍚堣璁¤鑼?- **搴旂敤鎺掕鍒楄〃**: 淇濇寔鍘熸湁鐨勫浘鏍?+ 鍚嶇О + 鏃堕暱甯冨眬
 - **缃戠珯璁块棶**: 缁熶竴浣跨敤 Insight 鑹?(#8B5CF6) 鍦嗚鍥炬爣 + 鍩熷悕棣栧瓧姣?
-### 瀵艰埅浼樺寲
+### 导航优化
 - **ShellPage 澶撮儴**: 娣诲姞 PChabit LOGO + 搴旂敤鍚嶇О + 鐗堟湰鍙?- **鐘舵€佹爮鏍峰紡**: 鏆傚仠鎸夐挳浣跨敤 Warning 璇箟鑹?(#F59E0B)
 
 ## [2.20.1] - 2026-06-13
@@ -836,6 +1020,5 @@
   - 鎵€鏈夊瓙 UserControl 娣诲姞 HorizontalAlignment="Stretch" 鍜?VerticalAlignment="Stretch"
 - **鍚姩鍗￠】浼樺寲**: 娑堥櫎绋嬪簭鍚姩鏃剁殑鍗￠】
   - 鏁版嵁搴撳垵濮嬪寲鏀逛负绾紓姝ユ墽琛岋紙绉婚櫎 GetAwaiter().GetResult() 鍚屾闃诲锛?  - 鐩戞帶鍣ㄥ惎鍔ㄤ粠 StartAllAsync().Wait() 鏀逛负 Task.Run 寮傛鍚姩
-- **鍏抽棴鍗￠】浼樺寲**: 娑堥櫎绋嬪簭鍏抽棴鏃剁殑鍗￠】
+- **关闭卡顿优化**: 消除程序关闭时的卡顿
   - DataCollectionService.Stop() 涓?FlushAccumulators 浠庡悓姝ラ樆濉炴敼涓哄甫瓒呮椂鐨勫紓姝ユ墽琛?  - 澶勭悊浠诲姟鍜屽悗鍙板畾鏃跺櫒绛夊緟瓒呮椂浠?2 绉掔缉鐭负 1 绉?  - 鍏抽棴娴佺▼绉婚櫎涓嶅繀瑕佺殑 Task.Delay(100)锛岀獥鍙ｅ叧闂瓑寰呬粠 500ms 缂╃煭涓?200ms
-

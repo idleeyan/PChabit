@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>PChabit 活动趋势</title>
+<style>
+  /* 主题自适应：host 通过 setTheme() 注入配色，随应用深浅色切换 */
+  html, body { margin:0; padding:0; background:transparent; overflow:hidden; }
+  #wrap { padding:4px 8px 0 8px; box-sizing:border-box; }
+  canvas { width:100%; height:200px; display:block; }
+  .empty { color:var(--muted); font:12px/1.6 "Segoe UI","Microsoft YaHei",sans-serif; padding:24px 4px; text-align:center; }
+  .legend { display:flex; gap:14px; font:11px "Segoe UI","Microsoft YaHei",sans-serif; color:var(--muted); margin-top:6px; flex-wrap:wrap; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="meta" class="empty">暂无数据</div>
+  <canvas id="c" width="900" height="200"></canvas>
+  <div class="legend">
+    <span><i class="dot" id="d1"></i><span id="l1">高</span></span>
+    <span><i class="dot" id="d2"></i><span id="l2">中</span></span>
+    <span><i class="dot" id="d3"></i><span id="l3">低</span></span>
+  </div>
+</div>
+<script>
+var C = { bg:'#ffffff', grid:'rgba(0,0,0,0.08)', axis:'#6b7280', meta:'#6b7280',
+          c1:'#10B981', c2:'#F59E0B', c3:'#EF4444' };
+
+function applyTheme(dark) {
+  if (dark) {
+    C.bg='#1c1c1c'; C.grid='rgba(255,255,255,0.10)'; C.axis='#9ca3af'; C.meta='#9ca3af';
+  } else {
+    C.bg='#ffffff'; C.grid='rgba(0,0,0,0.08)'; C.axis='#6b7280'; C.meta='#6b7280';
+  }
+  document.body.style.background = C.bg;
+  var m = document.getElementById('meta');
+  if (m) m.style.color = C.meta;
+  var lg = document.querySelectorAll('.legend');
+  for (var i=0;i<lg.length;i++) lg[i].style.color = C.meta;
+  if (window.__ACT_DATA__) draw(window.__ACT_DATA__, window.__ACT_DARK__);
+}
+
+function draw(data, dark) {
+  if (dark !== undefined) { window.__ACT_DARK__ = dark; applyTheme(dark); }
+
+  var meta = document.getElementById('meta');
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+
+  var bars = (data && data.bars) || [];
+  if (!bars.length) {
+    meta.textContent = (data && data.summary) || '暂无数据';
+    meta.className = 'empty';
+    return;
+  }
+  meta.textContent = (data && data.summary) || '';
+  meta.className = '';
+  meta.style.color = C.meta;
+  meta.style.font = '11px "Segoe UI","Microsoft YaHei",sans-serif';
+  meta.style.padding = '2px 0 6px 0';
+  meta.style.textAlign = 'left';
+
+  var padL = 30, padR = 10, padT = 10, padB = 22;
+  var plotW = w - padL - padR, plotH = h - padT - padB;
+
+  // grid + y 轴刻度
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  ctx.fillStyle = C.axis;
+  ctx.font = '10px "Segoe UI",sans-serif';
+  for (var g = 0; g <= 4; g++) {
+    var y = padT + plotH * g / 4;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+    ctx.fillText(Math.round(60 * (1 - g/4)), 4, y + 3);
+  }
+  ctx.fillText('分', 4, padT - 1);
+
+  var n = bars.length;
+  var step = plotW / Math.max(n, 1);
+  var barW = Math.max(3, Math.min(22, step * 0.62));
+
+  for (var i = 0; i < n; i++) {
+    var b = bars[i];
+    var x = padL + step * i + (step - barW) / 2;
+    var ratio = Math.max(0, Math.min(1, (b.value || 0) / 60));
+    var bh = ratio * plotH;
+
+    if (b.future) {
+      // 未来小时：浅灰虚位框，与「真的零活跃」区分开
+      ctx.fillStyle = C.grid;
+      ctx.fillRect(x, padT, barW, plotH);
+      continue;
+    }
+    var color = b.level === 'high' ? C.c1 : (b.level === 'mid' ? C.c2 : C.c3);
+    ctx.fillStyle = color;
+    // 最小 2px，保证「有活动但很少」也可见
+    ctx.fillRect(x, padT + plotH - Math.max(2, bh), barW, Math.max(2, bh));
+  }
+
+  // x 轴标签（稀疏，避免拥挤）
+  ctx.fillStyle = C.axis;
+  var every = Math.ceil(n / 12);
+  for (var k = 0; k < n; k++) {
+    if (k % every !== 0) continue;
+    var lx = padL + step * k + step / 2;
+    ctx.fillText(bars[k].label || String(k), lx - 8, h - 6);
+  }
+
+  // 图例色块同步
+  var d = document.getElementById('d1'); if (d) d.style.background = C.c1;
+  var d2 = document.getElementById('d2'); if (d2) d2.style.background = C.c2;
+  var d3 = document.getElementById('d3'); if (d3) d3.style.background = C.c3;
+}
+
+function setTheme(dark) { applyTheme(dark); if (window.__ACT_DATA__) draw(window.__ACT_DATA__, dark); }
+
+window.addEventListener('message', function (e) {
+  var d = e.data;
+  if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { return; } }
+  if (d) { window.__ACT_DATA__ = d; draw(d); }
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.__ACT_DATA__) draw(window.__ACT_DATA__);
+});
+</script>
+</body>
+</html>

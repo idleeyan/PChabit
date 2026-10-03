@@ -29,6 +29,7 @@ public class NavigationService
         Register<WebAccessPage>("WebAccess");
         Register<HardwareMonitorPage>("Monitor");
         Register<NetworkTrafficPage>("NetworkTraffic");
+        Register<NotesPage>("Notes");
         Register<AnalyticsPage>("Analytics");
         Register<DataManagementPage>("DataManagement");
         Register<HistoryReportPage>("HistoryReport");

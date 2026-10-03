@@ -160,6 +160,10 @@ coverage/
 # Release archives
 *.zip
 
+# .NET 诊断转储（性能分析/调试产物，会在项目根反复生成）
+*.nettrace
+*.nettrace.*/
+
 # Package lock files (optional, uncomment if needed)
 # package-lock.json
 # yarn.lock

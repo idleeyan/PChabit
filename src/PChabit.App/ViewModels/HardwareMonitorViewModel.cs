@@ -152,6 +152,8 @@ public partial class HardwareMonitorViewModel : ViewModelBase
         if (_subscribed) return;
         _monitorService.ValuesUpdated += OnValuesUpdated;
         _subscribed = true;
+        // 3.24.0：进程资源（含 PDH GPU 计数器）仅页面可见时采样，离开即停
+        _processResource.Start();
         RefreshValues(); // 立即刷新一次
     }
 
@@ -161,6 +163,7 @@ public partial class HardwareMonitorViewModel : ViewModelBase
         if (!_subscribed) return;
         _monitorService.ValuesUpdated -= OnValuesUpdated;
         _subscribed = false;
+        _processResource.Stop();
     }
 
     // 回调运行于线程池 Timer 线程；[ObservableProperty] 通知由基类自动派发到 UI 线程

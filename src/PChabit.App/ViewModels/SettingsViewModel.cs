@@ -84,6 +84,40 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private double _dailyUsageGoalHours = 6;
 
+    // ===== 桌面硬件悬浮插件（3.23.0）=====
+    [ObservableProperty]
+    private bool _desktopWidgetEnabled = false;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowCpu = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowMemory = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowGpu = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowVram = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowNet = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowDisk = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetShowUsage = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetTopmost = true;
+
+    [ObservableProperty]
+    private bool _desktopWidgetClickThrough = false;
+
+    [ObservableProperty]
+    private bool _desktopWidgetClampToScreen = true;
+
     [ObservableProperty]
     private bool _aiInsightsEnabled;
 
@@ -128,6 +162,28 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _aiAutoWeeklyInsight;
+
+    // ===== 便签（3.24.0）=====
+    [ObservableProperty]
+    private bool _stickyNotesEnabled = true;
+
+    [ObservableProperty]
+    private string _stickyNotesHotkeyNew = "Ctrl+Alt+N";
+
+    [ObservableProperty]
+    private string _stickyNotesHotkeyBoard = "Ctrl+Alt+B";
+
+    [ObservableProperty]
+    private bool _stickyNotesSyncEnabled;
+
+    [ObservableProperty]
+    private int _stickyNotesRetentionDays = 30;
+
+    [ObservableProperty]
+    private bool _stickyNotesQuickDismissOnFocusLost = true;
+
+    [ObservableProperty]
+    private string _stickyNotesLastSyncText = "从未同步";
 
     [ObservableProperty]
     private int _dataRetentionDays = 90;
@@ -280,6 +336,17 @@ public partial class SettingsViewModel : ViewModelBase
         TaskbarShowTemp = _settingsService.TaskbarShowTemp;
         TaskbarShowUsage = _settingsService.TaskbarShowUsage;
         DailyUsageGoalHours = _settingsService.DailyUsageGoalHours;
+        DesktopWidgetEnabled = _settingsService.DesktopWidgetEnabled;
+        DesktopWidgetShowCpu = _settingsService.DesktopWidgetShowCpu;
+        DesktopWidgetShowMemory = _settingsService.DesktopWidgetShowMemory;
+        DesktopWidgetShowGpu = _settingsService.DesktopWidgetShowGpu;
+        DesktopWidgetShowVram = _settingsService.DesktopWidgetShowVram;
+        DesktopWidgetShowNet = _settingsService.DesktopWidgetShowNet;
+        DesktopWidgetShowDisk = _settingsService.DesktopWidgetShowDisk;
+        DesktopWidgetShowUsage = _settingsService.DesktopWidgetShowUsage;
+        DesktopWidgetTopmost = _settingsService.DesktopWidgetTopmost;
+        DesktopWidgetClickThrough = _settingsService.DesktopWidgetClickThrough;
+        DesktopWidgetClampToScreen = _settingsService.DesktopWidgetClampToScreen;
         AiInsightsEnabled = _settingsService.AiInsightsEnabled;
         AiStrictPrivacy = _settingsService.AiStrictPrivacy;
         AiAutoWeeklyInsight = _settingsService.AiAutoWeeklyInsight;
@@ -295,6 +362,17 @@ public partial class SettingsViewModel : ViewModelBase
         AiEndpointMode = _settingsService.AiEndpointMode;
         AiProvider = string.IsNullOrEmpty(_settingsService.AiProvider) ? "zhipu" : _settingsService.AiProvider;
         AiTimeoutSeconds = _settingsService.AiTimeoutSeconds;
+
+        // 便签（3.24.0）
+        StickyNotesEnabled = _settingsService.StickyNotesEnabled;
+        StickyNotesHotkeyNew = _settingsService.StickyNotesHotkeyNew;
+        StickyNotesHotkeyBoard = _settingsService.StickyNotesHotkeyBoard;
+        StickyNotesSyncEnabled = _settingsService.StickyNotesSyncEnabled;
+        StickyNotesRetentionDays = _settingsService.StickyNotesRetentionDays;
+        StickyNotesQuickDismissOnFocusLost = _settingsService.StickyNotesQuickDismissOnFocusLost;
+        StickyNotesLastSyncText = _settingsService.StickyNotesLastSync is { } last
+            ? last.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+            : "从未同步";
     }
 
     public void SaveSetting(string propertyName)
@@ -369,6 +447,39 @@ public partial class SettingsViewModel : ViewModelBase
             case "DailyUsageGoalHours":
                 _settingsService.DailyUsageGoalHours = DailyUsageGoalHours;
                 break;
+            case "DesktopWidgetEnabled":
+                _settingsService.DesktopWidgetEnabled = DesktopWidgetEnabled;
+                break;
+            case "DesktopWidgetShowCpu":
+                _settingsService.DesktopWidgetShowCpu = DesktopWidgetShowCpu;
+                break;
+            case "DesktopWidgetShowMemory":
+                _settingsService.DesktopWidgetShowMemory = DesktopWidgetShowMemory;
+                break;
+            case "DesktopWidgetShowGpu":
+                _settingsService.DesktopWidgetShowGpu = DesktopWidgetShowGpu;
+                break;
+            case "DesktopWidgetShowVram":
+                _settingsService.DesktopWidgetShowVram = DesktopWidgetShowVram;
+                break;
+            case "DesktopWidgetShowNet":
+                _settingsService.DesktopWidgetShowNet = DesktopWidgetShowNet;
+                break;
+            case "DesktopWidgetShowDisk":
+                _settingsService.DesktopWidgetShowDisk = DesktopWidgetShowDisk;
+                break;
+            case "DesktopWidgetShowUsage":
+                _settingsService.DesktopWidgetShowUsage = DesktopWidgetShowUsage;
+                break;
+            case "DesktopWidgetTopmost":
+                _settingsService.DesktopWidgetTopmost = DesktopWidgetTopmost;
+                break;
+            case "DesktopWidgetClickThrough":
+                _settingsService.DesktopWidgetClickThrough = DesktopWidgetClickThrough;
+                break;
+            case "DesktopWidgetClampToScreen":
+                _settingsService.DesktopWidgetClampToScreen = DesktopWidgetClampToScreen;
+                break;
             case "AiInsightsEnabled":
                 _settingsService.AiInsightsEnabled = AiInsightsEnabled;
                 break;
@@ -414,6 +525,26 @@ public partial class SettingsViewModel : ViewModelBase
                 break;
             case "AiTimeoutSeconds":
                 _settingsService.AiTimeoutSeconds = (int)Math.Clamp(AiTimeoutSeconds, 30, 900);
+                break;
+
+            // 便签（3.24.0）
+            case "StickyNotesEnabled":
+                _settingsService.StickyNotesEnabled = StickyNotesEnabled;
+                break;
+            case "StickyNotesHotkeyNew":
+                _settingsService.StickyNotesHotkeyNew = StickyNotesHotkeyNew?.Trim() ?? "";
+                break;
+            case "StickyNotesHotkeyBoard":
+                _settingsService.StickyNotesHotkeyBoard = StickyNotesHotkeyBoard?.Trim() ?? "";
+                break;
+            case "StickyNotesSyncEnabled":
+                _settingsService.StickyNotesSyncEnabled = StickyNotesSyncEnabled;
+                break;
+            case "StickyNotesRetentionDays":
+                _settingsService.StickyNotesRetentionDays = Math.Clamp(StickyNotesRetentionDays, 1, 3650);
+                break;
+            case "StickyNotesQuickDismissOnFocusLost":
+                _settingsService.StickyNotesQuickDismissOnFocusLost = StickyNotesQuickDismissOnFocusLost;
                 break;
 
         }

@@ -86,6 +86,11 @@ public static class ServiceConfiguration
         services.AddSingleton<IHistoryIngestService, HistoryIngestService>();
         services.AddSingleton<HistorySyncService>();
 
+        // 便签（3.24.0）：领域服务/全局热键/WebDAV 同步均为单例
+        services.AddSingleton<IStickyNoteService, StickyNoteService>();
+        services.AddSingleton<StickyNoteSyncService>();
+        services.AddSingleton<PChabit.Infrastructure.Platform.GlobalHotkeyService>();
+
         // 数据导出服务（原在 AddTaiInfrastructure 中但该方法未被调用）
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
         services.AddSingleton<IExportFormatter, MarkdownExportFormatter>();
@@ -131,6 +136,7 @@ public static class ServiceConfiguration
         services.AddTransient<SankeyViewModel>();
         services.AddTransient<InsightsViewModel>();
         services.AddTransient<HistoryReportViewModel>();
+        services.AddTransient<NotesViewModel>();
         
         return services;
     }

@@ -200,10 +200,38 @@ public partial class DataCollectionService : IDisposable
             }
             catch (Exception ex)
             {
-                Log.Error(ex, "批量处理数据操作失败，批次大小: {BatchSize}", batch.Count);
+                // 整批失败：通常是某一条脏数据（如主键冲突）拖累。
+                // 3.26.2 起逐条隔离重试——否则一个坏操作会让整批（最多 50 条）全部丢失。
+                Log.Error(ex, "批量落库失败，改为逐条重试，批次大小: {BatchSize}", batch.Count);
+                await RetryIndividuallyAsync(batch);
             }
 
             batch.Clear();
+        }
+    }
+
+    /// <summary>
+    /// 逐条重试：每条操作用独立的 DbContext，单条失败不影响其余。
+    /// 批次内共用一个 DbContext 时，若两条操作动了同一行（例如同一网页会话的
+    /// 首次入队与周期落库撞在同一批），EF 会在 SaveChanges 时抛 UNIQUE 约束冲突。
+    /// 隔离后每条各自提交，冲突最多损失一条。
+    /// </summary>
+    private async Task RetryIndividuallyAsync(List<DataOperation> batch)
+    {
+        foreach (var op in batch)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+                await op.ExecuteAsync(dbContext);
+                await dbContext.SaveChangesAsync();
+                Interlocked.Increment(ref _operationCount);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "单条重试仍失败，已丢弃: {Description}", op.Description);
+            }
         }
     }
 

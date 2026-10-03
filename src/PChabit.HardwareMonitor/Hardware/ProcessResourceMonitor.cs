@@ -39,8 +39,11 @@ public sealed class ProcessResourceSnapshot
 /// </summary>
 public sealed class ProcessResourceMonitor : IDisposable
 {
-    private const int SampleIntervalMs = 2000;
+    // 3.24.0 性能优化：2s→5s。GPU PDH 计数器是本服务最大开销，5s 对「最大占用进程」卡片足够。
+    private const int SampleIntervalMs = 5000;
     private const int MaxTrackedProcesses = 384;
+    /// <summary>GPU 计数器重建后每类引擎每进程最多保留的实例数（去重保护）。</summary>
+    private const int MaxGpuCounters = 160;
 
     private static readonly HashSet<string> IgnoredNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -59,6 +62,9 @@ public sealed class ProcessResourceMonitor : IDisposable
     private readonly Dictionary<string, PerformanceCounter> _gpuMemCounters = new(StringComparer.OrdinalIgnoreCase);
     private DateTime _gpuCacheBuiltUtc = DateTime.MinValue;
     private bool _gpuUnavailable;
+    // 3.24.0：类别存在性缓存（Exists 单次约 400ms，进程生命周期内只查一次）
+    private bool _gpuEngineCategoryAvailable;
+    private bool? _gpuMemCategoryAvailable;
 
     private ProcessResourceSnapshot _snapshot = new();
 
@@ -340,33 +346,51 @@ public sealed class ProcessResourceMonitor : IDisposable
 
         try
         {
-            if (!PerformanceCounterCategory.Exists("GPU Engine"))
+            // 3.24.0：类别存在性只检测一次（Exists 单次约 400ms，旧代码在循环内反复调用）
+            if (!_gpuEngineCategoryAvailable)
             {
-                _gpuUnavailable = true;
-                return;
+                _gpuEngineCategoryAvailable = PerformanceCounterCategory.Exists("GPU Engine");
+                if (!_gpuEngineCategoryAvailable) { _gpuUnavailable = true; return; }
             }
+            bool memCategoryAvailable = _gpuMemCategoryAvailable ??= PerformanceCounterCategory.Exists("GPU Process Memory");
+
+            // 3.24.0：只保留 3D / VideoDecode 引擎（任务管理器 GPU 列口径），且每进程每引擎仅 1 个实例。
+            // 旧代码对全部引擎（Copy/Cuda/Security/Compute…）建最多 257 个计数器，一轮 NextValue ≈370ms。
+            var seenUtil = new HashSet<string>(StringComparer.Ordinal);
+            var seenMem = new HashSet<int>();
 
             var cat = new PerformanceCounterCategory("GPU Engine");
-            var instances = cat.GetInstanceNames();
-            int n = 0;
-            foreach (var inst in instances)
+            foreach (var inst in cat.GetInstanceNames())
             {
-                if (n++ > 256) break;
-                if (!TryParsePid(inst, out _)) continue;
+                if (_gpuUtilCounters.Count >= MaxGpuCounters) break;
+                if (!TryParsePid(inst, out int pid)) continue;
+                if (!IsWatchedEngine(inst)) continue;
+                // 去重键：pid + 引擎类型（同进程多个 eng_N 只取一个，值在 CollectGpu 中按 pid 取 Max）
+                string engineKind = inst.Contains("engtype_VideoDecode", StringComparison.OrdinalIgnoreCase) ? "vd" : "3d";
+                if (!seenUtil.Add(pid + ":" + engineKind)) continue;
 
                 try
                 {
                     _gpuUtilCounters[inst] = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, readOnly: true);
                 }
                 catch { /* 个别实例无权限/已退出 */ }
+            }
 
-                try
+            // GPU Process Memory 实例名形如 pid_1234_luid_..._phys_0（不带 engtype），天然每进程一个
+            if (memCategoryAvailable)
+            {
+                var memCat = new PerformanceCounterCategory("GPU Process Memory");
+                foreach (var inst in memCat.GetInstanceNames())
                 {
-                    // 专用显存：部分驱动无此实例，失败忽略
-                    if (PerformanceCounterCategory.Exists("GPU Process Memory"))
+                    if (_gpuMemCounters.Count >= MaxGpuCounters) break;
+                    if (!TryParsePid(inst, out int pid)) continue;
+                    if (!seenMem.Add(pid)) continue;
+                    try
+                    {
                         _gpuMemCounters[inst] = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", inst, readOnly: true);
+                    }
+                    catch { }
                 }
-                catch { }
             }
 
             // 预热一拍（NextValue 需两次才有速率/有效值）
@@ -385,6 +409,11 @@ public sealed class ProcessResourceMonitor : IDisposable
             DisposeGpuCounters();
         }
     }
+
+    /// <summary>仅关注 3D 与视频解码引擎（覆盖桌面/游戏/浏览器视频的 GPU 占用口径）。</summary>
+    private static bool IsWatchedEngine(string instanceName) =>
+        instanceName.Contains("engtype_3D", StringComparison.OrdinalIgnoreCase)
+        || instanceName.Contains("engtype_VideoDecode", StringComparison.OrdinalIgnoreCase);
 
     private void DisposeGpuCounters()
     {

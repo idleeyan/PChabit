@@ -575,6 +575,37 @@ public static class DatabaseInitializer
             await createCmd.ExecuteNonQueryAsync();
             Log.Information("ProcessNetworkUsages 表创建成功");
         }
+
+        // 便签功能（3.24.0）：列定义必须与 PChabitDbContext.ConfigureStickyNote 模型产物一致（双路径同改）
+        if (!tables.Contains("StickyNotes"))
+        {
+            Log.Information("创建 StickyNotes 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE StickyNotes (
+                    Id TEXT NOT NULL CONSTRAINT PK_StickyNotes PRIMARY KEY,
+                    Content TEXT NOT NULL,
+                    Color TEXT NOT NULL DEFAULT 'yellow',
+                    SortOrder INTEGER NOT NULL DEFAULT 0,
+                    IsPinned INTEGER NOT NULL DEFAULT 0,
+                    IsArchived INTEGER NOT NULL DEFAULT 0,
+                    IsDeleted INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL,
+                    DeletedAt TEXT NULL,
+                    DeviceId TEXT NOT NULL DEFAULT '',
+                    Version INTEGER NOT NULL DEFAULT 1,
+                    IsOnDesktop INTEGER NOT NULL DEFAULT 0,
+                    WindowLeft INTEGER NOT NULL DEFAULT -1,
+                    WindowTop INTEGER NOT NULL DEFAULT -1,
+                    WindowWidth INTEGER NOT NULL DEFAULT 0,
+                    WindowHeight INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE INDEX IX_StickyNotes_IsDeleted_IsArchived_UpdatedAt ON StickyNotes (IsDeleted, IsArchived, UpdatedAt);
+                CREATE INDEX IX_StickyNotes_IsPinned ON StickyNotes (IsPinned);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("StickyNotes 表创建成功");
+        }
     }
 
     private static async Task MigrateBrowserBookmarkTablesAsync(System.Data.Common.DbConnection connection)

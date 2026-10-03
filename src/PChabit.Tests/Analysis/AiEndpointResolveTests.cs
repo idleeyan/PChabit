@@ -66,6 +66,35 @@ public class AiEndpointResolveTests
         public bool TaskbarShowUsage { get; set; }
         public double DailyUsageGoalHours { get; set; } = 6;
         public bool BrowserAutoPush { get; set; }
+
+        // 桌面悬浮插件（3.23.0）—— 默认值与 SettingsService.Settings 保持一致
+        public bool DesktopWidgetEnabled { get; set; } = false;
+        public bool DesktopWidgetShowCpu { get; set; } = true;
+        public bool DesktopWidgetShowMemory { get; set; } = true;
+        public bool DesktopWidgetShowGpu { get; set; } = true;
+        public bool DesktopWidgetShowVram { get; set; } = true;
+        public bool DesktopWidgetShowNet { get; set; } = true;
+        public bool DesktopWidgetShowDisk { get; set; } = true;
+        public bool DesktopWidgetShowUsage { get; set; } = true;
+        public bool DesktopWidgetTopmost { get; set; } = true;
+        public bool DesktopWidgetClickThrough { get; set; } = false;
+        public bool DesktopWidgetClampToScreen { get; set; } = true;
+        public string DesktopWidgetScreen { get; set; } = "";
+        public int DesktopWidgetLeft { get; set; } = -1;
+        public int DesktopWidgetTop { get; set; } = -1;
+        public int DesktopWidgetWidth { get; set; } = -1;
+        public int DesktopWidgetHeight { get; set; } = -1;
+
+        // 便签（3.24.0）
+        public bool StickyNotesEnabled { get; set; } = true;
+        public string StickyNotesHotkeyNew { get; set; } = "Ctrl+Alt+N";
+        public string StickyNotesHotkeyBoard { get; set; } = "Ctrl+Alt+B";
+        public bool StickyNotesSyncEnabled { get; set; } = false;
+        public DateTime? StickyNotesLastSync { get; set; }
+        public int StickyNotesRetentionDays { get; set; } = 30;
+        public bool StickyNotesQuickDismissOnFocusLost { get; set; } = true;
+        public string StickyNotesDeviceId { get; set; } = "";
+
         public event EventHandler<SettingsChangedEventArgs>? SettingsChanged;
         public Task LoadAsync() => Task.CompletedTask;
         public Task SaveAsync() => Task.CompletedTask;

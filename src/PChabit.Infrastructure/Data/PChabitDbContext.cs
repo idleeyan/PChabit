@@ -30,6 +30,7 @@ public class PChabitDbContext : DbContext
     public DbSet<HardwareSample> HardwareSamples { get; set; }
     public DbSet<NetworkTrafficSample> NetworkTrafficSamples { get; set; }
     public DbSet<ProcessNetworkUsage> ProcessNetworkUsages { get; set; }
+    public DbSet<StickyNote> StickyNotes { get; set; }
 
     public PChabitDbContext(DbContextOptions<PChabitDbContext> options) : base(options)
     {
@@ -65,6 +66,7 @@ public class PChabitDbContext : DbContext
             ConfigureAppDailyStats(modelBuilder);
             ConfigureHardwareSample(modelBuilder);
             ConfigureNetworkTraffic(modelBuilder);
+            ConfigureStickyNote(modelBuilder);
     }
     
     private static void ConfigureAppSession(ModelBuilder modelBuilder)
@@ -412,6 +414,24 @@ public class PChabitDbContext : DbContext
             entity.HasKey(e => new { e.Date, e.Hour, e.ProcessName });
             entity.Property(e => e.ProcessName).HasMaxLength(256);
             entity.HasIndex(e => e.Date);
+        });
+    }
+
+    private static void ConfigureStickyNote(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<StickyNote>(entity =>
+        {
+            entity.ToTable("StickyNotes");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasConversion(
+                v => v.ToString(),
+                v => Guid.Parse(v));
+            entity.Property(e => e.Content).IsRequired();
+            entity.Property(e => e.Color).HasMaxLength(16).HasDefaultValue("yellow");
+            entity.Property(e => e.DeviceId).HasMaxLength(32);
+            // 列表查询主路径 + 同步增量扫描共用
+            entity.HasIndex(e => new { e.IsDeleted, e.IsArchived, e.UpdatedAt });
+            entity.HasIndex(e => e.IsPinned);
         });
     }
 
