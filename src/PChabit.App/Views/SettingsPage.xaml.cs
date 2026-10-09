@@ -34,6 +34,10 @@ public sealed partial class SettingsPage : Page
 
             AddEventHandlers();
             LoadAboutInfo();
+
+            // 选中项必须等 InitializeComponent 之后再设：解析期触发 SelectionChanged
+            // 时右侧分区控件还不存在，会空引用崩溃
+            SectionList.SelectedIndex = 0;
             ApplySection("general");
         }
         catch (Exception ex)
@@ -48,14 +52,18 @@ public sealed partial class SettingsPage : Page
     /// <summary>左侧分区导航切换：只显示当前分组的卡片，其余折叠。</summary>
     private void SectionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (SectionList.SelectedItem is ListViewItem { Tag: string tag })
+        if (sender is ListView { SelectedItem: ListViewItem { Tag: string tag } })
             ApplySection(tag);
     }
 
     private void ApplySection(string tag)
     {
-        void Show(UIElement element, bool visible)
-            => element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        // 防御：XAML 解析期间若被提前触发，部分分区字段可能尚未赋值
+        void Show(UIElement? element, bool visible)
+        {
+            if (element is null) return;
+            element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        }
 
         Show(GeneralSection, tag == "general");
         Show(AppearanceSection, tag == "general");

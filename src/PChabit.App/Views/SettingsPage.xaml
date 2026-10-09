@@ -25,7 +25,11 @@
                 Padding="8,24,8,8"
                 SelectionMode="Single"
                 SelectionChanged="SectionList_SelectionChanged">
-                <ListViewItem Content="常规" Tag="general" IsSelected="True" />
+                <!-- 注意：不要在这里写 IsSelected="True"——XAML 解析到此项时会立刻触发
+                     SelectionChanged，而右侧的分区 Border 尚未创建（x:Name 字段还是 null），
+                     会直接 NullReferenceException 并冒泡成 XamlParseException。
+                     选中项改在构造函数里于 InitializeComponent 之后设置。 -->
+                <ListViewItem Content="常规" Tag="general" />
                 <ListViewItem Content="监控" Tag="monitor" />
                 <ListViewItem Content="界面" Tag="interface" />
                 <ListViewItem Content="便签" Tag="notes" />

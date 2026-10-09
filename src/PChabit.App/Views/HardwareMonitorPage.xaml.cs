@@ -38,7 +38,8 @@ public sealed partial class HardwareMonitorPage : Page
     /// </summary>
     private void MainPivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (MainPivot.SelectedItem is PivotItem { Header: string header } && header == "流量")
+        // 用 sender 而非 MainPivot 字段：XAML 解析期若触发，字段可能尚未赋值
+        if (sender is Pivot { SelectedItem: PivotItem { Header: string header } } && header == "流量")
         {
             TrafficTab?.EnsureLoaded();
         }

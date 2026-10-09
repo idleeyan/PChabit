@@ -2,6 +2,30 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.30.1] - 2026-10-10
+
+### 修复：点击设置页崩溃（3.30.0 引入的回归）
+
+- **现象**：侧栏点「设置」直接崩溃，日志为 `XamlParseException: XAML parsing failed`，
+  内层是 `NullReferenceException`（`ApplySection` 中访问分区控件）
+- **根因**：设置页分区导航的 `ListViewItem` 上写了 `IsSelected="True"`。XAML 解析到这一项时
+  **立即**触发 `SelectionChanged`，而右侧 9 个分区 `Border` 定义在 ListView **之后**、
+  此刻尚未创建，`GeneralSection` 等 x:Name 字段还是 `null`，设置 `Visibility` 时空引用，
+  异常冒泡把整个 `InitializeComponent` 打成 XAML 解析失败
+- **修复**：
+  1. XAML 去掉 `IsSelected="True"`，选中项改在 `InitializeComponent` 之后用
+     `SectionList.SelectedIndex = 0` 设置
+  2. `ApplySection` 的 `Show` 改为可空参数并加 null 判断，防御任何提前触发
+  3. `SectionList_SelectionChanged` 改用 `sender` 而不是 `SectionList` 字段，
+     避免解析期字段未赋值
+  4. 同类隐患一并修：硬件监控页 `MainPivot_SelectionChanged` 也改用 `sender`
+     （Pivot 在解析期同样可能触发 SelectionChanged）
+- **验证**：`dotnet build` 0 错误，启动后点设置页不再崩溃
+
+### 杂项
+
+- 版本号 3.30.0 → 3.30.1
+
 ## [3.30.0] - 2026-10-10
 
 ### 减法：合并重复入口与界面，让导航更清晰
