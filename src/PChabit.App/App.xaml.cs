@@ -13,6 +13,7 @@ using PChabit.App.Services;
 using PChabit.App.ViewModels;
 using PChabit.App.Views;
 using PChabit.Core.Interfaces;
+using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 using PChabit.Infrastructure.Services;
@@ -76,6 +77,8 @@ public partial class App : Microsoft.UI.Xaml.Application
     // 桌面悬浮插件字段/驱动见 App.DesktopWidget.cs（3.23.0 分部类拆分）
     private double _todayActiveMinutes;
     private DateTime _todayUsageCacheTime = DateTime.MinValue;
+    private long _todayDownBytes;
+    private DateTime _todayDownCacheTime = DateTime.MinValue;
     private bool _isExiting;
     private readonly object _exitLock = new();
     
@@ -619,7 +622,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     }
 
     /// <summary>驱动任务栏小窗：开关 + 两行文本（AI_MAINTENANCE 3.9.1 记录）。</summary>
-    private void RefreshTaskbarWidget(ISettingsService settings)
+    private async void RefreshTaskbarWidget(ISettingsService settings)
     {
         if (!settings.TaskbarEnabled)
         {
@@ -641,30 +644,63 @@ public partial class App : Microsoft.UI.Xaml.Application
         if (!_taskbarWidget.IsRunning) return;
 
         double todayMinutes = GetTodayActiveMinutes();
-        var (row1, row2) = BuildTaskbarRows(settings, todayMinutes);
-        _taskbarWidget.UpdateContent(row1, row2);
+        long todayDownBytes = await GetTodayDownBytesAsync();
+        _taskbarWidget.UpdateContent(BuildTaskbarRows(settings, todayMinutes, todayDownBytes));
         _taskbarWidget.SetTheme(IsSystemLightTheme());
     }
 
     /// <summary>
-    /// 组装任务栏两行：行1 主指标（负载，大字焦点），行2 次指标（网速/磁盘/温度/今日，弱化）。
+    /// 今日累计下载量（字节，60s 缓存，来自 NetworkTrafficSamples 分钟样本求和）。
+    /// 只取"今天"，昨天及更早的样本不计入。表可能尚未写入当天的样本，
+    /// 此时返回 0（小窗显示为 ↓0，不报错）。
+    /// </summary>
+    private async Task<long> GetTodayDownBytesAsync()
+    {
+        if ((DateTime.Now - _todayDownCacheTime).TotalSeconds < 60) return _todayDownBytes;
+        _todayDownCacheTime = DateTime.Now;
+
+        try
+        {
+            var today = DateTime.Today;
+            // Timestamp 是 "yyyy-MM-dd HH:mm" 定长字符串，前缀匹配即可圈出当天所有分钟样本。
+            // 不在表达式树里用 string 的 >= / <（EF 无法稳定翻译）。
+            var dayPrefix = today.ToString("yyyy-MM-dd");
+
+            using var scope = _serviceProvider!.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+            _todayDownBytes = await dbContext.Set<NetworkTrafficSample>()
+                .Where(s => s.Timestamp.StartsWith(dayPrefix))
+                .SumAsync(s => (long?)s.BytesDown) ?? 0L;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "查询今日下载量失败");
+        }
+        return _todayDownBytes;
+    }
+
+    /// <summary>
+    /// 组装任务栏内容：左侧「下载网速」专属双行区块（当前速率 / 今日累计），
+    /// 右侧常规两行——行1 负载大项（CPU/内存/GPU/显存），行2 次指标（上传/磁盘/温度/今日使用）。
     /// 标签尽量短，温度用 C/G 消歧，避免和负载项的 CPU/GPU 撞名。
     /// </summary>
-    private (List<TaskbarMetricItem> row1, List<TaskbarMetricItem> row2) BuildTaskbarRows(ISettingsService settings, double todayMinutes)
+    private TaskbarLayoutItem BuildTaskbarRows(ISettingsService settings, double todayMinutes, long todayDownBytes)
     {
         var hw = _hardwareMonitorService;
+        var blockRow1 = new List<TaskbarMetricItem>();
+        var blockRow2 = new List<TaskbarMetricItem>();
         var row1 = new List<TaskbarMetricItem>();
         var row2 = new List<TaskbarMetricItem>();
 
-        // 主行首位：下载速度。日常最关心"现在下载跑没跑"，放最左侧最显眼，
-        // 用比常规数值更大的字号 + 速率分级配色（空闲灰 / 活跃蓝 / 高速青）
+        // 左侧区块（独占上下两行）：上行=当前下载速率（最大字号+速率分级配色），下行=今日累计下载量
         if (settings.TaskbarShowNet)
         {
             var down = hw?.Get("NET.Down");
-            row1.Add(new TaskbarMetricItem("", $"↓{FormatSpeedDown(down)}", NetDownColor(down), Emphasize: true));
+            blockRow1.Add(new TaskbarMetricItem("", $"↓{FormatSpeedDown(down)}", NetDownColor(down), Emphasize: true));
+            blockRow2.Add(new TaskbarMetricItem("", $"今 {FormatBytesShort(todayDownBytes)}", TaskbarMetricColor.NetIdle, Emphasize: true));
         }
 
-        // 主行：使用率大项
+        // 右侧主行：使用率大项
         if (settings.TaskbarShowCpu)
             row1.Add(new TaskbarMetricItem("CPU", FormatPercent(hw?.Get("CPU.Load")), LoadColor(hw?.Get("CPU.Load"))));
         if (settings.TaskbarShowMemory)
@@ -696,7 +732,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         if (settings.TaskbarShowUsage)
             row2.Add(new TaskbarMetricItem("今", FormatUsage(todayMinutes, settings.DailyUsageGoalHours), TaskbarMetricColor.Safe));
 
-        return (row1, row2);
+        return new TaskbarLayoutItem(blockRow1, blockRow2, row1, row2);
     }
 
     // 桌面硬件悬浮插件（3.23.0）驱动已拆分至 App.DesktopWidget.cs
@@ -705,6 +741,19 @@ public partial class App : Microsoft.UI.Xaml.Application
         v.HasValue && !float.IsNaN(v.Value)
             ? v.Value >= 90 ? TaskbarMetricColor.Crit : v.Value >= 70 ? TaskbarMetricColor.Warn : TaskbarMetricColor.Safe
             : TaskbarMetricColor.Safe;
+
+    /// <summary>
+    /// 左侧区块下行「今日累计下载量」格式：B/K/M/G，带单位，与速率格式区分。
+    /// </summary>
+    private static string FormatBytesShort(long bytes)
+    {
+        if (bytes <= 0) return "0B";
+        double v = bytes;
+        if (v < 1024) return $"{v:F0}B";
+        if (v < 1024 * 1024) return $"{v / 1024:F0}K";
+        if (v < 1024.0 * 1024 * 1024) return $"{v / 1024 / 1024:F1}M";
+        return $"{v / 1024 / 1024 / 1024:F2}G";
+    }
 
     /// <summary>
     /// 下载速率配色分级：空闲灰 → 活跃蓝（≥100KB/s）→ 高速青（≥1MB/s）。

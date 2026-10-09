@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.30.2**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.30.3**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-10-10 | 3.30.3 | **下载网速独占任务栏左右分栏的上下两行**。任务栏小窗从「两行平铺」改为「左侧专属区块 + 右侧两行」结构：左侧区块占满两行高度，上行=当前下载速率（21px 全窗最大字号 + 速率分级配色），下行=今日累计下载量 `今 2.98G`（14px，`NetworkTrafficSamples` 分钟样本当天求和，60s 缓存）；区块与右侧之间画 1px 竖分隔线（DIM 色，贯穿两行）。右侧保持上行 CPU/内存/GPU/显存、下行 上传/盘/温度/今日使用。接口调整：`UpdateContent` 参数由 `(row1,row2)` 改为 `TaskbarLayoutItem(BlockRow1,BlockRow2,Row1,Row2)`；`MeasureAndResize` 分别测量区块宽与右侧宽；关闭网速开关时自动退回纯两行。**踩陷阱 21 一次**：EF 表达式树里不能用 string `>=`/`<`（CS0019），引发 6 个 XAML 假错误（WMC0001 Unknown type / WMC0909 / WMC1111 / WMC9999），改用 `Timestamp.StartsWith("yyyy-MM-dd")` 前缀匹配后一次通过。实测截图确认浅色/深色两套主题布局均正确 |
 | 2026-10-10 | 3.30.2 | **任务栏下载速度显示改善**。原本网速 `↓xxK ↑xxK` 挤在次行小字，下载中不易察觉。改动：① 下载速度提升到主行**首位**，用 17px 大字号（常规主行数值 15px），其后留 20px 分组间距与 CPU/内存/GPU 隔开（`TaskbarMetricItem` 新增 `Emphasize` 可选参数 + `_fontValueEmphasis` 字体）② 速率分级配色新增三档枚举 `NetIdle`/`NetActive`/`NetFast`：空闲灰 → 活跃蓝 ≥100KB/s（#185FA5/#85B7EB）→ 高速青 ≥1MB/s（#0F6E56/#5DCAA5），冷色语义与负载黄红警告区分 ③ 格式收窄 `↓340K`/`↓12.3M`/`↓123M`（高速省小数），<1KB/s 显示 `↓0` 防抖动 ④ 上传 `↑xxK` 留次行。**用 PIL 截任务栏区域实拍验证**：布局、大字号、蓝色活跃档全部生效（高速青档因测试源限速 ~200KB/s 未触发，代码路径与蓝色相同仅颜色表不同）。编译 0 错误，publish 3.30.2.0 部署 `D:\Tool\PChabit`（先 Stop-Process 关闭运行实例） |
 | 2026-10-10 | 3.30.1 | **修复 3.30.0 引入的崩溃回归：点击设置页直接崩**。日志外层是 `XamlParseException: XAML parsing failed`，内层 `NullReferenceException` 指向 `ApplySection`。根因是设置页分区导航的 `ListViewItem` 写了 `IsSelected="True"`，XAML 自上而下解析到该项时**立即**触发 `SelectionChanged`，而右侧 9 个分区 Border 定义在 ListView 之后、此刻尚未创建，x:Name 字段为 null。修复三处：① 去掉 XAML 的 `IsSelected`，改在 `InitializeComponent()` 之后设 `SelectedIndex = 0` ② handler 改用 `sender` 而非 `SectionList` 字段 ③ `Show` 改可空参数加 null 判断；同类隐患一并修（硬件监控页 `MainPivot_SelectionChanged` 也改用 `sender`）。编译 0 错误，publish 3.30.1.0 并部署 `D:\Tool\PChabit`；**用 uiautomation 实际点击侧栏设置项验证**：日志出现「SettingsPage: 构造函数完成」，无新增 ERR/FTL（残留 5 条均为 01:51 修复前的旧记录）。新增陷阱 31 |
 | 2026-10-10 | 3.30.0 | **减法版本：只做合并与删减，不加功能**。① 删除两个无入口死页面 `HeatmapPage`（447 行 XAML）+ `InsightsPage`，连带 `HeatmapViewModel` / `InsightsViewModel` / 只被前者使用的 `HeatmapAggregator`（共 6 文件 ~630 行）② 网络流量页转 `NetworkTrafficTab` 并入硬件监控页「实时 / 流量」双页签③ 历史分析页转 `HistoryReportTab` 并入分析页第 6 个页签「历史」，原三入口（侧栏 + 顶部按钮 + 卡片链接）统一收敛为切页签④ 新建「分类管理」页合并应用分类 / 网站分类两套 CRUD 入口，应用统计页与网页访问页各自退化为单页 + 跳转按钮⑤ 仪表盘两个完整榜单改 Top 5 + 「查看全部 →」⑥ 设置页 1025 行单页长滚改左侧七分区导航（常规/监控/界面/便签/数据/AI/关于），不删任何设置项⑦ 侧栏 10 项平铺改 概览/使用/系统/洞察/工具 五组带分组标题。全程 4 次增量编译均 0 错误；publish 产物 470 文件、FileVersion 3.30.0.0、e_sqlite3.dll 与 13 个 Assets png 齐全；手动清理 4 个残留旧页面 .xbf；同步部署 `D:\Tool\PChabit`（先 Stop-Process 关闭运行实例），启动验证日志 0 ERR，完整走完迁移/备份/任务栏小组件挂载链路。**新坑 2 条**：陷阱 29（Page→UserControl 四处必须同步改，否则 WMC9997）、陷阱 30（publish 目录整删被安全策略拦截 + Git Bash 下 robocopy `/MIR` 被路径转换吞掉） |

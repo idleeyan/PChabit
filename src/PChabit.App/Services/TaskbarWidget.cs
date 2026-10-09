@@ -26,6 +26,17 @@ public enum TaskbarMetricColor
 public sealed record TaskbarMetricItem(string Label, string Value, TaskbarMetricColor Color, bool Emphasize = false);
 
 /// <summary>
+/// 任务栏小窗内容：左侧「下载网速」专属双行区块 + 右侧常规两行指标。
+/// 左侧区块占满两行高度，与右侧之间用一条竖分隔线切开，
+/// 让下载速度成为独立焦点（用户 3.30.2 需求：下载网速独占上下两行）。
+/// </summary>
+public sealed record TaskbarLayoutItem(
+    List<TaskbarMetricItem> BlockRow1,
+    List<TaskbarMetricItem> BlockRow2,
+    List<TaskbarMetricItem> Row1,
+    List<TaskbarMetricItem> Row2);
+
+/// <summary>
 /// 嵌入 Windows 任务栏的两行文本监控小窗（Win11）。
 /// 机制照抄 LiteMonitor（MIT）TaskbarStrategyWin11 + TaskbarRenderer：
 /// 无边框子窗口 SetParent 挂载到 Shell_TrayWnd，LWA_COLORKEY 透明键，
@@ -79,10 +90,14 @@ public sealed class TaskbarWidget : IDisposable
     private const int SecondaryItemGap = 10;
     private const int LabelValueGap = 3;
     private const int EmphasizeItemGap = 20; // 强调项与后续条目的分组间距
+    private const int BlockGap = 14;        // 左侧区块与右侧指标之间的间距
+    private const int BlockDividerInset = 9; // 竖分隔线距区块文字的留白
     private const int Padding = 8;
     private const int PrimaryLabelSize = 11;
     private const int PrimaryValueSize = 15; // 主行数值：视觉焦点
-    private const int EmphasizeValueSize = 17; // 强调项（下载速度）：比常规主行再大一档
+    private const int EmphasizeValueSize = 19; // 左侧区块下行：常规主行再大一档
+    private const int BlockValueSize = 21;  // 左侧区块上行（当前下载速率）：最大字号
+    private const int BlockSecondSize = 14;  // 左侧区块下行（今日累计）
     private const int SecondarySize = 13;    // 次行可读性优先（过小+过灰会糊成一片）
 
     // ---------- 状态 ----------
@@ -91,12 +106,18 @@ public sealed class TaskbarWidget : IDisposable
     private IntPtr _fontLabel;
     private IntPtr _fontValue;
     private IntPtr _fontValueEmphasis;
+    private IntPtr _fontBlockValue;
+    private IntPtr _fontBlockSecond;
     private IntPtr _fontSecondary;
     private GCHandle _gcHandle;
     private bool _light;
     private int _width = 60;
+    private List<TaskbarMetricItem> _blockRow1 = new();
+    private List<TaskbarMetricItem> _blockRow2 = new();
     private List<TaskbarMetricItem> _row1 = new();
     private List<TaskbarMetricItem> _row2 = new();
+    private int _blockWidth;   // 左侧区块占宽（含分隔线与留白）
+    private bool _blockActive; // 是否有左侧区块内容
     private bool _disposed;
 
     // ---------- Win32 ----------
@@ -341,11 +362,13 @@ public sealed class TaskbarWidget : IDisposable
     }
 
     /// <summary>更新显示内容（UI 线程，5s 刷新）。</summary>
-    public void UpdateContent(List<TaskbarMetricItem> row1, List<TaskbarMetricItem> row2)
+    public void UpdateContent(TaskbarLayoutItem layout)
     {
         if (_hwnd == IntPtr.Zero) return;
-        _row1 = row1;
-        _row2 = row2;
+        _blockRow1 = layout.BlockRow1;
+        _blockRow2 = layout.BlockRow2;
+        _row1 = layout.Row1;
+        _row2 = layout.Row2;
         MeasureAndResize();
         InvalidateRect(_hwnd, IntPtr.Zero, false);
     }
@@ -367,9 +390,34 @@ public sealed class TaskbarWidget : IDisposable
         try
         {
             EnsureFonts();
-            int total = 0;
-            if (_row1.Count > 0) total = Math.Max(total, MeasurePrimaryRow(hdc, _row1));
-            if (_row2.Count > 0) total = Math.Max(total, MeasureSecondaryRow(hdc, _row2));
+
+            // 左侧区块：两行都存在才占位；只有一行时也允许单独显示
+            _blockActive = _blockRow1.Count > 0 || _blockRow2.Count > 0;
+            if (_blockActive)
+            {
+                int blockText = Math.Max(
+                    _blockRow1.Count > 0 ? MeasureBlockPrimary(hdc, _blockRow1) : 0,
+                    _blockRow2.Count > 0 ? MeasureBlockSecondary(hdc, _blockRow2) : 0);
+                // +1 为竖分隔线本身宽度
+                _blockWidth = blockText + BlockDividerInset * 2 + 1;
+            }
+            else
+            {
+                _blockWidth = 0;
+            }
+
+            int total = _blockWidth;
+            if (_blockActive)
+            {
+                if (_row1.Count > 0) total += BlockGap + MeasurePrimaryRow(hdc, _row1);
+                if (_row2.Count > 0) total += BlockGap + MeasureSecondaryRow(hdc, _row2);
+            }
+            else
+            {
+                if (_row1.Count > 0) total += MeasurePrimaryRow(hdc, _row1);
+                if (_row2.Count > 0) total += MeasureSecondaryRow(hdc, _row2);
+            }
+
             _width = Math.Max(total + Padding * 2, 72);
             Position();
         }
@@ -377,6 +425,42 @@ public sealed class TaskbarWidget : IDisposable
         {
             ReleaseDC(_hwnd, hdc);
         }
+    }
+
+    /// <summary>左侧区块上行：最大字号（当前下载速率）。</summary>
+    private int MeasureBlockPrimary(IntPtr hdc, List<TaskbarMetricItem> items)
+    {
+        int w = 0;
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            if (it.Label.Length > 0)
+            {
+                w += MeasureText(hdc, _fontLabel, it.Label);
+                w += LabelValueGap;
+            }
+            w += MeasureText(hdc, _fontBlockValue, it.Value);
+            if (i < items.Count - 1) w += ItemGap;
+        }
+        return w;
+    }
+
+    /// <summary>左侧区块下行：小一号（今日累计下载量）。</summary>
+    private int MeasureBlockSecondary(IntPtr hdc, List<TaskbarMetricItem> items)
+    {
+        int w = 0;
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            if (it.Label.Length > 0)
+            {
+                w += MeasureText(hdc, _fontBlockSecond, it.Label);
+                w += LabelValueGap;
+            }
+            w += MeasureText(hdc, _fontBlockSecond, it.Value);
+            if (i < items.Count - 1) w += SecondaryItemGap;
+        }
+        return w;
     }
 
     private int MeasurePrimaryRow(IntPtr hdc, List<TaskbarMetricItem> items)
@@ -433,6 +517,8 @@ public sealed class TaskbarWidget : IDisposable
         _fontLabel = CreateScaledFont(PrimaryLabelSize, 500, dpi);
         _fontValue = CreateScaledFont(PrimaryValueSize, 700, dpi);
         _fontValueEmphasis = CreateScaledFont(EmphasizeValueSize, 700, dpi);
+        _fontBlockValue = CreateScaledFont(BlockValueSize, 700, dpi);
+        _fontBlockSecond = CreateScaledFont(BlockSecondSize, 500, dpi);
         _fontSecondary = CreateScaledFont(SecondarySize, 500, dpi);
     }
 
@@ -479,6 +565,7 @@ public sealed class TaskbarWidget : IDisposable
             IntPtr bmp = CreateCompatibleBitmap(hdc, w, h);
             var oldBmp = SelectObject(memDc, bmp);
             EnsureFonts();
+            int theme = _light ? 0 : 1;
 
             // 背景填透明键
             IntPtr brush = CreateSolidBrush(BG_KEY[_light ? 0 : 1]);
@@ -487,22 +574,42 @@ public sealed class TaskbarWidget : IDisposable
 
             SetBkMode(memDc, TRANSPARENT);
 
-            // 有主行时上主下次（主行略高，数值更大）；只有一行则垂直居中
+            // 有内容时按主行/次行上下排；左侧区块占满两行高度，右侧整体右移一个区块宽
             bool has1 = _row1.Count > 0;
             bool has2 = _row2.Count > 0;
+            bool hasBlock1 = _blockRow1.Count > 0;
+            bool hasBlock2 = _blockRow2.Count > 0;
+
+            int rightX = Padding + (_blockActive ? _blockWidth + BlockGap : 0);
+
+            if (_blockActive)
+            {
+                // 区块两行垂直平分整个高度，与右侧的 56/44 分割线大致对齐
+                int blockSplit = (int)(h * 0.58);
+                DrawBlockPrimary(memDc, _blockRow1, new RECT { Left = Padding, Top = 0, Right = Padding + _blockWidth, Bottom = blockSplit });
+                DrawBlockSecondary(memDc, _blockRow2, new RECT { Left = Padding, Top = blockSplit, Right = Padding + _blockWidth, Bottom = h });
+
+                // 竖分隔线：区块文字右侧 BlockDividerInset 处，贯穿两行
+                int lineX = Padding + _blockWidth - BlockDividerInset - 1;
+                var line = new RECT { Left = lineX, Top = 3, Right = lineX + 1, Bottom = h - 3 };
+                IntPtr lineBrush = CreateSolidBrush(DIM[theme]);
+                FillRect(memDc, ref line, lineBrush);
+                DeleteObject(lineBrush);
+            }
+
             if (has1 && has2)
             {
                 int primaryH = (int)(h * 0.56);
-                DrawPrimaryRow(memDc, _row1, new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = primaryH });
-                DrawSecondaryRow(memDc, _row2, new RECT { Left = Padding, Top = primaryH, Right = w - Padding, Bottom = h });
+                DrawPrimaryRow(memDc, _row1, new RECT { Left = rightX, Top = 0, Right = w - Padding, Bottom = primaryH });
+                DrawSecondaryRow(memDc, _row2, new RECT { Left = rightX, Top = primaryH, Right = w - Padding, Bottom = h });
             }
             else if (has1)
             {
-                DrawPrimaryRow(memDc, _row1, new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = h });
+                DrawPrimaryRow(memDc, _row1, new RECT { Left = rightX, Top = 0, Right = w - Padding, Bottom = h });
             }
             else if (has2)
             {
-                DrawSecondaryRow(memDc, _row2, new RECT { Left = Padding, Top = 0, Right = w - Padding, Bottom = h });
+                DrawSecondaryRow(memDc, _row2, new RECT { Left = rightX, Top = 0, Right = w - Padding, Bottom = h });
             }
 
             BitBlt(hdc, 0, 0, w, h, memDc, 0, 0, SRCCOPY);
@@ -559,6 +666,62 @@ public sealed class TaskbarWidget : IDisposable
         }
     }
 
+    /// <summary>左侧区块上行：当前下载速率，最大字号 + 速率分级配色。</summary>
+    private void DrawBlockPrimary(IntPtr hdc, List<TaskbarMetricItem> items, RECT rc)
+    {
+        int x = rc.Left;
+        int theme = _light ? 0 : 1;
+        // 21px 粗体字高约 30px
+        int yValue = TextTop(rc, 30);
+        int yLabel = TextTop(rc, 15);
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            if (it.Label.Length > 0)
+            {
+                SelectObject(hdc, _fontLabel);
+                SetTextColor(hdc, LABEL[theme]);
+                TextOutW(hdc, x, yLabel, it.Label, it.Label.Length);
+                x += MeasureText(hdc, _fontLabel, it.Label) + LabelValueGap;
+            }
+
+            SelectObject(hdc, _fontBlockValue);
+            SetTextColor(hdc, ValueColor(it.Color, theme));
+            TextOutW(hdc, x, yValue, it.Value, it.Value.Length);
+            x += MeasureText(hdc, _fontBlockValue, it.Value);
+
+            if (i < items.Count - 1) x += ItemGap;
+        }
+    }
+
+    /// <summary>左侧区块下行：今日累计下载量，小一号 + 次要色。</summary>
+    private void DrawBlockSecondary(IntPtr hdc, List<TaskbarMetricItem> items, RECT rc)
+    {
+        if (items.Count == 0) return;
+        int x = rc.Left;
+        int theme = _light ? 0 : 1;
+        int y = TextTop(rc, 19);
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            var it = items[i];
+            SelectObject(hdc, _fontBlockSecond);
+            if (it.Label.Length > 0)
+            {
+                SetTextColor(hdc, LABEL[theme]);
+                TextOutW(hdc, x, y, it.Label, it.Label.Length);
+                x += MeasureText(hdc, _fontBlockSecond, it.Label) + LabelValueGap;
+            }
+
+            SetTextColor(hdc, it.Emphasize ? ValueColor(it.Color, theme) : DIM[theme]);
+            TextOutW(hdc, x, y, it.Value, it.Value.Length);
+            x += MeasureText(hdc, _fontBlockSecond, it.Value);
+
+            if (i < items.Count - 1) x += SecondaryItemGap;
+        }
+    }
+
     /// <summary>次行：字号与主行标签接近，标签/数值用高对比色，条目间「·」弱化分组。</summary>
     private void DrawSecondaryRow(IntPtr hdc, List<TaskbarMetricItem> items, RECT rc)
     {
@@ -610,6 +773,8 @@ public sealed class TaskbarWidget : IDisposable
             if (_fontLabel != IntPtr.Zero) { DeleteObject(_fontLabel); _fontLabel = IntPtr.Zero; }
             if (_fontValue != IntPtr.Zero) { DeleteObject(_fontValue); _fontValue = IntPtr.Zero; }
             if (_fontValueEmphasis != IntPtr.Zero) { DeleteObject(_fontValueEmphasis); _fontValueEmphasis = IntPtr.Zero; }
+            if (_fontBlockValue != IntPtr.Zero) { DeleteObject(_fontBlockValue); _fontBlockValue = IntPtr.Zero; }
+            if (_fontBlockSecond != IntPtr.Zero) { DeleteObject(_fontBlockSecond); _fontBlockSecond = IntPtr.Zero; }
             if (_fontSecondary != IntPtr.Zero) { DeleteObject(_fontSecondary); _fontSecondary = IntPtr.Zero; }
             if (_gcHandle.IsAllocated) _gcHandle.Free();
         }
