@@ -469,6 +469,93 @@
                 </Border>
             </Grid>
 
+            <!-- 网页流量归因（估算） -->
+            <Border
+                Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12">
+                <StackPanel Spacing="12">
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="网页流量归因（估算）" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="浏览器下行流量按同小时网页有效浏览时长加权拆分到域名" />
+                        </StackPanel>
+                        <TextBlock
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding TrafficEmptyText}" />
+                    </Grid>
+
+                    <ListView
+                        x:Name="TrafficAttributionList"
+                        SelectionMode="None"
+                        MaxHeight="320">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="90" />
+                                        <ColumnDefinition Width="70" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Border
+                                            Width="10"
+                                            Height="10"
+                                            CornerRadius="5"
+                                            VerticalAlignment="Center"
+                                            Background="{Binding CategoryColor, Converter={StaticResource StringToBrushConverter}}" />
+                                        <TextBlock
+                                            FontWeight="Medium"
+                                            Text="{Binding Domain}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <Border
+                                            Height="8"
+                                            HorizontalAlignment="Left"
+                                            Width="{Binding BarWidth}"
+                                            Background="{Binding CategoryColor, Converter={StaticResource StringToBrushConverter}}"
+                                            CornerRadius="4" />
+                                    </StackPanel>
+
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        HorizontalAlignment="Right"
+                                        FontWeight="SemiBold"
+                                        Text="{Binding DownText}" />
+
+                                    <TextBlock
+                                        Grid.Column="3"
+                                        HorizontalAlignment="Right"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{Binding ShareText}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Text="估算口径：仅统计 Chrome/Edge/Firefox 进程下行流量，按同小时各域名有效浏览时长比例拆分；未含其他浏览器与系统流量，结果仅供参考"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
             <!-- 最近访问记录 -->
             <Border
                 Padding="16"

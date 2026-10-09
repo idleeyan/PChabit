@@ -55,6 +55,9 @@ public class DailySummary : EntityBase
     public long? NetBytesUp { get; set; }
     public long? NetBytesDown { get; set; }
 
+    /// <summary>当日搜索行为次数（聚合计数，不存搜索词原文；内存会话周期落库时回写）</summary>
+    public long? SearchCount { get; set; }
+
     /// <summary>指标口径版本：null/1 = v1 行为数据；2 = 硬件/专注扩展；3 = 活动标签/夜间/起止</summary>
     public int? MetricsVersion { get; set; }
 

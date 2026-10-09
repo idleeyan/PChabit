@@ -74,6 +74,18 @@ public static class AnalysisReportBuilder
                 sb.AppendLine($"- 键盘 {report.Extra.TotalKeys:N0} 次 · 点击 {report.Extra.TotalClicks:N0} · 密度 {report.Extra.KeysPerActiveHour:F0}/时");
             if (report.Extra.HasWebData)
                 sb.AppendLine($"- 网页 {AnalyticsEngine.FormatHours(report.Extra.WebMinutes)} · 占比 {report.Extra.WebSharePct:F0}% · {report.Extra.WebPages:N0} 页");
+            if (report.Extra.HasNetData)
+                sb.AppendLine($"- 流量 ↓ {FormatGb(report.Extra.NetBytesDown)} · ↑ {FormatGb(report.Extra.NetBytesUp)}");
+            if (report.Extra.SearchCount > 0)
+                sb.AppendLine($"- 搜索 {report.Extra.SearchCount:N0} 次（仅计数，不存关键词）");
+        }
+
+        if (report.WebCategoryShares.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("## 网页分类构成");
+            foreach (var c in report.WebCategoryShares)
+                sb.AppendLine($"- **{c.Category}**：{c.MinutesText}（{c.PercentText}）");
         }
 
         if (report.CategoryShares.Count > 0)
@@ -116,6 +128,12 @@ public static class AnalysisReportBuilder
         sb.AppendLine();
         sb.AppendLine($"*由 PChabit AnalyticsEngine 本地生成 · {DateTime.Now:yyyy-MM-dd HH:mm}*");
         return sb.ToString();
+    }
+
+    private static string FormatGb(long? bytes)
+    {
+        if (bytes is not { } b || b <= 0) return "-";
+        return (b / 1024.0 / 1024.0 / 1024.0).ToString("F2") + " GB";
     }
 
     /// <summary>发给大模型的聚合上下文（不含窗口标题/URL/完整会话）。</summary>

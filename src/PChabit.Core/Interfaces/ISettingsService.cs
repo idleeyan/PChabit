@@ -58,6 +58,8 @@ public interface ISettingsService
     bool DesktopWidgetShowNet { get; set; }
     bool DesktopWidgetShowDisk { get; set; }
     bool DesktopWidgetShowUsage { get; set; }
+    /// <summary>悬浮窗显示「当前」行：当前前台进程名 + 活动分类（3.29.0）。</summary>
+    bool DesktopWidgetShowCurrentApp { get; set; }
     /// <summary>窗口置顶（默认开）。</summary>
     bool DesktopWidgetTopmost { get; set; }
     /// <summary>鼠标点击穿透（默认关）。</summary>

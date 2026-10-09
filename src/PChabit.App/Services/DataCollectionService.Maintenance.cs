@@ -56,6 +56,9 @@ public partial class DataCollectionService : IDisposable
             // 首次升级回填：AppDailyStats 为空且存在历史 AppSessions 时，回填最近 30 天
             await EnsureAppDailyStatsBackfillAsync();
 
+            // 当日搜索计数实时回写（聚合不存原词；行不存在且无搜索时不建行）
+            await UpsertTodaySearchCountCoreAsync(dbContext);
+
             // 分析升级 P0：最近 30 天 DailySummaries 扩展指标（硬件日指标/WebMinutes）回填
             await EnsureHardwareMetricsBackfillAsync();
         }
@@ -404,6 +407,53 @@ public partial class DataCollectionService : IDisposable
 
         Log.Information("每日聚合完成: {Date}, Keys={TotalKeys}, Clicks={TotalClicks}, ActiveMin={ActiveMin:F1}, WebPages={WebPages}, TopApps={TopAppCount}",
             dateKey, totalKeys, totalMouseClicks, activeMinutes, webPages, topApps.Count);
+    }
+
+    /// <summary>当日搜索计数回写（退出时调用，无参自建 scope）。</summary>
+    private async Task UpsertTodaySearchCountAsync()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<PChabitDbContext>();
+        await UpsertTodaySearchCountCoreAsync(dbContext);
+    }
+
+    /// <summary>把内存当日搜索计数 upsert 进今日 DailySummary.SearchCount（保留行内其他字段）。</summary>
+    private async Task UpsertTodaySearchCountCoreAsync(PChabitDbContext dbContext)
+    {
+        long count;
+        lock (_lock)
+        {
+            var today = DateTime.Today.ToString("yyyy-MM-dd");
+            if (!string.Equals(_todaySearchDate, today, StringComparison.Ordinal))
+            {
+                _todaySearchDate = today;
+                _todaySearchCount = 0;
+            }
+            count = _todaySearchCount;
+        }
+
+        if (count <= 0) return;
+
+        var dateKey = DateTime.Today.ToString("yyyy-MM-dd");
+        var summary = await dbContext.DailySummaries.FirstOrDefaultAsync(s => s.Date == dateKey);
+        if (summary == null)
+        {
+            summary = new DailySummary
+            {
+                Id = Guid.NewGuid(),
+                Date = dateKey,
+                SearchCount = count,
+                LastUpdated = DateTime.Now
+            };
+            dbContext.DailySummaries.Add(summary);
+        }
+        else
+        {
+            summary.SearchCount = count;
+            summary.LastUpdated = DateTime.Now;
+        }
+
+        await dbContext.SaveChangesAsync();
     }
 
     private static async Task CleanupOldDataAsync(PChabitDbContext dbContext, int retentionDays = 90)

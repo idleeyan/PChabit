@@ -24,6 +24,16 @@ public partial class DataCollectionService : IDisposable
     private AppSession? _currentAppSession;
     private string _currentProcessName = string.Empty;
 
+    /// <summary>当日搜索行为计数（聚合不存原词；HandleSearch 锁内累加，周期/退出时回写 DailySummary.SearchCount）</summary>
+    private long _todaySearchCount;
+    private string _todaySearchDate = DateTime.Today.ToString("yyyy-MM-dd");
+
+    /// <summary>当前前台应用进程名（锁内读取，供悬浮插件等消费）。</summary>
+    public string CurrentProcessName
+    {
+        get { lock (_lock) return _currentProcessName; }
+    }
+
     private readonly Dictionary<string, AppSession> _backgroundSessions = new();
     private readonly Dictionary<string, WebSession> _activeWebSessions = new();
 
@@ -140,6 +150,15 @@ public partial class DataCollectionService : IDisposable
         catch (Exception ex)
         {
             Log.Error(ex, "保存当前会话失败");
+        }
+
+        try
+        {
+            UpsertTodaySearchCountAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "落库当日搜索计数失败");
         }
 
         try

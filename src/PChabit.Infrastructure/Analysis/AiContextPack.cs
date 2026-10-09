@@ -21,11 +21,17 @@ public static class AiContextPack
         ["clicks"] = "鼠标点击次数",
         ["webMinutes"] = "网页有效浏览（分钟）",
         ["webSharePct"] = "网页占比（%）",
+        ["netBytesUpGb"] = "周期上行流量（GB）",
+        ["netBytesDownGb"] = "周期下行流量（GB）",
         ["appSwitches"] = "应用切换次数",
         ["dayCountWithData"] = "有效数据天数",
         ["labelMinutes"] = "活动标签分钟字典（work-code/browse-fun/...）",
         ["daily"] = "按日序列：date/dow/activeMin/focusMin/prodPct/nightMin",
         ["hourHeat"] = "24 小时活跃分钟桶（0-23）",
+        ["searchCount"] = "搜索行为次数（聚合计数，不存关键词）",
+        ["hourWebMinutes"] = "24 小时网页有效浏览分钟桶（0-23）",
+        ["hourNetDownMb"] = "24 小时下行流量桶（MB，0-23）",
+        ["webCategories"] = "网页浏览分类构成（分类/分钟/占比）",
     };
 
     public static string Build(
@@ -103,6 +109,15 @@ public static class AiContextPack
             ReplaceOrAdd(metrics, "clicks", "鼠标点击次数", ex.TotalClicks, null, "count");
             ReplaceOrAdd(metrics, "webMinutes", "网页有效浏览", ex.WebMinutes, null, "min");
             ReplaceOrAdd(metrics, "webSharePct", "网页占比", ex.WebSharePct, null, "pct");
+            if (ex.HasNetData)
+            {
+                ReplaceOrAdd(metrics, "netBytesUpGb", "上行流量", BytesToGb(ex.NetBytesUp), null, "gb");
+                ReplaceOrAdd(metrics, "netBytesDownGb", "下行流量", BytesToGb(ex.NetBytesDown), null, "gb");
+            }
+            if (ex.SearchCount > 0)
+            {
+                ReplaceOrAdd(metrics, "searchCount", "搜索次数", ex.SearchCount, null, "count");
+            }
         }
 
         // 夜间：小时桶 23 + 0-5
@@ -133,10 +148,28 @@ public static class AiContextPack
             .Select(hh => Math.Round(hh.Minutes, 1))
             .ToList();
 
+        // 时段画像：小时级网页浏览 / 下行流量（与 HourHeat 同序 24 桶）
+        var hourWebMinutes = report.HourWebMinutes.Count >= 24
+            ? report.HourWebMinutes.Take(24).Select(v => Math.Round(v, 1)).ToList()
+            : new List<double>();
+        var hourNetDownMb = report.HourNetDownMb.Count >= 24
+            ? report.HourNetDownMb.Take(24).Select(v => Math.Round(v, 1)).ToList()
+            : new List<double>();
+
         var categories = report.CategoryShares
             .Select(c => new AiShare
             {
                 Name = strictPrivacy ? "category" : c.Category,
+                Minutes = Math.Round(c.Minutes, 1),
+                Pct = Math.Round(c.Percentage, 1)
+            })
+            .ToList();
+
+        // 网页分类构成（统一叙事：与 Categories 相同结构，便于模型并排对比）
+        var webCategories = report.WebCategoryShares
+            .Select(c => new AiShare
+            {
+                Name = strictPrivacy ? "web-category" : c.Category,
                 Minutes = Math.Round(c.Minutes, 1),
                 Pct = Math.Round(c.Percentage, 1)
             })
@@ -196,7 +229,10 @@ public static class AiContextPack
             Metrics = metrics,
             Daily = daily,
             HourHeat = hourHeat,
+            HourWebMinutes = hourWebMinutes,
+            HourNetDownMb = hourNetDownMb,
             Categories = categories,
+            WebCategories = webCategories,
             TopApps = topApps,
             Hardware = hw,
             LabelMinutes = labelMinutes,
@@ -251,6 +287,12 @@ public static class AiContextPack
             pack.LabelMinutes[kv.Key] = Math.Round(kv.Value, 1);
     }
 
+    private static double? BytesToGb(long? bytes)
+    {
+        if (bytes is not { } b || b <= 0) return null;
+        return b / 1024.0 / 1024.0 / 1024.0;
+    }
+
     private static void ReplaceOrAdd(List<AiMetric> metrics, string id, string name, double? value, double? prev, string unit)
     {
         var existing = metrics.Find(m => m.Id == id);
@@ -279,8 +321,11 @@ public static class AiContextPack
         public List<AiMetric> Metrics { get; set; } = new();
         public List<AiDaily> Daily { get; set; } = new();
         public List<double> HourHeat { get; set; } = new();
+        public List<double> HourWebMinutes { get; set; } = new();
+        public List<double> HourNetDownMb { get; set; } = new();
         public Dictionary<string, double> LabelMinutes { get; set; } = new();
         public List<AiShare> Categories { get; set; } = new();
+        public List<AiShare> WebCategories { get; set; } = new();
         public List<AiTopApp> TopApps { get; set; } = new();
         public AiHardwarePack? Hardware { get; set; }
         public AiGoals? Goals { get; set; }

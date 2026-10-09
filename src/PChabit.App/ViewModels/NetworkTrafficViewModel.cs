@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using PChabit.App.Services;
 using PChabit.HardwareMonitor.Hardware;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 using Serilog;
 
@@ -74,9 +75,15 @@ public partial class NetworkTrafficViewModel : ViewModelBase
     [ObservableProperty]
     private string _processEmptyText = "暂无进程流量记录";
 
+    [ObservableProperty]
+    private string _categoryEmptyText = "暂无分类流量记录";
+
+    private Dictionary<string, (string Name, string ColorHex)> _categoryMap = new();
+
     public ObservableCollection<DayTrafficBar> DayBars { get; } = new();
     public ObservableCollection<HourTrafficBar> HourBars { get; } = new();
     public ObservableCollection<ProcessTrafficRow> ProcessRows { get; } = new();
+    public ObservableCollection<CategoryTrafficRow> CategoryRows { get; } = new();
 
     partial void OnSelectedPeriodChanged(string value) => _ = LoadAsync();
 
@@ -108,6 +115,17 @@ public partial class NetworkTrafficViewModel : ViewModelBase
                 .Where(x => string.Compare(x.Date, fromDate) >= 0 && string.Compare(x.Date, toDate) <= 0)
                 .ToListAsync();
 
+            // 分类映射复用 AppStatsEngine（设置-应用分类，进程名 → 分类名/颜色）
+            try
+            {
+                _categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "加载应用分类映射失败，分类聚合按未分类处理");
+                _categoryMap = new Dictionary<string, (string Name, string ColorHex)>();
+            }
+
             long up = 0;
             long down = 0;
             double peakUp = 0;
@@ -130,6 +148,7 @@ public partial class NetworkTrafficViewModel : ViewModelBase
 
             BuildDayBars(samples);
             BuildProcessRows(procRows);
+            BuildCategoryRows(procRows);
             BuildHourBars(procRows);
 
             RefreshLive();
@@ -258,6 +277,71 @@ public partial class NetworkTrafficViewModel : ViewModelBase
             : "No process traffic in selected range (keep app running to sample)";
     }
 
+    /// <summary>按应用分类聚合进程流量（与 AppStatsEngine 分类口径一致），未映射进程归入「未分类」。</summary>
+    private void BuildCategoryRows(List<PChabit.Core.Entities.ProcessNetworkUsage> procRows)
+    {
+        CategoryRows.Clear();
+
+        var map = new Dictionary<string, long[]>(StringComparer.OrdinalIgnoreCase);
+        long grandTotal = 0;
+        foreach (var r in procRows)
+        {
+            var cat = ResolveTrafficCategory(r.ProcessName);
+            if (!map.TryGetValue(cat, out var acc))
+            {
+                acc = new long[2];
+                map[cat] = acc;
+            }
+
+            acc[0] += r.BytesUp;
+            acc[1] += r.BytesDown;
+            grandTotal += r.BytesUp + r.BytesDown;
+        }
+
+        if (map.Count == 0)
+        {
+            CategoryEmptyText = "暂无分类流量记录";
+            return;
+        }
+
+        var colorByCategory = _categoryMap.Values
+            .GroupBy(v => v.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().ColorHex, StringComparer.OrdinalIgnoreCase);
+
+        var ranked = map
+            .Select(kv => new { Category = kv.Key, Up = kv.Value[0], Down = kv.Value[1], Total = kv.Value[0] + kv.Value[1] })
+            .OrderByDescending(x => x.Total)
+            .ToList();
+
+        long maxTotal = ranked.Max(x => x.Total);
+        if (maxTotal <= 0) maxTotal = 1;
+
+        foreach (var c in ranked)
+        {
+            var color = colorByCategory.TryGetValue(c.Category, out var hex) ? hex : "#6B7280";
+            CategoryRows.Add(new CategoryTrafficRow
+            {
+                Category = c.Category,
+                ColorHex = color,
+                UpText = FormatBytes(c.Up),
+                DownText = FormatBytes(c.Down),
+                TotalText = FormatBytes(c.Total),
+                SharePercent = grandTotal > 0 ? Math.Round(100.0 * c.Total / grandTotal, 1) : 0,
+                BarWidth = Math.Max(4, 240.0 * c.Total / maxTotal)
+            });
+        }
+
+        CategoryEmptyText = CategoryRows.Count > 0 ? string.Empty : "暂无分类流量记录";
+    }
+
+    private string ResolveTrafficCategory(string processName)
+    {
+        var normalized = AppStatsEngine.NormalizeProcessName(processName);
+        if (normalized.Length > 0 && _categoryMap.TryGetValue(normalized, out var hit))
+            return hit.Name;
+        return "未分类";
+    }
+
     private void BuildHourBars(List<PChabit.Core.Entities.ProcessNetworkUsage> procRows)
     {
         HourBars.Clear();
@@ -371,6 +455,17 @@ public class ProcessTrafficRow
     public string DownText { get; set; } = string.Empty;
     public string TotalText { get; set; } = string.Empty;
     public string PeakText { get; set; } = string.Empty;
+    public double SharePercent { get; set; }
+    public double BarWidth { get; set; }
+}
+
+public class CategoryTrafficRow
+{
+    public string Category { get; set; } = string.Empty;
+    public string ColorHex { get; set; } = "#6B7280";
+    public string UpText { get; set; } = string.Empty;
+    public string DownText { get; set; } = string.Empty;
+    public string TotalText { get; set; } = string.Empty;
     public double SharePercent { get; set; }
     public double BarWidth { get; set; }
 }

@@ -2,6 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Analysis;
+using PChabit.Infrastructure.Data;
 
 namespace PChabit.App;
 
@@ -15,10 +17,15 @@ public partial class App
     // 独立 1s 刷新（任务栏小窗为 5s），窗口必须由 UI 线程创建
     private Microsoft.UI.Xaml.DispatcherTimer? _desktopWidgetTimer;
     private DesktopWidget? _desktopWidget;
-    // 网速自适应峰值（bytes/s）：每秒 max(当前值, 峰值*0.97)，回落保证条不会长期满格
-    private float _netPeakDown;
+    // 上行自适应峰值（bytes/s）：每秒 max(当前值, 峰值*0.97)，回落保证条不会长期满格（下载走固定满量程，见 BuildDownloadRow）
     private float _netPeakUp;
     private const float NetMinBaseline = 100f * 1024f; // 空闲/低速基准 100KB/s
+    /// <summary>下载满量程：用户宽带下载最大速度 100MB/s——进度条以 100M/s 满格，直观反映绝对速率；超速时条满格、文本照实显示。</summary>
+    private const float NetDownloadFullScale = 100f * 1024f * 1024f;
+
+    // 「当前」行分类映射缓存（60s 刷新，避免每秒查库；口径与流量/统计页 AppStatsEngine 一致）
+    private Dictionary<string, (string Name, string ColorHex)> _widgetCategoryMap = new();
+    private DateTime _widgetCategoryMapLoadedAt = DateTime.MinValue;
 
     private void StartDesktopWidgetTimer()
     {
@@ -213,8 +220,8 @@ public partial class App
         {
             var down = hw?.Get("NET.Down");
             var up = hw?.Get("NET.Up");
-            // 下载/上行分行，各自带自适应峰值进度条（峰值每秒回落 3%，空闲基准 100KB/s）
-            rows.Add(BuildNetRow("↓下载", down, ref _netPeakDown));
+            // 下载固定 100M/s 满量程（直观反映绝对速率）；上行保持自适应峰值（上行速率范围差异大，自适应保证可读性）
+            rows.Add(BuildDownloadRow("↓下载", down));
             rows.Add(BuildNetRow("↑上传", up, ref _netPeakUp));
         }
 
@@ -236,7 +243,50 @@ public partial class App
                 fraction, TaskbarMetricColor.Safe));
         }
 
+        if (settings.DesktopWidgetShowCurrentApp)
+        {
+            var (process, category) = GetCurrentActivity();
+            var text = string.IsNullOrEmpty(process) ? "--"
+                : string.IsNullOrEmpty(category) ? process
+                : $"{category} · {process}";
+            rows.Add(new DesktopWidgetRow("当前",
+                new[] { new DesktopWidgetSegment(text, TaskbarMetricColor.Safe) },
+                null, TaskbarMetricColor.Safe));
+        }
+
         return rows;
+    }
+
+    /// <summary>
+    /// 当前活动：前台进程名 + 活动分类（分类映射 60s 刷新缓存；失败降级为空串，仅显示进程名）。
+    /// </summary>
+    private (string ProcessName, string Category) GetCurrentActivity()
+    {
+        var dcs = _serviceProvider?.GetService<DataCollectionService>();
+        var process = dcs?.CurrentProcessName ?? string.Empty;
+        if (string.IsNullOrEmpty(process)) return (string.Empty, string.Empty);
+
+        if (DateTime.Now - _widgetCategoryMapLoadedAt > TimeSpan.FromSeconds(60))
+        {
+            try
+            {
+                var factory = _serviceProvider?.GetService<Microsoft.EntityFrameworkCore.IDbContextFactory<PChabitDbContext>>();
+                if (factory != null)
+                {
+                    var map = AppStatsEngine.LoadCategoryMapAsync(factory).GetAwaiter().GetResult();
+                    _widgetCategoryMap = map;
+                    _widgetCategoryMapLoadedAt = DateTime.Now;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "刷新悬浮插件分类映射失败");
+            }
+        }
+
+        var normalized = AppStatsEngine.NormalizeProcessName(process);
+        var category = _widgetCategoryMap.TryGetValue(normalized, out var entry) ? entry.Name : string.Empty;
+        return (process, category);
     }
 
     /// <summary>温度读数规整：无权限/无传感器时常返回 0，超量程视为无效，统一显示 "--"。</summary>
@@ -263,7 +313,23 @@ public partial class App
     }
 
     /// <summary>
-    /// 网速行：速率相对近期峰值归一化（自适应基准，无固定满速假设）；
+    /// 下载行：固定满量程 100M/s（用户宽带下载最大速度），进度条直观反映绝对速率——
+    /// 100M/s 满格、50M/s 半格、1M/s 约 1%；高网速不是异常，进度条恒为安全绿。无数据时 fraction=null。
+    /// </summary>
+    private static DesktopWidgetRow BuildDownloadRow(string label, float? bytesPerSec)
+    {
+        float? fraction = null;
+        if (bytesPerSec.HasValue && !float.IsNaN(bytesPerSec.Value) && bytesPerSec.Value >= 0)
+        {
+            fraction = Math.Clamp(bytesPerSec.Value / NetDownloadFullScale, 0f, 1f);
+        }
+        return new DesktopWidgetRow(label,
+            new[] { new DesktopWidgetSegment(FormatSpeedWidget(bytesPerSec), TaskbarMetricColor.Safe) },
+            fraction, TaskbarMetricColor.Safe);
+    }
+
+    /// <summary>
+    /// 上行行：速率相对近期峰值归一化（自适应基准，上行速率范围差异大，保证条长可读性）；
     /// 高网速不是异常，进度条恒为安全绿。无数据时 fraction=null。
     /// </summary>
     private static DesktopWidgetRow BuildNetRow(string label, float? bytesPerSec, ref float peak)

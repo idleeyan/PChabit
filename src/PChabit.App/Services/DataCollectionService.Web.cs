@@ -500,6 +500,8 @@ public partial class DataCollectionService : IDisposable
                 if (e.Metadata.TryGetValue("query", out var queryObj) && queryObj is string query)
                 {
                     session.SearchQueries.Add(query);
+                    // 聚合计数（不存搜索词原文，隐私口径与 SearchQueries 不落库一致）
+                    _todaySearchCount++;
                 }
             }
         }

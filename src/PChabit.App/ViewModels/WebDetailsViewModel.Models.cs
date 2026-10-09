@@ -21,6 +21,7 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         public required List<WebSessionDetailItem> RecentVisits;
         public required bool HasMore;
         public required List<Core.Entities.WebSession> AllSessions;
+        public required List<TrafficAttributionItem> TrafficAttribution;
     }
 
     public record SummaryStatsResult(
@@ -77,6 +78,18 @@ public class WebSessionDetailItem
     public int ScrollDepth { get; init; }
     public int ClickCount { get; init; }
     public bool HasInteraction { get; init; }
+}
+
+/// <summary>网页流量归因（估算）：浏览器进程流量按同小时网页有效浏览时长加权拆分到域名。</summary>
+public class TrafficAttributionItem
+{
+    public string Domain { get; init; } = string.Empty;
+    public string Category { get; init; } = string.Empty;
+    public string CategoryColor { get; init; } = "#9CA3AF";
+    public string DownText { get; init; } = string.Empty;
+    public double SharePercent { get; init; }
+    public double BarWidth { get; init; }
+    public string ShareText => $"{SharePercent:F1}%";
 }
 
 }

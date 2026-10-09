@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 
 
@@ -85,6 +86,16 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
     public ObservableCollection<BrowsingPatternItem> BrowsingPatterns { get; } = new();
     public ObservableCollection<WebSessionDetailItem> AllVisits { get; } = new();
     public ObservableCollection<WebSessionDetailItem> RecentVisits { get; } = new();
+    public ObservableCollection<TrafficAttributionItem> TrafficAttributionItems { get; } = new();
+
+    [ObservableProperty]
+    private string _trafficEmptyText = "暂无浏览器流量归因数据";
+
+    /// <summary>参与流量归因的浏览器进程（进程名归一化后）。豆包浏览器进程名待确认后可按需追加。</summary>
+    private static readonly HashSet<string> BrowserProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "chrome", "msedge", "firefox"
+    };
     
     private const int PageSize = 50;
     private int _currentPage = 0;
@@ -137,6 +148,8 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         var patterns = ComputeBrowsingPatterns(sessions);
         var recent = ComputeRecentVisits(sessions);
         var more = sessions.Count > PageSize;
+        var browserUsage = await LoadBrowserUsageAsync();
+        var attribution = ComputeTrafficAttribution(sessions, browserUsage);
 
         return new WebStatsData
         {
@@ -147,7 +160,8 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             BrowsingPatterns = patterns,
             RecentVisits = recent,
             HasMore = more,
-            AllSessions = sessions
+            AllSessions = sessions,
+            TrafficAttribution = attribution
         };
     }
 
@@ -181,6 +195,10 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             RecentVisits.Add(item);
             AllVisits.Add(item);
         }
+
+        TrafficAttributionItems.Clear();
+        foreach (var item in s.TrafficAttribution) TrafficAttributionItems.Add(item);
+        TrafficEmptyText = s.TrafficAttribution.Count > 0 ? string.Empty : "所选范围暂无浏览器流量归因数据";
 
         HasMoreVisits = s.HasMore;
     }

@@ -107,7 +107,7 @@ public record AnalyticsInsight(
     string Message,
     string? ActionKey);
 
-/// <summary>日汇总聚合后的多源指标（键鼠 / 网页 / 硬件）。无数据字段为 null。</summary>
+/// <summary>日汇总聚合后的多源指标（键鼠 / 网页 / 硬件 / 网络流量）。无数据字段为 null。</summary>
 public record AnalyticsExtraMetrics(
     double TotalKeys,
     double TotalClicks,
@@ -122,7 +122,11 @@ public record AnalyticsExtraMetrics(
     double? MemLoadAvg,
     bool HasInputData,
     bool HasWebData,
-    bool HasHardwareData);
+    bool HasHardwareData,
+    long? NetBytesUp,
+    long? NetBytesDown,
+    bool HasNetData,
+    long SearchCount);
 
 public record AnalyticsPeriodReport(
     AnalyticsPeriod Period,
@@ -136,7 +140,10 @@ public record AnalyticsPeriodReport(
     AnalyticsExtraMetrics? Extra,
     HardwareAnalyticsReport? Hardware,
     int DayCountWithData,
-    bool HasEnoughData);
+    bool HasEnoughData,
+    IReadOnlyList<double> HourWebMinutes,
+    IReadOnlyList<double> HourNetDownMb,
+    IReadOnlyList<CategoryShareItem> WebCategoryShares);
 
 /// <summary>
 /// 分析指标计算：AppSessions + DailySummaries（键鼠/网页/硬件日汇总）→ KPI / 热力 / 构成 / 洞察。
@@ -174,6 +181,8 @@ public static class AnalyticsEngine
         List<DailySummary> daily;
         List<DailySummary> prevDaily;
         List<HardwareSample> hardwareSamples = new();
+        List<Core.Entities.WebSession> webSessions = new();
+        List<Core.Entities.ProcessNetworkUsage> netUsages = new();
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
         {
             sessions = await QuerySessionsAsync(db, period, ct);
@@ -213,9 +222,46 @@ public static class AnalyticsEngine
                 // 表尚未创建/迁移时硬件融合降级为空
                 hardwareSamples = new List<HardwareSample>();
             }
+
+            // 时段画像数据源：网页会话（分类/小时）+ 进程小时流量（浏览器下行）
+            try
+            {
+                webSessions = await db.WebSessions.AsNoTracking()
+                    .Where(s => s.StartTime >= period.Start && s.StartTime < period.EndExclusive && !s.IsLegacy)
+                    .Select(s => new Core.Entities.WebSession
+                    {
+                        StartTime = s.StartTime,
+                        Duration = s.Duration,
+                        ActiveDuration = s.ActiveDuration,
+                        CategoryName = s.CategoryName
+                    })
+                    .ToListAsync(ct);
+            }
+            catch
+            {
+                webSessions = new List<Core.Entities.WebSession>();
+            }
+            try
+            {
+                var netStart = period.Start.ToString("yyyy-MM-dd");
+                var netEnd = period.EndExclusive.ToString("yyyy-MM-dd");
+                netUsages = await db.ProcessNetworkUsages.AsNoTracking()
+                    .Where(u => string.Compare(u.Date, netStart) >= 0 && string.Compare(u.Date, netEnd) < 0)
+                    .Select(u => new Core.Entities.ProcessNetworkUsage
+                    {
+                        Date = u.Date,
+                        Hour = u.Hour,
+                        BytesDown = u.BytesDown
+                    })
+                    .ToListAsync(ct);
+            }
+            catch
+            {
+                netUsages = new List<Core.Entities.ProcessNetworkUsage>();
+            }
         }
 
-        return Compute(period, prev, sessions, prevSessions, daily, prevDaily, hardwareSamples);
+        return Compute(period, prev, sessions, prevSessions, daily, prevDaily, hardwareSamples, webSessions, netUsages);
     }
 
     private static async Task<List<AppSession>> QuerySessionsAsync(
@@ -256,7 +302,9 @@ public static class AnalyticsEngine
         IReadOnlyList<AppSession> prevSessions,
         IReadOnlyList<DailySummary>? daily,
         IReadOnlyList<DailySummary>? prevDaily,
-        IReadOnlyList<HardwareSample>? hardwareSamples)
+        IReadOnlyList<HardwareSample>? hardwareSamples,
+        IReadOnlyList<Core.Entities.WebSession>? webSessions = null,
+        IReadOnlyList<Core.Entities.ProcessNetworkUsage>? netUsages = null)
     {
         static double Minutes(AppSession s) =>
             s.EndTime.HasValue ? (s.EndTime.Value - s.StartTime).TotalMinutes : 0;
@@ -271,6 +319,11 @@ public static class AnalyticsEngine
         var prevNight = prevSessions.Where(s => s.StartTime.Hour is >= 23 or < 6).Sum(Minutes);
         var curProdPct = curMin > 0 ? curProd / curMin * 100 : 0;
         var prevProdPct = prevMin > 0 ? prevProd / prevMin * 100 : 0;
+
+        // 时段画像：期内所有天同小时聚合（网页有效分钟 / 浏览器进程下行 MB / 网页分类构成）
+        var hourWebMinutes = BuildHourWebMinutes(webSessions, period);
+        var hourNetDownMb = BuildHourNetDownMb(netUsages);
+        var webCategoryShares = BuildWebCategoryShares(webSessions);
 
         var daysWithData = sessions.Select(s => s.StartTime.Date).Distinct().Count();
 
@@ -431,7 +484,68 @@ public static class AnalyticsEngine
 
         return new AnalyticsPeriodReport(
             period, prev, kpis, calendar, hourHeat, topChanges, categoryShares, insights,
-            extra, hardware, daysWithData, hasEnough);
+            extra, hardware, daysWithData, hasEnough,
+            hourWebMinutes, hourNetDownMb, webCategoryShares);
+    }
+
+    /// <summary>小时级网页有效浏览分钟（24 桶，期内所有天同小时合计；会话按 StartTime 归属）。</summary>
+    private static double[] BuildHourWebMinutes(IReadOnlyList<Core.Entities.WebSession>? sessions, AnalyticsPeriod period)
+    {
+        var buckets = new double[24];
+        if (sessions == null) return buckets;
+
+        foreach (var w in sessions)
+        {
+            if (w.StartTime < period.Start || w.StartTime >= period.EndExclusive) continue;
+            if (w.StartTime.Hour is < 0 or >= 24) continue;
+            var minutes = w.ActiveDuration > TimeSpan.Zero ? w.ActiveDuration.TotalMinutes : w.Duration.TotalMinutes;
+            if (minutes > 0) buckets[w.StartTime.Hour] += minutes;
+        }
+
+        return buckets;
+    }
+
+    /// <summary>小时级浏览器进程下行流量（24 桶，MB；进程小时记录口径，与网络流量页一致）。</summary>
+    private static double[] BuildHourNetDownMb(IReadOnlyList<Core.Entities.ProcessNetworkUsage>? usages)
+    {
+        var buckets = new double[24];
+        if (usages == null) return buckets;
+
+        foreach (var u in usages)
+        {
+            if (u.BytesDown <= 0 || u.Hour is < 0 or >= 24) continue;
+            buckets[u.Hour] += u.BytesDown / 1024.0 / 1024.0;
+        }
+
+        return buckets;
+    }
+
+    /// <summary>网页分类构成（按 CategoryName 分组，有效浏览分钟 + 占比）。</summary>
+    private static List<CategoryShareItem> BuildWebCategoryShares(IReadOnlyList<Core.Entities.WebSession>? sessions)
+    {
+        if (sessions == null || sessions.Count == 0) return new List<CategoryShareItem>();
+
+        var grouped = sessions
+            .Where(w => !string.IsNullOrWhiteSpace(w.CategoryName))
+            .GroupBy(w => w.CategoryName!)
+            .Select(g => new
+            {
+                Category = g.Key,
+                Minutes = g.Sum(w => w.ActiveDuration > TimeSpan.Zero ? w.ActiveDuration.TotalMinutes : w.Duration.TotalMinutes)
+            })
+            .Where(x => x.Minutes > 0)
+            .OrderByDescending(x => x.Minutes)
+            .ToList();
+
+        if (grouped.Count == 0) return new List<CategoryShareItem>();
+
+        var total = grouped.Sum(x => x.Minutes);
+        return grouped
+            .Select(x => new CategoryShareItem(
+                x.Category,
+                Math.Round(x.Minutes, 1),
+                total > 0 ? Math.Round(x.Minutes / total * 100, 1) : 0))
+            .ToList();
     }
 
     private static List<AnalyticsInsight> BuildHardwareInsights(HardwareAnalyticsReport hardware)
@@ -465,7 +579,8 @@ public static class AnalyticsEngine
             return new AnalyticsExtraMetrics(
                 0, 0, 0, 0, 0, 0,
                 null, null, null, null, null,
-                false, false, false);
+                false, false, false,
+                null, null, false, 0);
         }
 
         double Sum(Func<DailySummary, double> f) => daily.Sum(f);
@@ -482,9 +597,14 @@ public static class AnalyticsEngine
         var gpuTemps = daily.Where(d => d.GpuTempMax.HasValue).Select(d => d.GpuTempMax!.Value).ToList();
         var memAvgs = daily.Where(d => d.MemLoadAvg.HasValue).Select(d => d.MemLoadAvg!.Value).ToList();
 
+        long netUp = daily.Sum(d => d.NetBytesUp ?? 0);
+        long netDown = daily.Sum(d => d.NetBytesDown ?? 0);
+        long searchCount = daily.Sum(d => d.SearchCount ?? 0);
+
         var hasInput = keys > 0 || clicks > 0;
         var hasWeb = webMin > 0 || webPages > 0;
         var hasHw = cpuAvgs.Count > 0 || gpuAvgs.Count > 0 || gpuTemps.Count > 0;
+        var hasNet = netUp > 0 || netDown > 0;
 
         var activeMinutes = Sum(d => d.ActiveMinutes);
         // 今日未入库时 ActiveMinutes 可能为 0，键盘密度用按键总量兜底展示在 MergeExtra
@@ -498,7 +618,9 @@ public static class AnalyticsEngine
             gpuAvgs.Count > 0 ? gpuAvgs.Average() : null,
             gpuTemps.Count > 0 ? gpuTemps.Max() : null,
             memAvgs.Count > 0 ? memAvgs.Average() : null,
-            hasInput, hasWeb, hasHw);
+            hasInput, hasWeb, hasHw,
+            hasNet ? netUp : null, hasNet ? netDown : null, hasNet,
+            searchCount);
     }
 
     /// <summary>应用会话活跃时长更准确时，用其重算输入密度/网页占比。</summary>

@@ -63,6 +63,7 @@ public sealed partial class WebStatsTab : UserControl
         HourlyActivityList.ItemsSource = ViewModel.HourlyActivity;
         DailyTrendList.ItemsSource = ViewModel.DailyTrend;
         RecentVisitsList.ItemsSource = ViewModel.RecentVisits;
+        TrafficAttributionList.ItemsSource = ViewModel.TrafficAttributionItems;
 
         LoadMoreButton.Visibility = ViewModel.HasMoreVisits ? Visibility.Visible : Visibility.Collapsed;
     }

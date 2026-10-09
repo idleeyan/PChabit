@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 
 
@@ -204,6 +205,101 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             .ToList();
     }
 
+    /// <summary>
+    /// 网页流量归因（估算）：浏览器进程下行流量按「同日期同小时各域名有效浏览秒数」权重拆分。
+    /// 口径：浏览器流量合计只统计 chrome/msedge/firefox；会话按 StartTime 归属小时；
+    /// 某小时无浏览器流量或网页会话时不计入。结果为估算，仅供参考。
+    /// </summary>
+    private List<TrafficAttributionItem> ComputeTrafficAttribution(
+        List<Core.Entities.WebSession> sessions,
+        List<Core.Entities.ProcessNetworkUsage> browserUsage)
+    {
+        // 1. 浏览器下行按 (Date, Hour) 聚合
+        var downByHour = new Dictionary<(string Date, int Hour), long>();
+        foreach (var u in browserUsage)
+        {
+            if (u.BytesDown <= 0) continue;
+            var key = (u.Date, u.Hour);
+            downByHour.TryGetValue(key, out var acc);
+            downByHour[key] = acc + u.BytesDown;
+        }
+
+        if (downByHour.Count == 0) return new List<TrafficAttributionItem>();
+
+        // 2. 会话按 (Date, Hour) 聚合各域名有效秒数
+        var secByDomainHour = new Dictionary<string, Dictionary<(string Date, int Hour), double>>();
+        foreach (var s in sessions)
+        {
+            var sec = EffectiveSecondsValue(s);
+            if (sec <= 0) continue;
+            var key = (s.StartTime.ToString("yyyy-MM-dd"), s.StartTime.Hour);
+            if (!secByDomainHour.TryGetValue(s.Domain, out var byHour))
+            {
+                byHour = new Dictionary<(string, int), double>();
+                secByDomainHour[s.Domain] = byHour;
+            }
+
+            byHour.TryGetValue(key, out var acc);
+            byHour[key] = acc + sec;
+        }
+
+        // 3. 该小时总有效秒（仅当该小时存在浏览器流量才参与）
+        var totalSecByHour = new Dictionary<(string, int), double>();
+        foreach (var byHour in secByDomainHour.Values)
+        {
+            foreach (var hkv in byHour)
+            {
+                if (!downByHour.ContainsKey(hkv.Key)) continue;
+                totalSecByHour.TryGetValue(hkv.Key, out var acc);
+                totalSecByHour[hkv.Key] = acc + hkv.Value;
+            }
+        }
+
+        // 4. 按小时加权拆分到域名
+        var downByDomain = new Dictionary<string, double>();
+        foreach (var kv in secByDomainHour)
+        {
+            foreach (var hkv in kv.Value)
+            {
+                if (!downByHour.TryGetValue(hkv.Key, out var downBytes)) continue;
+                if (!totalSecByHour.TryGetValue(hkv.Key, out var totalSec) || totalSec <= 0) continue;
+                var share = hkv.Value / totalSec;
+                downByDomain.TryGetValue(kv.Key, out var acc);
+                downByDomain[kv.Key] = acc + downBytes * share;
+            }
+        }
+
+        if (downByDomain.Count == 0) return new List<TrafficAttributionItem>();
+
+        // 5. Top 12 + 汇总
+        var ranked = downByDomain.OrderByDescending(x => x.Value).ToList();
+        var total = ranked.Sum(x => x.Value);
+        var max = ranked.Max(x => x.Value);
+
+        var result = new List<TrafficAttributionItem>();
+        foreach (var r in ranked.Take(12))
+        {
+            var category = GetCategory(r.Key);
+            result.Add(new TrafficAttributionItem
+            {
+                Domain = r.Key,
+                Category = category,
+                CategoryColor = GetCategoryColor(category),
+                DownText = FormatGb(r.Value),
+                SharePercent = total > 0 ? Math.Round(100.0 * r.Value / total, 1) : 0,
+                BarWidth = Math.Max(4, 320.0 * r.Value / max)
+            });
+        }
+
+        return result;
+    }
+
+    private static string FormatGb(double bytes)
+    {
+        if (bytes < 1024 * 1024) return (bytes / 1024.0 / 1024).ToString("F2") + " MB";
+        return (bytes / 1024.0 / 1024 / 1024).ToString("F2") + " GB";
+    }
+
     private async Task<List<Core.Entities.WebSession>> LoadSessionsAsync()
     {
         try
@@ -250,6 +346,29 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         {
             Log.Warning(ex, "加载 WebSessions 失败");
             return new List<Core.Entities.WebSession>();
+        }
+    }
+
+    private async Task<List<Core.Entities.ProcessNetworkUsage>> LoadBrowserUsageAsync()
+    {
+        try
+        {
+            await using var dbContext = await _dbFactory.CreateDbContextAsync();
+
+            var startKey = StartDate.ToString("yyyy-MM-dd");
+            var endKey = EndDate.ToString("yyyy-MM-dd");
+            var rows = await dbContext.ProcessNetworkUsages.AsNoTracking()
+                .Where(x => string.Compare(x.Date, startKey) >= 0 && string.Compare(x.Date, endKey) <= 0)
+                .ToListAsync();
+
+            return rows
+                .Where(x => BrowserProcesses.Contains(AppStatsEngine.NormalizeProcessName(x.ProcessName)))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "加载浏览器流量归因数据失败");
+            return new List<Core.Entities.ProcessNetworkUsage>();
         }
     }
 

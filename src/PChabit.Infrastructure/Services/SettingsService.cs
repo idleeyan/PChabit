@@ -519,6 +519,19 @@ public class SettingsService : ISettingsService
         }
     }
 
+    public bool DesktopWidgetShowCurrentApp
+    {
+        get => _settings.DesktopWidgetShowCurrentApp;
+        set
+        {
+            if (_settings.DesktopWidgetShowCurrentApp != value)
+            {
+                _settings.DesktopWidgetShowCurrentApp = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(DesktopWidgetShowCurrentApp) });
+            }
+        }
+    }
+
     public bool DesktopWidgetTopmost
     {
         get => _settings.DesktopWidgetTopmost;
@@ -1408,6 +1421,7 @@ internal class AppSettings
     public bool DesktopWidgetShowNet { get; set; } = true;
     public bool DesktopWidgetShowDisk { get; set; } = true;
     public bool DesktopWidgetShowUsage { get; set; } = true;
+    public bool DesktopWidgetShowCurrentApp { get; set; } = true;
     public bool DesktopWidgetTopmost { get; set; } = true;
     public bool DesktopWidgetClickThrough { get; set; } = false;
     public bool DesktopWidgetClampToScreen { get; set; } = true;

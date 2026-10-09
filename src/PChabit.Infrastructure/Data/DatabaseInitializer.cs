@@ -69,6 +69,7 @@ public static class DatabaseInitializer
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "MemLoadAvg", "REAL");
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NetBytesUp", "INTEGER");
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "NetBytesDown", "INTEGER");
+            await TryMigrateTableColumnsAsync(connection, "DailySummaries", "SearchCount", "INTEGER");
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "MetricsVersion", "INTEGER");
             // 行为语义层 P0：活动标签 / 夜间 / 起止（均可空，脚本可重复执行）
             await TryMigrateTableColumnsAsync(connection, "DailySummaries", "LabelMinutesJson", "TEXT");

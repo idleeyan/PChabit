@@ -76,6 +76,7 @@ public class AiEndpointResolveTests
         public bool DesktopWidgetShowNet { get; set; } = true;
         public bool DesktopWidgetShowDisk { get; set; } = true;
         public bool DesktopWidgetShowUsage { get; set; } = true;
+        public bool DesktopWidgetShowCurrentApp { get; set; } = true;
         public bool DesktopWidgetTopmost { get; set; } = true;
         public bool DesktopWidgetClickThrough { get; set; } = false;
         public bool DesktopWidgetClampToScreen { get; set; } = true;

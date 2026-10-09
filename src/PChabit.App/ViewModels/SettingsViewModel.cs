@@ -110,6 +110,9 @@ public partial class SettingsViewModel : ViewModelBase
     private bool _desktopWidgetShowUsage = true;
 
     [ObservableProperty]
+    private bool _desktopWidgetShowCurrentApp = true;
+
+    [ObservableProperty]
     private bool _desktopWidgetTopmost = true;
 
     [ObservableProperty]
@@ -344,6 +347,7 @@ public partial class SettingsViewModel : ViewModelBase
         DesktopWidgetShowNet = _settingsService.DesktopWidgetShowNet;
         DesktopWidgetShowDisk = _settingsService.DesktopWidgetShowDisk;
         DesktopWidgetShowUsage = _settingsService.DesktopWidgetShowUsage;
+        DesktopWidgetShowCurrentApp = _settingsService.DesktopWidgetShowCurrentApp;
         DesktopWidgetTopmost = _settingsService.DesktopWidgetTopmost;
         DesktopWidgetClickThrough = _settingsService.DesktopWidgetClickThrough;
         DesktopWidgetClampToScreen = _settingsService.DesktopWidgetClampToScreen;
@@ -470,6 +474,9 @@ public partial class SettingsViewModel : ViewModelBase
                 break;
             case "DesktopWidgetShowUsage":
                 _settingsService.DesktopWidgetShowUsage = DesktopWidgetShowUsage;
+                break;
+            case "DesktopWidgetShowCurrentApp":
+                _settingsService.DesktopWidgetShowCurrentApp = DesktopWidgetShowCurrentApp;
                 break;
             case "DesktopWidgetTopmost":
                 _settingsService.DesktopWidgetTopmost = DesktopWidgetTopmost;
