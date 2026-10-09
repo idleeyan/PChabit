@@ -656,6 +656,14 @@ public partial class App : Microsoft.UI.Xaml.Application
         var row1 = new List<TaskbarMetricItem>();
         var row2 = new List<TaskbarMetricItem>();
 
+        // 主行首位：下载速度。日常最关心"现在下载跑没跑"，放最左侧最显眼，
+        // 用比常规数值更大的字号 + 速率分级配色（空闲灰 / 活跃蓝 / 高速青）
+        if (settings.TaskbarShowNet)
+        {
+            var down = hw?.Get("NET.Down");
+            row1.Add(new TaskbarMetricItem("", $"↓{FormatSpeedDown(down)}", NetDownColor(down), Emphasize: true));
+        }
+
         // 主行：使用率大项
         if (settings.TaskbarShowCpu)
             row1.Add(new TaskbarMetricItem("CPU", FormatPercent(hw?.Get("CPU.Load")), LoadColor(hw?.Get("CPU.Load"))));
@@ -672,11 +680,11 @@ public partial class App : Microsoft.UI.Xaml.Application
             row1.Add(new TaskbarMetricItem("显存", FormatPercent(vramPct), LoadColor(vramPct)));
         }
 
-        // 次行：次要信息，短前缀
+        // 次行：次要信息，短前缀。下载已提升到主行，这里只留上传
         if (settings.TaskbarShowNet)
         {
             row2.Add(new TaskbarMetricItem("",
-                $"↓{FormatSpeedShort(hw?.Get("NET.Down"))} ↑{FormatSpeedShort(hw?.Get("NET.Up"))}", TaskbarMetricColor.Safe));
+                $"↑{FormatSpeedShort(hw?.Get("NET.Up"))}", TaskbarMetricColor.Safe));
         }
         if (settings.TaskbarShowDisk)
             row2.Add(new TaskbarMetricItem("盘", FormatPercent(hw?.Get("DISK.Activity")), LoadColor(hw?.Get("DISK.Activity"))));
@@ -697,6 +705,34 @@ public partial class App : Microsoft.UI.Xaml.Application
         v.HasValue && !float.IsNaN(v.Value)
             ? v.Value >= 90 ? TaskbarMetricColor.Crit : v.Value >= 70 ? TaskbarMetricColor.Warn : TaskbarMetricColor.Safe
             : TaskbarMetricColor.Safe;
+
+    /// <summary>
+    /// 下载速率配色分级：空闲灰 → 活跃蓝（≥100KB/s）→ 高速青（≥1MB/s）。
+    /// 阈值按"是否值得看一眼"划分，与负载的黄/红警告语义无关。
+    /// </summary>
+    private static TaskbarMetricColor NetDownColor(float? bytesPerSec)
+    {
+        if (!bytesPerSec.HasValue || float.IsNaN(bytesPerSec.Value) || bytesPerSec.Value < 0)
+            return TaskbarMetricColor.NetIdle;
+        double v = bytesPerSec.Value;
+        if (v >= 1024 * 1024) return TaskbarMetricColor.NetFast;
+        if (v >= 100 * 1024) return TaskbarMetricColor.NetActive;
+        return v > 1024 ? TaskbarMetricColor.NetActive : TaskbarMetricColor.NetIdle;
+    }
+
+    /// <summary>
+    /// 主行下载速度格式：带 ↓ 前缀，宽度可控（高速时省掉小数），
+    /// 保证和后面 4 项百分比挤在同一行时不会把小窗撑太宽。
+    /// </summary>
+    private static string FormatSpeedDown(float? bytesPerSec)
+    {
+        if (!bytesPerSec.HasValue || float.IsNaN(bytesPerSec.Value) || bytesPerSec.Value < 0) return "0";
+        double v = bytesPerSec.Value;
+        if (v < 1024) return "0";                                  // 不足 1K 视为空闲，避免抖动
+        if (v < 1024 * 1024) return $"{v / 1024:F0}K";
+        if (v < 10 * 1024 * 1024) return $"{v / 1024 / 1024:F1}M";
+        return $"{v / 1024 / 1024:F0}M";
+    }
 
     private static TaskbarMetricColor TempColor(float? v) =>
         v.HasValue && !float.IsNaN(v.Value)

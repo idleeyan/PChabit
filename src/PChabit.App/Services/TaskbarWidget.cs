@@ -8,14 +8,22 @@ public enum TaskbarMetricColor
 {
     Safe,
     Warn,
-    Crit
+    Crit,
+    /// <summary>网速空闲（≈0）：弱化灰，不抢视线。</summary>
+    NetIdle,
+    /// <summary>网速活跃：蓝色，表示"正在传输"。</summary>
+    NetActive,
+    /// <summary>网速高速：青色，最醒目，一眼看到在跑满速。</summary>
+    NetFast
 }
 
 /// <summary>
 /// 任务栏小窗条目。主行数值放大加粗作为视觉焦点；次行整体弱化。
 /// Safe 用正文色（不抢眼），仅 Warn/Crit 着色，让异常一眼跳出。
+/// Emphasize=true 的条目（当前仅下载速度）用更大的字号 + 独占配色，
+/// 并在其后留出额外间距做视觉分组。
 /// </summary>
-public sealed record TaskbarMetricItem(string Label, string Value, TaskbarMetricColor Color);
+public sealed record TaskbarMetricItem(string Label, string Value, TaskbarMetricColor Color, bool Emphasize = false);
 
 /// <summary>
 /// 嵌入 Windows 任务栏的两行文本监控小窗（Win11）。
@@ -59,15 +67,22 @@ public sealed class TaskbarWidget : IDisposable
     private static readonly uint[] DIM = { 0x777777, 0x888888 };      // 仅「·」分隔符
     private static readonly uint[] WARN = { 0xB57500, 0xFFD666 };
     private static readonly uint[] CRIT = { 0xC03030, 0xFF6666 };
+    // 网速三档：空闲灰 → 活跃蓝（#185FA5 / #85B7EB）→ 高速青（#0F6E56 / #5DCAA5）
+    // 配色与负载的黄/红警告区分开：网速快不是异常，用冷色表示"正在传输"
+    private static readonly uint[] NET_IDLE = { 0x7A7A7A, 0x8A8A8A };
+    private static readonly uint[] NET_ACTIVE = { 0x00A55F18, 0x00EBB785 };
+    private static readonly uint[] NET_FAST = { 0x00566E0F, 0x00A5CA5D };
     private static readonly uint[] BG_KEY = { 0x00D3D2D2, 0x00292828 }; // 浅 210,210,211 / 深 40,40,41
 
     // ---------- 布局 ----------
     private const int ItemGap = 14;         // 条目间距（主行更松，避免挤成一团）
     private const int SecondaryItemGap = 10;
     private const int LabelValueGap = 3;
+    private const int EmphasizeItemGap = 20; // 强调项与后续条目的分组间距
     private const int Padding = 8;
     private const int PrimaryLabelSize = 11;
     private const int PrimaryValueSize = 15; // 主行数值：视觉焦点
+    private const int EmphasizeValueSize = 17; // 强调项（下载速度）：比常规主行再大一档
     private const int SecondarySize = 13;    // 次行可读性优先（过小+过灰会糊成一片）
 
     // ---------- 状态 ----------
@@ -75,6 +90,7 @@ public sealed class TaskbarWidget : IDisposable
     private IntPtr _hTaskbar;
     private IntPtr _fontLabel;
     private IntPtr _fontValue;
+    private IntPtr _fontValueEmphasis;
     private IntPtr _fontSecondary;
     private GCHandle _gcHandle;
     private bool _light;
@@ -369,13 +385,14 @@ public sealed class TaskbarWidget : IDisposable
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
+            var valueFont = it.Emphasize ? _fontValueEmphasis : _fontValue;
             if (it.Label.Length > 0)
             {
                 w += MeasureText(hdc, _fontLabel, it.Label);
                 w += LabelValueGap;
             }
-            w += MeasureText(hdc, _fontValue, it.Value);
-            if (i < items.Count - 1) w += ItemGap;
+            w += MeasureText(hdc, valueFont, it.Value);
+            if (i < items.Count - 1) w += it.Emphasize ? EmphasizeItemGap : ItemGap;
         }
         return w;
     }
@@ -415,6 +432,7 @@ public sealed class TaskbarWidget : IDisposable
         // 主行：小标签 + 大号半粗数值形成焦点；次行：整体小一号弱化
         _fontLabel = CreateScaledFont(PrimaryLabelSize, 500, dpi);
         _fontValue = CreateScaledFont(PrimaryValueSize, 700, dpi);
+        _fontValueEmphasis = CreateScaledFont(EmphasizeValueSize, 700, dpi);
         _fontSecondary = CreateScaledFont(SecondarySize, 500, dpi);
     }
 
@@ -503,6 +521,9 @@ public sealed class TaskbarWidget : IDisposable
     {
         TaskbarMetricColor.Warn => WARN[theme],
         TaskbarMetricColor.Crit => CRIT[theme],
+        TaskbarMetricColor.NetIdle => NET_IDLE[theme],
+        TaskbarMetricColor.NetActive => NET_ACTIVE[theme],
+        TaskbarMetricColor.NetFast => NET_FAST[theme],
         _ => VALUE[theme]
     };
 
@@ -514,6 +535,8 @@ public sealed class TaskbarWidget : IDisposable
         // 大数字（15px/700）字高约 22px，基线在字顶偏下 17px 处
         int yValue = TextTop(rc, 22);
         int yLabel = TextTop(rc, 15);
+        // 强调项 17px 字高约 25px，单独算中心，与常规数值视觉重心对齐
+        int yValueEmphasis = TextTop(rc, 25);
 
         for (int i = 0; i < items.Count; i++)
         {
@@ -526,12 +549,13 @@ public sealed class TaskbarWidget : IDisposable
                 x += MeasureText(hdc, _fontLabel, it.Label) + LabelValueGap;
             }
 
-            SelectObject(hdc, _fontValue);
+            var valueFont = it.Emphasize ? _fontValueEmphasis : _fontValue;
+            SelectObject(hdc, valueFont);
             SetTextColor(hdc, ValueColor(it.Color, theme));
-            TextOutW(hdc, x, yValue, it.Value, it.Value.Length);
-            x += MeasureText(hdc, _fontValue, it.Value);
+            TextOutW(hdc, x, it.Emphasize ? yValueEmphasis : yValue, it.Value, it.Value.Length);
+            x += MeasureText(hdc, valueFont, it.Value);
 
-            if (i < items.Count - 1) x += ItemGap;
+            if (i < items.Count - 1) x += it.Emphasize ? EmphasizeItemGap : ItemGap;
         }
     }
 
@@ -585,6 +609,7 @@ public sealed class TaskbarWidget : IDisposable
             }
             if (_fontLabel != IntPtr.Zero) { DeleteObject(_fontLabel); _fontLabel = IntPtr.Zero; }
             if (_fontValue != IntPtr.Zero) { DeleteObject(_fontValue); _fontValue = IntPtr.Zero; }
+            if (_fontValueEmphasis != IntPtr.Zero) { DeleteObject(_fontValueEmphasis); _fontValueEmphasis = IntPtr.Zero; }
             if (_fontSecondary != IntPtr.Zero) { DeleteObject(_fontSecondary); _fontSecondary = IntPtr.Zero; }
             if (_gcHandle.IsAllocated) _gcHandle.Free();
         }
