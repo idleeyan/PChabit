@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Navigation;
+using Serilog;
+using PChabit.App.Services;
 
 namespace PChabit.App.Views;
 
@@ -11,13 +12,16 @@ public sealed partial class AppStatsPage : Page
         InitializeComponent();
     }
 
-    private void TabPivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OpenCategoryManager_Click(object sender, RoutedEventArgs e)
     {
-        // 页签切换即内容切换；AppStatsTab 在 Loaded 时自行加载数据
-    }
-
-    protected override void OnNavigatedTo(NavigationEventArgs e)
-    {
-        base.OnNavigatedTo(e);
+        try
+        {
+            var ok = App.GetService<NavigationService>().NavigateTo("CategoryManagement");
+            Log.Information("应用统计页→分类管理: {Ok}", ok);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "应用统计页跳转分类管理失败");
+        }
     }
 }

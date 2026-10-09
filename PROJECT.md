@@ -1,7 +1,7 @@
 # PChabit 项目记录
 
-> **最后更新**：2026-10-03
-> **文档定位**：**索引层**，不重复造轮子。深度内容一律查 `AI_MAINTENANCE.md`（1775 行，21 条陷阱）与 `CHANGELOG.md`。
+> **最后更新**：2026-10-10
+> **文档定位**：**索引层**，不重复造轮子。深度内容一律查 `AI_MAINTENANCE.md`（2000+ 行，30 条陷阱）与 `CHANGELOG.md`。
 > **同步说明**：本目录位于 Verysync 同步盘 `E:\SYNC` 内，会自动同步到其他终端。**本地文件即权威源，云端文档非必需。**
 
 ---
@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.26.2**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.30.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
@@ -62,6 +62,8 @@
 | 版本号遗漏 | 用户装了旧版找不到新功能 | 改代码即改 `<Version>`，且版本号显示在 UI 上 |
 | **sln 级 dotnet publish 混入测试产物（#28）** | 发布目录出现 BuildHost/CodeCoverage/TestPlatform 多语言，文件数 700+ | 发布必须指定 `PChabit.App.csproj` 路径；发布后查关键文件：e_sqlite3.dll、Assets\*.png（13 个）、FileVersion、文件数（基线 467） |
 | **e_sqlite3/Assets png 未进 publish（#28）** | 指定项目发布后启动数据全空（缺 e_sqlite3）；图标缺失 | csproj `CopySqliteAndAssetsToPublish`（AfterTargets=Publish）已补；手动复制到 bin 的原生库 publish 不会自动带 |
+| **Page 转 UserControl 页签化（#29）** | `WMC9997` 开始/结束标记不匹配 | 根节点、x:Class、`Page.Resources`、`</Page>` 四处必须同步改；cs 去掉 OnNavigatedTo，改 `Loaded` + 供宿主调用的 `EnsureLoaded()` |
+| **publish 整目录删除被拦截（#30）** | `SAFE_DELETE_BULK_CONFIRM_REQUIRED`（阈值 50） | 不整删 publish，直接覆盖发布后再单独清残留 .xbf；**robocopy 不要在 Git Bash 里跑**（`/MIR` 被转路径），改用 `scripts/deploy_to_tool.py` |
 
 ---
 
@@ -69,6 +71,8 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-10-10 | 3.30.0 | **减法版本：只做合并与删减，不加功能**。① 删除两个无入口死页面 `HeatmapPage`（447 行 XAML）+ `InsightsPage`，连带 `HeatmapViewModel` / `InsightsViewModel` / 只被前者使用的 `HeatmapAggregator`（共 6 文件 ~630 行）② 网络流量页转 `NetworkTrafficTab` 并入硬件监控页「实时 / 流量」双页签③ 历史分析页转 `HistoryReportTab` 并入分析页第 6 个页签「历史」，原三入口（侧栏 + 顶部按钮 + 卡片链接）统一收敛为切页签④ 新建「分类管理」页合并应用分类 / 网站分类两套 CRUD 入口，应用统计页与网页访问页各自退化为单页 + 跳转按钮⑤ 仪表盘两个完整榜单改 Top 5 + 「查看全部 →」⑥ 设置页 1025 行单页长滚改左侧七分区导航（常规/监控/界面/便签/数据/AI/关于），不删任何设置项⑦ 侧栏 10 项平铺改 概览/使用/系统/洞察/工具 五组带分组标题。全程 4 次增量编译均 0 错误；publish 产物 470 文件、FileVersion 3.30.0.0、e_sqlite3.dll 与 13 个 Assets png 齐全；手动清理 4 个残留旧页面 .xbf；同步部署 `D:\Tool\PChabit`（先 Stop-Process 关闭运行实例），启动验证日志 0 ERR，完整走完迁移/备份/任务栏小组件挂载链路。**新坑 2 条**：陷阱 29（Page→UserControl 四处必须同步改，否则 WMC9997）、陷阱 30（publish 目录整删被安全策略拦截 + Git Bash 下 robocopy `/MIR` 被路径转换吞掉） |
+| 2026-10-04 | 3.29.0 | 本机（备份终端）构建部署 3.29.0 至 `D:\Tool\PChabit`：`dotnet build` Release x64，0 错误 25 警告；产物 467 文件（清理 BuildHost-net472/netcore 46 个测试宿主后），版本 3.29.0.0，自包含校验通过（`includedFrameworks` 在，hostfxr/hostpolicy/coreclr/e_sqlite3/WinUIEdit 齐全，源/目标 467 一致）。启动验证：`SearchCount` 列迁移成功、仪表盘加载成功、启动备份成功，运行 60s+ 日志 0 ERR 0 WRN。**注意**：从 TRAE 沙箱内启动会被拦截对 `pchabit.db-wal`/Backups 的写入（表现为 `no such column: d.SearchCount` + `SQLite Error 10: disk I/O error`），经 explorer 以用户身份启动后全部消失——非代码缺陷，是沙箱限制 |
 | 2026-10-03 | 3.26.2 | **发布流程修复 + 重新打包部署**：发现 sln 级 `dotnet publish` 把 PChabit.Tests 的测试平台文件（BuildHost-net472/netcore、CodeCoverage、TestPlatform 多语言 satellite）混入产物（722 文件）；指定 App 项目发布后 e_sqlite3.dll 与 Assets\*.png 又缺失（CopyNativeSqliteToOutput 只复制到 bin、png Content 未设 CopyToOutputDirectory）。修复：发布命令改指定 csproj 路径 + csproj 新增 `CopySqliteAndAssetsToPublish`（AfterTargets=Publish，补 e_sqlite3/png、清 BuildHost），产物 467 文件。robocopy /MIR（/XD WebView2）部署 D:\Tool\PChabit，PURGE 清掉历史 BuildHost 46 文件。冒烟：进程存活 85 线程、热键/便签/数据库迁移/仪表盘/桌面+任务栏小组件全绿，12:17 后日志 0 ERR 0 WRN（旧实例「批量落库失败」ERR 消失，3.26.2 修复生效）。陷阱 28 新增 |
 | 2026-10-03 | — | **补提交 3.23.0–3.26.2 到 GitHub**：一次提交 `31f5c18`（43 文件，+7218/−405）覆盖桌面悬浮插件、便签系统、仪表盘升级与 3.26.1/3.26.2 修复；`git push` 直接成功，远端 master 与本地同步（此前文档误判「需 PAT」，实际本机凭据可用）。推送前 Release 编译 0 错误 |
 | 2026-10-03 | 3.26.2 | 修 `WebSessions.Id` UNIQUE 冲突（长期静默丢数据）：`EnqueueSaveWebSession` 无条件 Add，与周期落库的 `FindAsync`+更新路径冲突——同一会话（同一 Id）先入队 Add、再被周期落库 Add，两条操作落在同批次共用一个 `DbContext` 时对同一 Id 执行两次 INSERT。改为先查后插/更新；并给 `ProcessDataAsync` 加**逐条隔离重试**（原实现下一条脏数据会丢整批最多 50 条） |

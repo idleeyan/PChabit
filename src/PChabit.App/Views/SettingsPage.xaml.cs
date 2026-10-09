@@ -34,6 +34,7 @@ public sealed partial class SettingsPage : Page
 
             AddEventHandlers();
             LoadAboutInfo();
+            ApplySection("general");
         }
         catch (Exception ex)
         {
@@ -42,6 +43,29 @@ public sealed partial class SettingsPage : Page
         }
 
         Log.Information("SettingsPage: 构造函数完成");
+    }
+
+    /// <summary>左侧分区导航切换：只显示当前分组的卡片，其余折叠。</summary>
+    private void SectionList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SectionList.SelectedItem is ListViewItem { Tag: string tag })
+            ApplySection(tag);
+    }
+
+    private void ApplySection(string tag)
+    {
+        void Show(UIElement element, bool visible)
+            => element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
+        Show(GeneralSection, tag == "general");
+        Show(AppearanceSection, tag == "general");
+        Show(MonitorSection, tag == "monitor");
+        Show(TaskbarSection, tag == "interface");
+        Show(DesktopWidgetSection, tag == "interface");
+        Show(StickyNotesSection, tag == "notes");
+        Show(DataSection, tag == "data");
+        Show(AiSection, tag == "ai");
+        Show(AboutSection, tag == "about");
     }
 
     /// <summary>
@@ -275,6 +299,7 @@ public sealed partial class SettingsPage : Page
         DesktopNetSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetShowNet", DesktopNetSwitch.IsOn);
         DesktopDiskSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetShowDisk", DesktopDiskSwitch.IsOn);
         DesktopUsageSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetShowUsage", DesktopUsageSwitch.IsOn);
+        DesktopCurrentAppSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetShowCurrentApp", DesktopCurrentAppSwitch.IsOn);
         DesktopTopmostSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetTopmost", DesktopTopmostSwitch.IsOn);
         DesktopClickThroughSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetClickThrough", DesktopClickThroughSwitch.IsOn);
         DesktopClampSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetClampToScreen", DesktopClampSwitch.IsOn);
@@ -722,6 +747,7 @@ public sealed partial class SettingsPage : Page
         DesktopNetSwitch.IsOn = ViewModel.DesktopWidgetShowNet;
         DesktopDiskSwitch.IsOn = ViewModel.DesktopWidgetShowDisk;
         DesktopUsageSwitch.IsOn = ViewModel.DesktopWidgetShowUsage;
+        DesktopCurrentAppSwitch.IsOn = ViewModel.DesktopWidgetShowCurrentApp;
         DesktopTopmostSwitch.IsOn = ViewModel.DesktopWidgetTopmost;
         DesktopClickThroughSwitch.IsOn = ViewModel.DesktopWidgetClickThrough;
         DesktopClampSwitch.IsOn = ViewModel.DesktopWidgetClampToScreen;

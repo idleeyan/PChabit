@@ -211,6 +211,9 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
 
     private int _tickBusy;
 
+    /// <summary>仪表盘只展示前 N 条，完整榜单在应用统计 / 网页访问页。</summary>
+    public const int TopPreviewCount = 5;
+
     public ObservableCollection<AppUsageItem> TopApps { get; } = new();
     public ObservableCollection<HourlyActivityItem> HourlyActivity { get; } = new();
     public ObservableCollection<CategoryDistributionItem> CategoryDistribution { get; } = new();
@@ -684,7 +687,8 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             _ = LoadMostUsedAppIconAsync(stats.TopAppsRaw.First().ProcessName);
 
             TopApps.Clear();
-            foreach (var (processName, categoryName, duration, categoryColor) in stats.TopAppsRaw)
+            // 仪表盘只留 Top N，完整榜单交给应用统计页（顺带省掉全量图标加载）
+            foreach (var (processName, categoryName, duration, categoryColor) in stats.TopAppsRaw.Take(TopPreviewCount))
             {
                 var appHours = (int)(duration / 60);
                 var appMins = (int)(duration % 60);
@@ -706,7 +710,8 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         if (stats.TopWebsites.Any())
         {
             TopWebsites.Clear();
-            foreach (var site in stats.TopWebsites)
+            // 同上：只留 Top N，完整榜单在网页访问页
+            foreach (var site in stats.TopWebsites.Take(TopPreviewCount))
             {
                 TopWebsites.Add(new WebsiteUsageItem
                 {
@@ -739,8 +744,8 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             });
         }
 
-        HasAppData = TopApps.Count > 0;
-        HasWebsiteData = TopWebsites.Count > 0;
+        HasAppData = stats.TopAppsRaw.Count > 0;
+        HasWebsiteData = stats.TopWebsites.Count > 0;
 
         // === 阶段 2：状态条与环比格式化 ===
 

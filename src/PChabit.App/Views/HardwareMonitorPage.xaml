@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <Page
     x:Class="PChabit.App.Views.HardwareMonitorPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:converters="using:PChabit.App.Converters"
+    xmlns:views="using:PChabit.App.Views"
     Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
     mc:Ignorable="d">
 
@@ -27,8 +28,16 @@
         </Style>
     </Page.Resources>
 
-    <ScrollViewer Padding="24">
-        <StackPanel Spacing="24">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border
+            Grid.Row="0"
+            Padding="24,24,24,0"
+            Background="{ThemeResource LayerFillColorDefaultBrush}">
 
             <Grid>
                 <TextBlock
@@ -46,14 +55,21 @@
                         Text="{x:Bind ViewModel.UpdatedTimeText, Mode=OneWay}" />
                     <Button
                         Padding="12,6"
-                        Click="OpenNetworkTraffic_Click"
-                        Content="网络流量 →" />
-                    <Button
-                        Padding="12,6"
                         Click="OpenHistoryAnalysis_Click"
-                        Content="历史分析 →" />
+                        Content="硬件分析 →" />
                 </StackPanel>
             </Grid>
+        </Border>
+
+        <Pivot
+            x:Name="MainPivot"
+            Grid.Row="1"
+            Padding="24,12,24,24"
+            SelectionChanged="MainPivot_SelectionChanged">
+            <PivotItem Header="实时">
+                <Grid Height="{Binding ActualHeight, ElementName=MainPivot}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="24">
 
             <Grid ColumnSpacing="20" RowSpacing="20">
                 <Grid.ColumnDefinitions>
@@ -571,6 +587,16 @@
                     </StackPanel>
                 </Border>
             </Grid>
-        </StackPanel>
-    </ScrollViewer>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </PivotItem>
+
+            <PivotItem Header="流量">
+                <Grid Height="{Binding ActualHeight, ElementName=MainPivot}">
+                    <views:NetworkTrafficTab x:Name="TrafficTab" />
+                </Grid>
+            </PivotItem>
+        </Pivot>
+    </Grid>
 </Page>

@@ -93,6 +93,9 @@ public partial class AnalyticsViewModel : ViewModelBase
     private bool _hasCategories;
 
     [ObservableProperty]
+    private bool _hasWebCategories;
+
+    [ObservableProperty]
     private bool _hasExtraMetrics;
 
     [ObservableProperty]
@@ -172,8 +175,11 @@ public partial class AnalyticsViewModel : ViewModelBase
     public ObservableCollection<KpiCard> Kpis { get; } = new();
     public ObservableCollection<DayHeatItem> CalendarDays { get; } = new();
     public ObservableCollection<HourHeatItem> HourHeat { get; } = new();
+    public ObservableCollection<HourHeatItem> HourWeb { get; } = new();
+    public ObservableCollection<HourHeatItem> HourNet { get; } = new();
     public ObservableCollection<TopChangeItem> TopChanges { get; } = new();
     public ObservableCollection<CategoryShareItem> CategoryShares { get; } = new();
+    public ObservableCollection<CategoryShareItem> WebCategoryShares { get; } = new();
     public ObservableCollection<AnalyticsInsight> Insights { get; } = new();
     public ObservableCollection<AppHardwareLoad> HardwareAppLoads { get; } = new();
     public ObservableCollection<HardwareHourPoint> HardwareHours { get; } = new();
@@ -706,13 +712,9 @@ public partial class AnalyticsViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(key)) return;
         try
         {
-            if (string.Equals(key, "HistoryReport", StringComparison.OrdinalIgnoreCase))
-            {
-                var ok = App.GetService<NavigationService>().NavigateTo("HistoryReport");
-                Log.Information("AI 行动导航 HistoryReport: {Ok}", ok);
-                return;
-            }
-            PivotNavigationRequested?.Invoke(key);
+            // 历史分析已收为分析页的「历史」页签，不再走整页导航
+            PivotNavigationRequested?.Invoke(
+                string.Equals(key, "HistoryReport", StringComparison.OrdinalIgnoreCase) ? "history" : key);
         }
         catch (Exception ex)
         {
@@ -720,25 +722,14 @@ public partial class AnalyticsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// 历史分析已并入分析页「历史」页签，这里只切页签，不再整页导航。
+    /// </summary>
     [RelayCommand]
     private void OpenHistoryReport()
     {
-        try
-        {
-            var ok = App.GetService<NavigationService>().NavigateTo("HistoryReport");
-            Log.Information("打开历史分析: {Ok}", ok);
-            if (!ok)
-            {
-                AiResultText = "无法打开历史分析：导航服务未初始化";
-                HasAiResult = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "打开历史分析失败");
-            AiResultText = $"打开历史分析失败：{ex.Message}";
-            HasAiResult = true;
-        }
+        Log.Information("切换到分析页「历史」页签");
+        PivotNavigationRequested?.Invoke("history");
     }
 
     public byte[]? BuildExcelBytes()
@@ -811,6 +802,20 @@ public partial class AnalyticsViewModel : ViewModelBase
                 HourHeat.Clear();
                 foreach (var h in report.HourHeat) HourHeat.Add(h);
 
+                HourWeb.Clear();
+                HourNet.Clear();
+                var webMax = report.HourWebMinutes.Count > 0 ? report.HourWebMinutes.Max() : 0;
+                var netMax = report.HourNetDownMb.Count > 0 ? report.HourNetDownMb.Max() : 0;
+                for (var hour = 0; hour < 24; hour++)
+                {
+                    var wm = hour < report.HourWebMinutes.Count ? report.HourWebMinutes[hour] : 0;
+                    var nm = hour < report.HourNetDownMb.Count ? report.HourNetDownMb[hour] : 0;
+                    HourWeb.Add(new HourHeatItem(hour, $"{hour:00}", wm,
+                        webMax > 0 ? Math.Clamp((int)Math.Ceiling(wm / webMax * 4.0), 0, 4) : 0));
+                    HourNet.Add(new HourHeatItem(hour, $"{hour:00}", nm,
+                        netMax > 0 ? Math.Clamp((int)Math.Ceiling(nm / netMax * 4.0), 0, 4) : 0));
+                }
+
                 TopChanges.Clear();
                 foreach (var t in report.TopChanges) TopChanges.Add(t);
                 HasTopChanges = TopChanges.Count > 0;
@@ -818,6 +823,10 @@ public partial class AnalyticsViewModel : ViewModelBase
                 CategoryShares.Clear();
                 foreach (var c in report.CategoryShares) CategoryShares.Add(c);
                 HasCategories = CategoryShares.Count > 0;
+
+                WebCategoryShares.Clear();
+                foreach (var c in report.WebCategoryShares) WebCategoryShares.Add(c);
+                HasWebCategories = WebCategoryShares.Count > 0;
 
                 ExtraMetrics = report.Extra;
                 ExtraSummaryText = BuildExtraSummary(report.Extra);

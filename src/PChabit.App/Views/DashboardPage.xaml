@@ -460,10 +460,22 @@
                 </Border>
             </Grid>
 
-            <!-- ============ 应用使用排行 ============ -->
+            <!-- ============ 应用使用 Top 5（完整榜单在应用统计页） ============ -->
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="应用使用排行" />
+                    <Grid>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="15"
+                            FontWeight="SemiBold"
+                            Text="应用使用 Top 5" />
+                        <HyperlinkButton
+                            Padding="0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Click="OpenAppStats_Click"
+                            Content="查看全部 →" />
+                    </Grid>
 
                     <TextBlock
                         x:Name="NoAppDataHint"
@@ -523,10 +535,22 @@
                 </StackPanel>
             </Border>
 
-            <!-- ============ 网站访问排行 ============ -->
+            <!-- ============ 网站访问 Top 5（完整榜单在网页访问页） ============ -->
             <Border Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="14">
-                    <TextBlock FontSize="15" FontWeight="SemiBold" Text="网站访问排行" />
+                    <Grid>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="15"
+                            FontWeight="SemiBold"
+                            Text="网站访问 Top 5" />
+                        <HyperlinkButton
+                            Padding="0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Click="OpenWebAccess_Click"
+                            Content="查看全部 →" />
+                    </Grid>
 
                     <ItemsControl ItemsSource="{x:Bind ViewModel.TopWebsites, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>

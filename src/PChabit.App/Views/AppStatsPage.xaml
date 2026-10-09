@@ -18,32 +18,23 @@
             Grid.Row="0"
             Padding="24,24,24,0"
             Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <TextBlock
-                FontSize="28"
-                FontWeight="SemiBold"
-                Text="应用统计" />
+            <Grid>
+                <TextBlock
+                    FontSize="28"
+                    FontWeight="SemiBold"
+                    Text="应用统计" />
+                <Button
+                    Padding="12,6"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Click="OpenCategoryManager_Click"
+                    Content="分类管理 →" />
+            </Grid>
         </Border>
 
-        <!-- 页签（Pivot 替换原顶层 NavigationView，去掉多余层级） -->
-        <Pivot
-            x:Name="MainPivot"
-            Grid.Row="1"
-            Padding="24,12,24,24"
-            SelectionChanged="TabPivot_SelectionChanged">
-            <PivotItem Header="应用排行">
-                <views:AppStatsTab x:Name="RankingTab" />
-            </PivotItem>
-            <PivotItem Header="分类管理">
-                <!-- 注意：不要用 ScrollViewer 包裹 CategoryManagementTab——
-                     外层 ScrollViewer 会给内部 ListView 无限高度（禁用其自身滚动），
-                     内容超出窗口时底部被截断（显示不全）。直接放置即可，两个 ListView 各自滚动。 -->
-                <!-- 高度锁定：Pivot 内容区按内容测量高度，UserControl 默认不拉伸，
-                     导致内部 `*` 行 ListView 无受限高度→按内容高度渲染→超出部分被窗口裁剪且无滚动条。
-                     这里将内容 Grid 高度绑定到 Pivot 可视高度，恢复 ListView 自身滚动。 -->
-                <Grid Height="{Binding ActualHeight, ElementName=MainPivot}">
-                    <views:CategoryManagementTab x:Name="CategoryTab" />
-                </Grid>
-            </PivotItem>
-        </Pivot>
+        <!-- 分类管理已合并到独立的「分类管理」页，本页只保留应用排行 -->
+        <views:AppStatsTab
+            x:Name="RankingTab"
+            Grid.Row="1" />
     </Grid>
 </Page>

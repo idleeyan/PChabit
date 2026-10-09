@@ -25,7 +25,7 @@ public sealed partial class HardwareMonitorPage : Page
         try
         {
             var ok = App.GetService<NavigationService>().NavigateTo("Analytics", new AnalyticsNavArgs("hardware"));
-            Log.Information("硬件页→分析历史: {Ok}", ok);
+            Log.Information("硬件页→分析（硬件页签）: {Ok}", ok);
         }
         catch (Exception ex)
         {
@@ -33,16 +33,14 @@ public sealed partial class HardwareMonitorPage : Page
         }
     }
 
-    private void OpenNetworkTraffic_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 切到「流量」页签时才加载网络流量数据（该页数据量大，避免进页面就查）。
+    /// </summary>
+    private void MainPivot_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        try
+        if (MainPivot.SelectedItem is PivotItem { Header: string header } && header == "流量")
         {
-            var ok = App.GetService<NavigationService>().NavigateTo("NetworkTraffic");
-            Log.Information("硬件页→网络流量: {Ok}", ok);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "硬件页跳转网络流量失败", ex);
+            TrafficTab?.EnsureLoaded();
         }
     }
 

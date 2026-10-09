@@ -1,4 +1,4 @@
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -7,7 +7,7 @@ using PChabit.App.ViewModels;
 
 namespace PChabit.App.Views;
 
-public sealed partial class HistoryReportPage : Page
+public sealed partial class HistoryReportTab : UserControl
 {
     public HistoryReportViewModel ViewModel { get; }
     private bool _isWebViewInitialized;
@@ -15,23 +15,23 @@ public sealed partial class HistoryReportPage : Page
     private bool _isNavigating;
     private bool _hasNavigatedOnce;
 
-    public HistoryReportPage()
+    public HistoryReportTab()
     {
         InitializeComponent();
         var scope = App.Services.CreateScope();
         ViewModel = scope.ServiceProvider.GetRequiredService<HistoryReportViewModel>();
         DataContext = ViewModel;
 
-        Loaded += HistoryReportPage_Loaded;
-        Unloaded += HistoryReportPage_Unloaded;
+        Loaded += HistoryReportTab_Loaded;
+        Unloaded += HistoryReportTab_Unloaded;
     }
 
-    private void HistoryReportPage_Unloaded(object sender, RoutedEventArgs e)
+    private void HistoryReportTab_Unloaded(object sender, RoutedEventArgs e)
     {
         ReportWebView.Close();
     }
 
-    private async void HistoryReportPage_Loaded(object sender, RoutedEventArgs e)
+    private async void HistoryReportTab_Loaded(object sender, RoutedEventArgs e)
     {
         if (_isWebViewInitialized) return;
 

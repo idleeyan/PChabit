@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Navigation;
+using PChabit.App.Services;
 using PChabit.App.ViewModels;
 using Serilog;
 using System;
@@ -308,6 +309,34 @@ public sealed partial class DashboardPage : Page
         catch (Exception ex)
         {
             Log.Error(ex, "打开详情对话框失败");
+        }
+    }
+
+    /// <summary>仪表盘只显示 Top 5，完整榜单跳应用统计页。</summary>
+    private void OpenAppStats_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ok = App.GetService<NavigationService>().NavigateTo("AppStats");
+            Log.Information("仪表盘→应用统计: {Ok}", ok);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "仪表盘跳转应用统计失败");
+        }
+    }
+
+    /// <summary>仪表盘只显示 Top 5，完整榜单跳网页访问页。</summary>
+    private void OpenWebAccess_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ok = App.GetService<NavigationService>().NavigateTo("WebAccess");
+            Log.Information("仪表盘→网页访问: {Ok}", ok);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "仪表盘跳转网页访问失败");
         }
     }
 }

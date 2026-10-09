@@ -132,9 +132,7 @@ public static class ServiceConfiguration
         services.AddTransient<WebsiteCategoryManagementViewModel>();
         services.AddTransient<WebsiteCategoryEditDialogViewModel>();
         services.AddTransient<WebsiteCategoryEditDialog>();
-        services.AddTransient<HeatmapViewModel>();
         services.AddTransient<SankeyViewModel>();
-        services.AddTransient<InsightsViewModel>();
         services.AddTransient<HistoryReportViewModel>();
         services.AddTransient<NotesViewModel>();
         

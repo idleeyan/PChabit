@@ -34,8 +34,10 @@
                 </StackPanel>
             </NavigationView.PaneHeader>
 
-            <!-- 导航菜单项 -->
+            <!-- 导航菜单项（按使用动线分组，避免一长条平铺） -->
             <NavigationView.MenuItems>
+                <NavigationViewItemHeader Content="概览" />
+
                 <NavigationViewItem
                     Content="仪表盘"
                     Tag="Dashboard">
@@ -43,7 +45,6 @@
                         <FontIcon Glyph="&#xE80F;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-
                 <NavigationViewItem
                     Content="时间线"
                     Tag="Timeline">
@@ -52,6 +53,8 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
+                <NavigationViewItemHeader Content="使用" />
+
                 <NavigationViewItem
                     Content="应用统计"
                     Tag="AppStats">
@@ -59,7 +62,6 @@
                         <FontIcon Glyph="&#xE8FD;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-
                 <NavigationViewItem
                     Content="键鼠详情"
                     Tag="KeyboardDetails">
@@ -67,7 +69,6 @@
                         <FontIcon Glyph="&#xE92E;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-
                 <NavigationViewItem
                     Content="网页访问"
                     Tag="WebAccess">
@@ -76,7 +77,8 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
-                <!-- 分析 -->
+                <NavigationViewItemHeader Content="系统" />
+
                 <NavigationViewItem
                     Content="硬件监控"
                     Tag="Monitor">
@@ -85,23 +87,8 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
-                <NavigationViewItem
-                    Content="网络流量"
-                    Tag="NetworkTraffic">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE839;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
+                <NavigationViewItemHeader Content="洞察" />
 
-                <NavigationViewItem
-                    Content="便签"
-                    Tag="Notes">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xED15;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-
-                <!-- 分析 -->
                 <NavigationViewItem
                     Content="分析"
                     Tag="Analytics">
@@ -110,19 +97,27 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
+                <NavigationViewItemHeader Content="工具" />
+
+                <NavigationViewItem
+                    Content="便签"
+                    Tag="Notes">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xED15;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem
+                    Content="分类管理"
+                    Tag="CategoryManagement">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE8B7;" />
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem
                     Content="数据管理"
                     Tag="DataManagement">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE88E;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-
-                <NavigationViewItem
-                    Content="历史分析"
-                    Tag="HistoryReport">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE9D2;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>

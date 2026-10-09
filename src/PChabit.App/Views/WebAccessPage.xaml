@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:views="using:PChabit.App.Views"
     mc:Ignorable="d">
 
     <Grid>
@@ -17,39 +18,21 @@
             Grid.Row="0"
             Padding="24,24,24,0"
             Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <StackPanel Spacing="16">
+            <Grid>
                 <TextBlock
                     FontSize="28"
                     FontWeight="SemiBold"
                     Text="网页访问" />
-
-                <NavigationView
-                    x:Name="TabNav"
-                    PaneDisplayMode="Top"
-                    IsBackButtonVisible="Collapsed"
-                    IsSettingsVisible="False"
-                    SelectionChanged="TabNavigation_SelectionChanged">
-                    <NavigationView.MenuItems>
-                        <NavigationViewItem Content="访问统计" Tag="Stats">
-                            <NavigationViewItem.Icon>
-                                <FontIcon Glyph="&#xE9D2;" />
-                            </NavigationViewItem.Icon>
-                        </NavigationViewItem>
-                        <NavigationViewItem Content="网站分类" Tag="Category">
-                            <NavigationViewItem.Icon>
-                                <FontIcon Glyph="&#xE8FD;" />
-                            </NavigationViewItem.Icon>
-                        </NavigationViewItem>
-                    </NavigationView.MenuItems>
-                </NavigationView>
-            </StackPanel>
+                <Button
+                    Padding="12,6"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Click="OpenCategoryManager_Click"
+                    Content="分类管理 →" />
+            </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="1" Padding="24" VerticalScrollBarVisibility="Auto">
-            <ContentControl
-                x:Name="TabContent"
-                HorizontalContentAlignment="Stretch"
-                VerticalContentAlignment="Stretch" />
-        </ScrollViewer>
+        <!-- 网站分类已合并到独立的「分类管理」页，本页只保留访问统计 -->
+        <views:WebStatsTab Grid.Row="1" />
     </Grid>
 </Page>

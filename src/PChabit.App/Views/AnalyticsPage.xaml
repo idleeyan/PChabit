@@ -539,11 +539,11 @@
                                 BorderThickness="1"
                                 CornerRadius="12">
                                 <StackPanel Spacing="10">
-                                    <TextBlock FontWeight="SemiBold" Text="24 小时活跃分布" />
+                                    <TextBlock FontWeight="SemiBold" Text="24 小时四维分布" />
                                     <TextBlock
                                         FontSize="12"
                                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                        Text="观察高峰与夜间使用；洞察中的「高效时段 / 夜间使用」指向本页" />
+                                        Text="活跃 / 网页 / 流量逐小时对齐；洞察中的「高效时段 / 夜间使用」指向本页" />
                                     <ScrollViewer HorizontalScrollBarVisibility="Auto">
                                         <ItemsControl ItemsSource="{x:Bind ViewModel.HourHeat, Mode=OneWay}">
                                             <ItemsControl.ItemsPanel>
@@ -560,6 +560,68 @@
                                                         ToolTipService.ToolTip="{Binding Label}">
                                                         <Border.Background>
                                                             <SolidColorBrush Color="#10B981" Opacity="{Binding IntensityLevel, Converter={StaticResource HeatLevelToOpacityConverter}}" />
+                                                        </Border.Background>
+                                                        <TextBlock
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center"
+                                                            FontSize="9"
+                                                            Text="{Binding Label}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="网页浏览（分钟）" />
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourWeb, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Width="26"
+                                                        Height="34"
+                                                        Margin="0,0,3,0"
+                                                        ToolTipService.ToolTip="{Binding Minutes}">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="#6366F1" Opacity="{Binding IntensityLevel, Converter={StaticResource HeatLevelToOpacityConverter}}" />
+                                                        </Border.Background>
+                                                        <TextBlock
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center"
+                                                            FontSize="9"
+                                                            Text="{Binding Label}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="下行流量（MB）" />
+                                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourNet, Mode=OneWay}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border
+                                                        Width="26"
+                                                        Height="34"
+                                                        Margin="0,0,3,0"
+                                                        ToolTipService.ToolTip="{Binding Minutes}">
+                                                        <Border.Background>
+                                                            <SolidColorBrush Color="#F59E0B" Opacity="{Binding IntensityLevel, Converter={StaticResource HeatLevelToOpacityConverter}}" />
                                                         </Border.Background>
                                                         <TextBlock
                                                             HorizontalAlignment="Center"
@@ -614,6 +676,75 @@
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Stretch"
                                         ItemsSource="{x:Bind ViewModel.CategoryShares, Mode=OneWay}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid
+                                                    Margin="0,6"
+                                                    HorizontalAlignment="Stretch"
+                                                    ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" MinWidth="88" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" MinWidth="48" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock
+                                                        MaxWidth="140"
+                                                        VerticalAlignment="Center"
+                                                        Text="{Binding Category}"
+                                                        TextTrimming="CharacterEllipsis"
+                                                        ToolTipService.ToolTip="{Binding Category}" />
+                                                    <ProgressBar
+                                                        Grid.Column="1"
+                                                        Height="8"
+                                                        Maximum="100"
+                                                        VerticalAlignment="Center"
+                                                        Value="{Binding Percentage}" />
+                                                    <TextBlock
+                                                        Grid.Column="2"
+                                                        Margin="8,0,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Text="{Binding MinutesText}" />
+                                                    <TextBlock
+                                                        Grid.Column="3"
+                                                        Margin="8,0,0,0"
+                                                        HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        FontWeight="SemiBold"
+                                                        Text="{Binding PercentText}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Padding="16"
+                                HorizontalAlignment="Stretch"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12"
+                                Visibility="{x:Bind ViewModel.HasWebCategories, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="10" HorizontalAlignment="Stretch">
+                                    <TextBlock FontWeight="SemiBold" Text="网页分类构成（本周期）" />
+                                    <TextBlock
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="与左侧应用分类同一口径对齐，便于对比线上 vs 本机行为" />
+                                    <ItemsControl
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
+                                        ItemsSource="{x:Bind ViewModel.WebCategoryShares, Mode=OneWay}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <StackPanel />
@@ -859,6 +990,16 @@
                     VerticalAlignment="Stretch"
                     Width="{Binding ActualWidth, ElementName=RootPivot}">
                     <local:SankeyView HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                </Grid>
+            </PivotItem>
+
+            <PivotItem Header="历史" Tag="history">
+                <Grid
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Width="{Binding ActualWidth, ElementName=RootPivot}"
+                    Height="{Binding ActualHeight, ElementName=RootPivot}">
+                    <local:HistoryReportTab HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                 </Grid>
             </PivotItem>
         </Pivot>

@@ -8,7 +8,34 @@
     Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
     mc:Ignorable="d">
 
-    <ScrollViewer Padding="32,24">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="200" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 左侧分区导航：设置项较多，按分组切换，避免一页长滚找选项 -->
+        <Border
+            Grid.Column="0"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,0,1,0">
+            <ListView
+                x:Name="SectionList"
+                Padding="8,24,8,8"
+                SelectionMode="Single"
+                SelectionChanged="SectionList_SelectionChanged">
+                <ListViewItem Content="常规" Tag="general" IsSelected="True" />
+                <ListViewItem Content="监控" Tag="monitor" />
+                <ListViewItem Content="界面" Tag="interface" />
+                <ListViewItem Content="便签" Tag="notes" />
+                <ListViewItem Content="数据" Tag="data" />
+                <ListViewItem Content="AI" Tag="ai" />
+                <ListViewItem Content="关于" Tag="about" />
+            </ListView>
+        </Border>
+
+        <ScrollViewer Grid.Column="1" Padding="32,24">
         <StackPanel Spacing="24">
 
             <!-- 页面标题 -->
@@ -21,7 +48,7 @@
             <!-- ======================================== -->
             <!-- 基本设置                                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="GeneralSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <!-- 分组标题 -->
                     <StackPanel Spacing="4">
@@ -79,7 +106,7 @@
             <!-- ======================================== -->
             <!-- 监控设置                                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="MonitorSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -153,7 +180,7 @@
             <!-- ======================================== -->
             <!-- 任务栏与托盘                                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="TaskbarSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -243,7 +270,7 @@
             <!-- ======================================== -->
             <!-- 桌面悬浮插件（3.23.0）                          -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="DesktopWidgetSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -305,6 +332,7 @@
                                         <ToggleSwitch x:Name="DesktopNetSwitch" Header="网速" />
                                         <ToggleSwitch x:Name="DesktopDiskSwitch" Header="磁盘活动" />
                                         <ToggleSwitch x:Name="DesktopUsageSwitch" Header="今日使用统计" />
+                                        <ToggleSwitch x:Name="DesktopCurrentAppSwitch" Header="当前活动" />
                                     </StackPanel>
                                 </Grid>
                                 <ToggleSwitch
@@ -333,7 +361,7 @@
 
             <!-- 便签（3.24.0）                             -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="StickyNotesSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -474,7 +502,7 @@
 
             <!-- 外观设置                                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="AppearanceSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Border
@@ -518,7 +546,7 @@
             <!-- ======================================== -->
             <!-- 数据管理                                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="DataSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -605,7 +633,7 @@
             <!-- ======================================== -->
             <!-- 分析 AI（可选，默认关闭）                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="AiSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Spacing="4">
                         <StackPanel Orientation="Horizontal" Spacing="12">
@@ -764,7 +792,7 @@
             <!-- ======================================== -->
             <!-- 关于卡片                                    -->
             <!-- ======================================== -->
-            <Border Style="{StaticResource CardStyle}">
+            <Border x:Name="AboutSection" Style="{StaticResource CardStyle}">
                 <StackPanel Spacing="20">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <Border
@@ -1020,5 +1048,6 @@
                 </StackPanel>
             </Border>
         </StackPanel>
-    </ScrollViewer>
+            </ScrollViewer>
+    </Grid>
 </Page>

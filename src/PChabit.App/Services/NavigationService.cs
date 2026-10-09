@@ -28,14 +28,11 @@ public class NavigationService
         Register<KeyboardDetailsPage>("KeyboardDetails");
         Register<WebAccessPage>("WebAccess");
         Register<HardwareMonitorPage>("Monitor");
-        Register<NetworkTrafficPage>("NetworkTraffic");
         Register<NotesPage>("Notes");
+        Register<CategoryManagementPage>("CategoryManagement");
         Register<AnalyticsPage>("Analytics");
         Register<DataManagementPage>("DataManagement");
-        Register<HistoryReportPage>("HistoryReport");
         Register<SettingsPage>("Settings");
-        Register<HeatmapPage>("Heatmap");
-        Register<InsightsPage>("Insights");
     }
     
     public void Register<T>(string key) where T : Microsoft.UI.Xaml.Controls.Page
