@@ -12,17 +12,6 @@ namespace PChabit.App.ViewModels;
 
 public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.WebStatsData>
 {
-    private static bool DomainMatches(string domain, string pattern)
-    {
-        var lowerPattern = pattern.ToLower();
-        if (lowerPattern.StartsWith("*."))
-        {
-            var suffix = lowerPattern[2..];
-            return domain.EndsWith("." + suffix) || domain == suffix;
-        }
-        return domain == lowerPattern || domain.EndsWith("." + lowerPattern);
-    }
-
     private static string EffectiveMinutes(Core.Entities.WebSession s)
     {
         return s.ActiveDuration > TimeSpan.Zero
@@ -370,23 +359,6 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             Log.Warning(ex, "加载浏览器流量归因数据失败");
             return new List<Core.Entities.ProcessNetworkUsage>();
         }
-    }
-
-    private async Task<Dictionary<string, string>> LoadDomainCategoryMapAsync()
-    {
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-        var mappings = await dbContext.WebsiteDomainMappings
-            .AsNoTracking()
-            .Include(m => m.Category)
-            .Where(m => m.Category != null && m.Category.IsActive)
-            .ToListAsync();
-
-        var map = new Dictionary<string, string>();
-        foreach (var m in mappings.Where(m => m.Category != null))
-        {
-            map[m.DomainPattern] = m.Category!.Name;
-        }
-        return map;
     }
 
     private SummaryStatsResult ComputeSummaryStats(List<Core.Entities.WebSession> sessions)

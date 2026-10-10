@@ -507,7 +507,7 @@ public partial class DataCollectionService : IDisposable
         }
     }
 
-    /// <summary>落库时物化分类（Mapping 优先，关键词 fallback 次之）</summary>
+    /// <summary>落库时物化分类：统一由 IWebsiteCategoryService 解析（映射优先，关键词兜底）</summary>
     private void MaterializeCategoryLocked(WebSession session)
     {
         try
@@ -521,35 +521,10 @@ public partial class DataCollectionService : IDisposable
                 return;
             }
 
-            var mapping = categoryService.GetAllMappingsSync()
-                .FirstOrDefault(m => DomainMatches(session.Domain, m.DomainPattern));
-
-            if (mapping != null)
-            {
-                var cat = categoryService.GetAllCategoriesSync().FirstOrDefault(c => c.Id == mapping.CategoryId);
-                if (cat != null)
-                {
-                    session.CategoryId = cat.Id;
-                    session.CategoryName = cat.Name;
-                    session.CategorySource = "Mapping";
-                    return;
-                }
-            }
-
-            var fallbackName = FallbackCategoryName(session.Domain);
-            var fallbackCat = categoryService.GetAllCategoriesSync()
-                .FirstOrDefault(c => c.Name == fallbackName);
-            if (fallbackCat != null)
-            {
-                session.CategoryId = fallbackCat.Id;
-                session.CategoryName = fallbackCat.Name;
-                session.CategorySource = "Fallback";
-            }
-            else
-            {
-                session.CategoryName = fallbackName;
-                session.CategorySource = "Fallback";
-            }
+            var (name, _, categoryId, source) = categoryService.ResolveForDomainSync(session.Domain);
+            session.CategoryName = name;
+            session.CategoryId = categoryId;
+            session.CategorySource = source;
         }
         catch (Exception ex)
         {
@@ -557,71 +532,6 @@ public partial class DataCollectionService : IDisposable
             session.CategoryName = "浏览";
             session.CategorySource = "Unknown";
         }
-    }
-
-    private static bool DomainMatches(string domain, string pattern)
-    {
-        if (string.IsNullOrEmpty(domain) || string.IsNullOrEmpty(pattern)) return false;
-
-        var lowerDomain = domain.ToLowerInvariant();
-        var lowerPattern = pattern.ToLowerInvariant();
-
-        if (lowerPattern.StartsWith("*."))
-        {
-            var suffix = lowerPattern[2..];
-            return lowerDomain.EndsWith("." + suffix) || lowerDomain == suffix;
-        }
-
-        return lowerDomain == lowerPattern || lowerDomain.EndsWith("." + lowerPattern);
-    }
-
-    /// <summary>与 WebsiteCategoryService.GetDefaultCategory 对齐的单一 fallback 逻辑</summary>
-    private static string FallbackCategoryName(string domain)
-    {
-        if (string.IsNullOrEmpty(domain)) return "浏览";
-
-        var lowerDomain = domain.ToLowerInvariant();
-
-        if (lowerDomain.Contains("google") || lowerDomain.Contains("baidu") ||
-            lowerDomain.Contains("bing") || lowerDomain.Contains("sogou"))
-            return "搜索";
-
-        if (lowerDomain.Contains("github") || lowerDomain.Contains("gitlab") ||
-            lowerDomain.Contains("stackoverflow") || lowerDomain.Contains("csdn") ||
-            lowerDomain.Contains("juejin") || lowerDomain.Contains("segmentfault"))
-            return "开发";
-
-        if (lowerDomain.Contains("youtube") || lowerDomain.Contains("bilibili") ||
-            lowerDomain.Contains("netflix") || lowerDomain.Contains("youku") ||
-            lowerDomain.Contains("iqiyi") || lowerDomain.Contains("douyin"))
-            return "视频";
-
-        if (lowerDomain.Contains("twitter") || lowerDomain.Contains("weibo") ||
-            lowerDomain.Contains("facebook") || lowerDomain.Contains("instagram") ||
-            lowerDomain.Contains("linkedin") || lowerDomain.Contains("zhihu") ||
-            lowerDomain.Contains("xiaohongshu") || lowerDomain.Contains("douban"))
-            return "社交";
-
-        if (lowerDomain.Contains("amazon") || lowerDomain.Contains("taobao") ||
-            lowerDomain.Contains("jd") || lowerDomain.Contains("tmall") ||
-            lowerDomain.Contains("pinduoduo"))
-            return "购物";
-
-        if (lowerDomain.Contains("mail") || lowerDomain.Contains("outlook") ||
-            lowerDomain.Contains("gmail"))
-            return "邮件";
-
-        if (lowerDomain.Contains("notion") || lowerDomain.Contains("docs.qq") ||
-            lowerDomain.Contains("yuque") || lowerDomain.Contains("confluence") ||
-            lowerDomain.Contains("feishu") || lowerDomain.Contains("dingtalk"))
-            return "办公";
-
-        if (lowerDomain.Contains("news") || lowerDomain.Contains("bbc") ||
-            lowerDomain.Contains("cnn") || lowerDomain.Contains("sina") ||
-            lowerDomain.Contains("sohu") || lowerDomain.Contains("163"))
-            return "新闻";
-
-        return "浏览";
     }
 
     private void OnWebClientDisconnected(object? sender, WebClientDisconnectedEventArgs e)

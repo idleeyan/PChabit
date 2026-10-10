@@ -186,18 +186,6 @@ public partial class AnalyticsViewModel : ViewModelBase
     public AnalyticsExtraMetrics? ExtraMetrics { get; private set; }
     public HardwareAnalyticsReport? HardwareReport { get; private set; }
 
-    // 兼容旧 XAML 引用（若仍有绑定）
-    public ObservableCollection<WeeklyDataItem> WeeklyData { get; } = new();
-    public ObservableCollection<TrendItem> Trends { get; } = new();
-    public ObservableCollection<PatternItem> Patterns { get; } = new();
-    public ObservableCollection<InsightItem> InsightsLegacy { get; } = new();
-    public string TotalActiveTime { get; private set; } = "—";
-    public string AverageDailyTime { get; private set; } = "—";
-    public double AverageProductivity { get; private set; }
-    public int TotalKeyPresses { get; private set; }
-    public int TotalMouseClicks { get; private set; }
-    public int TotalWebPages { get; private set; }
-
     public AnalyticsViewModel(
         IDbContextFactory<PChabitDbContext> dbContextFactory,
         IAnalyticsAiService aiService,
@@ -712,7 +700,7 @@ public partial class AnalyticsViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(key)) return;
         try
         {
-            // 历史分析已收为分析页的「历史」页签，不再走整页导航
+            // 网页浏览历史已转移到「网页访问」页（history），由视图层整页导航
             PivotNavigationRequested?.Invoke(
                 string.Equals(key, "HistoryReport", StringComparison.OrdinalIgnoreCase) ? "history" : key);
         }
@@ -723,12 +711,12 @@ public partial class AnalyticsViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 历史分析已并入分析页「历史」页签，这里只切页签，不再整页导航。
+    /// 网页浏览历史已转移到「网页访问」页，这里请求整页导航并落到历史页签。
     /// </summary>
     [RelayCommand]
     private void OpenHistoryReport()
     {
-        Log.Information("切换到分析页「历史」页签");
+        Log.Information("请求导航到网页访问-网页浏览历史页签");
         PivotNavigationRequested?.Invoke("history");
     }
 
@@ -851,22 +839,10 @@ public partial class AnalyticsViewModel : ViewModelBase
                 Insights.Clear();
                 foreach (var i in report.Insights) Insights.Add(i);
 
-                // 旧字段兼容
-                var active = report.Kpis.FirstOrDefault(k => k.Id == "active");
-                TotalActiveTime = active?.Value ?? "—";
-                AverageDailyTime = $"{report.Period.DayCount} 天周期";
-                AverageProductivity = report.Kpis.FirstOrDefault(k => k.Id == "prod") is { } p
-                    && double.TryParse(p.Value.TrimEnd('%'), out var pv) ? pv : 0;
-                if (report.Extra is { HasInputData: true } ex)
-                {
-                    TotalKeyPresses = (int)Math.Min(ex.TotalKeys, int.MaxValue);
-                    TotalMouseClicks = (int)Math.Min(ex.TotalClicks, int.MaxValue);
-                }
                 if (report.Extra is { HasWebData: true } exw)
                 {
-                    TotalWebPages = (int)Math.Min(exw.WebPages, int.MaxValue);
                     WebSummaryText =
-                        $"网页 {Infrastructure.Analysis.AnalyticsEngine.FormatHours(exw.WebMinutes)} · {exw.WebPages:N0} 页 · 占比 {exw.WebSharePct:F0}%　可打开「历史分析」查看域名与访问趋势";
+                        $"网页 {Infrastructure.Analysis.AnalyticsEngine.FormatHours(exw.WebMinutes)} · {exw.WebPages:N0} 页 · 占比 {exw.WebSharePct:F0}%　可打开「网页浏览历史」查看域名与访问趋势";
                     HasWebData = true;
                 }
                 else
@@ -879,8 +855,8 @@ public partial class AnalyticsViewModel : ViewModelBase
                 return Task.CompletedTask;
             });
 
-            Log.Information("AnalyticsViewModel: 加载完成 period={Period} kpis={K} heat={H} insights={I}",
-                report.Period.Label, report.Kpis.Count, report.CalendarDays.Count, report.Insights.Count);
+Log.Information("AnalyticsViewModel: 加载完成 period={Period} kpis={K} heat={H} insights={I}",
+    report.Period.Label, report.Kpis.Count, report.CalendarDays.Count, report.Insights.Count);
         }
         catch (Exception ex)
         {
@@ -909,36 +885,6 @@ public partial class AnalyticsViewModel : ViewModelBase
             if (hw.Count > 0) parts.Add(string.Join(" · ", hw));
         }
         return string.Join("　|　", parts);
-    }
-
-    // 旧类型保留，避免其它 XAML/代码引用断裂
-    public class WeeklyDataItem
-    {
-        public string Day { get; set; } = "";
-        public int Hours { get; set; }
-        public int Productivity { get; set; }
-    }
-
-    public class TrendItem
-    {
-        public string Name { get; set; } = "";
-        public string Change { get; set; } = "";
-        public string Direction { get; set; } = "";
-        public string Description { get; set; } = "";
-    }
-
-    public class PatternItem
-    {
-        public string Title { get; set; } = "";
-        public string Description { get; set; } = "";
-        public string Icon { get; set; } = "";
-    }
-
-    public class InsightItem
-    {
-        public string Type { get; set; } = "info";
-        public string Title { get; set; } = "";
-        public string Message { get; set; } = "";
     }
 }
 

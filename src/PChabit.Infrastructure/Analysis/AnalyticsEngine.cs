@@ -261,6 +261,14 @@ public static class AnalyticsEngine
             }
         }
 
+        // 分类口径与应用统计页统一：用户映射表优先，会话自带 Category 仅作回落。
+        // 直接在内存重写 Category，Compute 及各测试重载行为保持不变。
+        var categoryMap = await AppStatsEngine.LoadCategoryMapAsync(dbFactory, ct);
+        foreach (var s in sessions)
+            s.Category = AppStatsEngine.ResolveCategory(s, categoryMap).Name;
+        foreach (var s in prevSessions)
+            s.Category = AppStatsEngine.ResolveCategory(s, categoryMap).Name;
+
         return Compute(period, prev, sessions, prevSessions, daily, prevDaily, hardwareSamples, webSessions, netUsages);
     }
 

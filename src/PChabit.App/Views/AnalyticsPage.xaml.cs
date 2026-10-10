@@ -133,6 +133,14 @@ public sealed partial class AnalyticsPage : Page
     {
         if (string.IsNullOrEmpty(key)) return;
 
+        // 网页浏览历史已转移到「网页访问」页：整页导航并直接落到历史页签
+        if (string.Equals(key, "history", StringComparison.OrdinalIgnoreCase))
+        {
+            App.GetService<NavigationService>().NavigateTo("WebAccess", "history");
+            Log.Information("分析页→网页访问-网页浏览历史");
+            return;
+        }
+
         foreach (var item in RootPivot.Items)
         {
             if (item is PivotItem { Tag: string tag } pivot

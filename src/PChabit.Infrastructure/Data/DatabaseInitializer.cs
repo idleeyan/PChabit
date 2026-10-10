@@ -762,6 +762,12 @@ public static class DatabaseInitializer
             context.DailyPatterns.Add(pattern);
             await context.SaveChangesAsync();
         }
+
+        // 分类种子：必须在此处补齐，不能依赖设置页（3.32.0 修复）
+        // 历史问题：EnsureCatalogSeededAsync 的唯一调用点在 SettingsViewModel 的死代码里，
+        // 用户若从未打开设置页，新装机器进「分类管理」会是空列表。
+        await Services.CategoryService.EnsureCatalogSeededAsync(context);
+        await Services.WebsiteCategoryService.EnsureCatalogSeededAsync(context);
     }
     
     public static async Task MigrateAsync(PChabitDbContext context)

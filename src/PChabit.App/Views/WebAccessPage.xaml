@@ -32,7 +32,13 @@
             </Grid>
         </Border>
 
-        <!-- 网站分类已合并到独立的「分类管理」页，本页只保留访问统计 -->
-        <views:WebStatsTab Grid.Row="1" />
+        <Pivot x:Name="RootPivot" Grid.Row="1">
+            <PivotItem Header="访问统计" Tag="stats">
+                <views:WebStatsTab />
+            </PivotItem>
+            <PivotItem Header="网页浏览历史" Tag="history">
+                <views:HistoryReportTab />
+            </PivotItem>
+        </Pivot>
     </Grid>
 </Page>

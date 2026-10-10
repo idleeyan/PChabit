@@ -22,6 +22,13 @@ public interface IWebsiteCategoryService
     Task<List<WebsiteDomainMapping>> GetMappingsByCategoryIdAsync(int categoryId);
 
     Task<string?> GetCategoryForDomainAsync(string domain);
+
+    /// <summary>无映射时的内置兜底分类名（关键词规则，全项目唯一副本）。</summary>
+    string GetDefaultCategoryName(string domain);
+
+    /// <summary>同步解析域名分类：映射优先(Mapping)，否则内置兜底(Fallback)。返回名称/颜色/分类Id/来源。</summary>
+    (string Name, string ColorHex, int? CategoryId, string Source) ResolveForDomainSync(string domain);
+
     Task InitializeDefaultCategoriesAsync(CancellationToken cancellationToken = default);
 
     /// <summary>把域名指到分类；categoryId 为 null 则删除映射。返回是否成功。</summary>
@@ -264,7 +271,15 @@ public class WebsiteCategoryService : IWebsiteCategoryService
     public async Task InitializeDefaultCategoriesAsync(CancellationToken cancellationToken = default)
     {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
+        await EnsureCatalogSeededAsync(dbContext, cancellationToken);
+    }
 
+    /// <summary>
+    /// 补齐默认网站分类与域名映射（增量，不覆盖用户数据）。
+    /// 3.32.0：由 DatabaseInitializer 在启动期调用，避免依赖用户是否打开过设置页。
+    /// </summary>
+    public static async Task EnsureCatalogSeededAsync(PChabitDbContext dbContext, CancellationToken cancellationToken = default)
+    {
         if (await dbContext.WebsiteCategories.AnyAsync(cancellationToken))
         {
             return;
@@ -327,7 +342,7 @@ public class WebsiteCategoryService : IWebsiteCategoryService
         Log.Information("已初始化默认网站分类和映射");
     }
 
-    private static bool DomainMatches(string domain, string pattern)
+    public static bool DomainMatches(string domain, string pattern)
     {
         var lowerPattern = pattern.ToLower();
 
@@ -340,7 +355,47 @@ public class WebsiteCategoryService : IWebsiteCategoryService
         return domain == lowerPattern || domain.EndsWith("." + lowerPattern);
     }
 
-    private static string? GetDefaultCategory(string domain)
+    public string GetDefaultCategoryName(string domain) => GetDefaultCategory(domain);
+
+    public (string Name, string ColorHex, int? CategoryId, string Source) ResolveForDomainSync(string domain)
+    {
+        using var dbContext = _dbContextFactory.CreateDbContext();
+
+        var lowerDomain = (domain ?? "").ToLowerInvariant();
+        WebsiteDomainMapping? hit = null;
+        foreach (var m in dbContext.WebsiteDomainMappings.AsEnumerable()
+                     .OrderByDescending(m => m.DomainPattern.Length))
+        {
+            if (DomainMatches(lowerDomain, m.DomainPattern))
+            {
+                hit = m;
+                break;
+            }
+        }
+
+        if (hit != null)
+        {
+            var mappedCat = dbContext.WebsiteCategories
+                .FirstOrDefault(c => c.Id == hit.CategoryId && c.IsActive);
+            if (mappedCat != null)
+            {
+                return (mappedCat.Name,
+                    string.IsNullOrWhiteSpace(mappedCat.Color) ? "#9CA3AF" : mappedCat.Color,
+                    mappedCat.Id, "Mapping");
+            }
+        }
+
+        var fallbackName = GetDefaultCategory(domain ?? "");
+        var fallbackCat = dbContext.WebsiteCategories
+            .FirstOrDefault(c => c.Name == fallbackName && c.IsActive);
+        return fallbackCat != null
+            ? (fallbackCat.Name,
+                string.IsNullOrWhiteSpace(fallbackCat.Color) ? "#9CA3AF" : fallbackCat.Color,
+                fallbackCat.Id, "Fallback")
+            : (fallbackName, "#9CA3AF", null, "Fallback");
+    }
+
+    private static string GetDefaultCategory(string domain)
     {
         if (string.IsNullOrEmpty(domain)) return "浏览";
 

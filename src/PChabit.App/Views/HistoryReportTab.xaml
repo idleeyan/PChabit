@@ -21,7 +21,7 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Text="浏览历史分析报告"
+            <TextBlock Text="网页浏览历史"
                        FontSize="14"
                        FontWeight="SemiBold"
                        VerticalAlignment="Center"/>

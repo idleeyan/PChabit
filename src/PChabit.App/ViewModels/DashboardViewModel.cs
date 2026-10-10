@@ -522,10 +522,10 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             stats.TopAppsRaw = topApps
                 .Select(x =>
                 {
-                    // 回落值用该进程任一会话的 Category（采集时已按权威体系写入），
-                    // 与 AppStatsEngine.ResolveCategory 的回落链保持一致
-                    var (catName, catColor) = ResolveCategorySafely(
-                        x.ProcessName, x.FallbackCategory, categoryMap);
+                    // 统一走 AppStatsEngine：映射命中优先，回落 AppSession.Category，再回落「未分类」
+                    var (catName, catColor) = AppStatsEngine.ResolveCategory(
+                        new AppSession { ProcessName = x.ProcessName, Category = x.FallbackCategory },
+                        categoryMap);
                     return (x.ProcessName, catName, x.Duration, catColor);
                 })
                 .ToList();
@@ -630,24 +630,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             .ToListAsync();
 
         return AppStatsEngine.BuildCategoryMap(categories);
-    }
-
-    /// <summary>
-    /// 解析分类：优先用户映射表，未命中则回落 AppSession.Category，
-    /// 仍无则「未分类」。规则与 AppStatsEngine.ResolveCategory 一致。
-    /// </summary>
-    private static (string Name, string ColorHex) ResolveCategorySafely(
-        string? processName, string? sessionCategory,
-        Dictionary<string, (string Name, string ColorHex)> categoryMap)
-    {
-        var normalized = AppStatsEngine.NormalizeProcessName(processName ?? "");
-        if (normalized.Length > 0 && categoryMap.TryGetValue(normalized, out var hit))
-            return hit;
-
-        var fallback = sessionCategory;
-        return string.IsNullOrWhiteSpace(fallback)
-            ? ("未分类", AppStatsEngine.DefaultColorFor(null))
-            : (fallback, AppStatsEngine.DefaultColorFor(fallback));
     }
 
     /// <summary>会话有效时长（分钟）：优先 ActiveDuration；未结束会话仅今日按 clock 截断计入。</summary>

@@ -2,6 +2,110 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.32.0] - 2026-10-10
+
+### 修复：分类种子逻辑依赖死代码（新装机器分类管理页会空）
+
+排查 3.30.0 遗留的重复代码时发现：`CategoryService.EnsureCatalogSeededAsync`
+（补齐默认分类与进程映射）的**唯一调用点**位于 `SettingsViewModel` 的死代码里
+——3.30.0 把分类管理挪到独立页时删了设置页的 UI，但没删背后的代码路径。
+
+后果：用户若从未打开过设置页，新装机器进入「分类管理」会看到空列表，
+应用/网页统计页的分类归属也会全部落到「未分类」。
+
+修复：把种子补齐移到 `DatabaseInitializer.SeedDefaultDataAsync`，
+即数据库初始化阶段执行，不再依赖用户是否打开过设置页。
+网站分类同步抽出静态 `WebsiteCategoryService.EnsureCatalogSeededAsync`，
+补齐原先只在设置页路径下才走的网站分类种子。
+
+### 变更：删除约 640 行死代码
+
+3.30.0 的减法版本删掉了设置页的分类管理 UI，但代码全部留着且仍在跑。
+本次按「全库零引用」标准逐项核实后删除：
+
+| 文件 / 成员 | 行数 | 说明 |
+|---|---|---|
+| `SettingsViewModel.Categories.cs`（整文件） | 435 | `LoadCategoriesAsync` / `SaveCategoryFromDialogAsync` / `ExportCategories` / `ImportCategories` 等 12 个方法全库零调用 |
+| `SettingsViewModel.Mappings.cs`（整文件） | 53 | `LoadCategoryMappings` 硬编码 6 条假数据（`code.exe`→开发 等），是假数据源 |
+| `MainViewModel.cs`（整文件） | 86 | `ShellPage` 只读 XAML 写死的 MenuItems，此VM 零引用 |
+| `AnalyticsViewModel` 死成员 | 60 | `WeeklyData` / `Trends` / `Patterns` / `InsightsLegacy` / `TotalActiveTime` / `AverageDailyTime` / `AverageProductivity` / `TotalKeyPresses` / `TotalMouseClicks` / `TotalWebPages` 及4 个配套类 |
+
+连带收益：`SettingsViewModel.InitializeAsync` 不再每次启动跑 2 次无人观看的分类
+DB 查询，构造函数也去掉了一次同步的假映射填充。
+
+### 变更：`SettingsViewModel` 构造函数去掉 `IDbContextFactory` 参数
+
+分类查询移除后该依赖不再使用。已核实全库仅经 DI 构造、无手工 `new`、
+测试项目未引用，移除不影响任何调用方。
+
+### 验证
+
+- Release 构建 0 错误 19 警告
+-单元测试 154/154 通过
+- publish 产物已部署 `D:\Tool\PChabit`，启动日志无新增 ERR
+
+---
+
+## [3.31.1] - 2026-10-10
+
+### 变更：「历史」页签改名并转移到网页访问
+
+- 分析页原「历史」页签标题改为**网页浏览历史**，并从分析页移除
+- 网页访问页改为双页签：**访问统计** / **网页浏览历史**
+- 分析页两个入口（总览工具栏按钮、网页摘要卡片按钮"查看网页浏览历史 →"）
+  及 AI 行动项点击后，整页导航到网页访问页并自动落到历史页签
+- 同步更名：HistoryReportTab 标题栏、报告前端 report.html 的 title 与大标题
+
+### 验证
+
+- Release 构建 0 错误；已部署 `D:\Tool\PChabit`（465 文件，3.31.1.0）
+- UI 实拍验证：网页访问页双页签均可正常加载（历史库 25,103 条），
+  分析页入口跳转后正确选中「网页浏览历史」页签
+
+## [3.31.0] - 2026-10-10
+
+### 修复：全项目分类口径统一（消除"同一数据、两套逻辑"）
+
+时间线里的应用分类与应用统计页不同步：时间线直接读会话快照 `AppSession.Category`，
+绕过了用户可编辑的 `ProgramCategoryMappings` 映射表；用户在分类管理里改了分类，
+应用统计页变了、时间线不变。全面排查后共发现 **8 处**重复逻辑，本版全部收敛到
+两个权威：应用分类 → `AppStatsEngine`，网站分类 → `IWebsiteCategoryService`。
+
+应用分类（进程 → 分类）5 处：
+
+- **时间线**：会话分类/小时条形配色/近 7 日高效占比全部改用
+  `AppStatsEngine.ResolveCategory`（映射优先 → 会话快照 → 未分类），删除自带的
+  13 色硬编码色板与私有"高效分类"表；高效判断改用 `AnalyticsEngine.IsProductiveCategory`
+- **桑基图**：`GetCategory` 硬编码关键词猜测改为引擎解析（新增 DbFactory 注入）
+- **分析引擎**：生产力占比 / 专注段 / 分类构成在 BuildAsync 中先按映射表重解析
+  会话分类，Compute 与各测试重载行为不变
+- **键鼠详情（鼠标程序统计）**：自查映射精确匹配改为
+  `AppStatsEngine.BuildCategoryMap + ResolveCategory`
+- **仪表盘**：删除与引擎重复的 `ResolveCategorySafely` 副本，直接调引擎
+
+网站分类（域名 → 分类）3 处：
+
+- **网页访问页**：删除复制的域名匹配 / 关键词兜底 / 颜色表，改用服务一次性
+  加载映射与分类颜色
+- **仪表盘卡片详情弹窗**：此前纯硬编码兜底、**连用户自定义映射都不查**，
+  改用 `ResolveForDomainSync`
+- **网页会话落库**：删除复制的 DomainMatches / FallbackCategoryName，
+  改用服务新增的 `ResolveForDomainSync`
+
+服务接口新增：`GetDefaultCategoryName`、`ResolveForDomainSync`（返回
+名称/颜色/分类Id/来源），`DomainMatches` 改为公开静态方法。
+
+### 验证
+
+- 154/154 单元测试通过；Release 构建 0 错误
+- 数据库实证：近 3 天存在 10+ 个快照分类与映射表分叉的进程
+  （如 Doubao 快照=AI 助手、映射=浏览；QwenWorkCN 快照=其他、映射=AI 助手），
+  修复后这些页面统一显示映射表结果
+- UI 实拍时间线：PChabit/资源管理器显示「系统工具」、红果短剧显示「娱乐」，
+  标签与配色均取自映射表
+- 已部署 `D:\Tool\PChabit`（465 文件，3.31.0.0，自包含校验通过），
+  启动日志无新增错误
+
 ## [3.30.3] - 2026-10-10
 
 ### 改善：下载网速独占任务栏左右分栏的上下两行

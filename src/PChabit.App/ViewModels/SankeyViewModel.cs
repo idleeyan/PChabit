@@ -1,17 +1,27 @@
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Application.Aggregators;
+using PChabit.Core.Entities;
+using PChabit.Infrastructure.Analysis;
+using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
 public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
 {
     private readonly SankeyAggregator _aggregator;
+    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private IReadOnlyDictionary<string, (string Name, string ColorHex)> _categoryMap
+        = new Dictionary<string, (string Name, string ColorHex)>();
 
-    public SankeyViewModel(SankeyAggregator aggregator) : base()
+    public SankeyViewModel(
+        SankeyAggregator aggregator,
+        IDbContextFactory<PChabitDbContext> dbFactory) : base()
     {
         _aggregator = aggregator;
+        _dbFactory = dbFactory;
         Title = "桑基图";
     }
 
@@ -36,6 +46,7 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
     {
         var startDt = StartDate?.Date ?? DateTime.Today.AddDays(-6);
         var endDt = EndDate?.Date.AddDays(1) ?? DateTime.Today.AddDays(1);
+        _categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
         return await _aggregator.GetSankeyDataAsync(startDt, endDt, TopN);
     }
 
@@ -73,7 +84,8 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
         {
             name = n.Name,
             value = (int)n.TotalUsage.TotalMinutes,
-            category = GetCategory(n.ProcessName)
+            category = AppStatsEngine.ResolveCategory(
+                new AppSession { ProcessName = n.ProcessName }, _categoryMap).Name
         }).ToList();
 
         var links = data.Links.Select(l => new
@@ -92,19 +104,5 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
         };
 
         return JsonSerializer.Serialize(dto, options);
-    }
-
-    private static string GetCategory(string? processName)
-    {
-        if (string.IsNullOrEmpty(processName)) return "其他";
-
-        return processName.ToLower() switch
-        {
-            var p when p.Contains("code") || p.Contains("visual studio") || p.Contains("idea") => "开发",
-            var p when p.Contains("chrome") || p.Contains("edge") || p.Contains("firefox") => "浏览",
-            var p when p.Contains("slack") || p.Contains("teams") || p.Contains("wechat") => "沟通",
-            var p when p.Contains("excel") || p.Contains("word") || p.Contains("powerpoint") => "办公",
-            _ => "其他"
-        };
     }
 }

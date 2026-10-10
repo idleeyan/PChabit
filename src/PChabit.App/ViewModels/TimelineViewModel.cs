@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
@@ -121,6 +122,9 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        // 分类统一走 AppStatsEngine：用户映射表优先，会话自带分类仅作回落
+        var categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory, cancellationToken);
+
         var hourlyGroups = appSessions
             .GroupBy(s => s.StartTime.Hour)
             .OrderByDescending(g => g.Key)
@@ -163,8 +167,14 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
             {
                 var categoryMinutes = hg.Sessions
                     .Where(s => s.EndTime.HasValue)
-                    .GroupBy(s => s.Category ?? "其他")
-                    .Select(g => new { Category = g.Key, Minutes = g.Sum(s => (s.EndTime!.Value - s.StartTime).TotalMinutes) })
+                    .Select(s => new { Resolved = AppStatsEngine.ResolveCategory(s, categoryMap), s })
+                    .GroupBy(x => x.Resolved.Name)
+                    .Select(g => new
+                    {
+                        Category = g.Key,
+                        Color = g.First().Resolved.ColorHex,
+                        Minutes = g.Sum(x => (x.s.EndTime!.Value - x.s.StartTime).TotalMinutes)
+                    })
                     .OrderByDescending(x => x.Minutes)
                     .ToList();
 
@@ -172,7 +182,7 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
                 {
                     hourGroup.BarSegments.Add(new TimelineBarSegment
                     {
-                        Color = GetCategoryColor(cat.Category),
+                        Color = cat.Color,
                         WidthPercent = combinedMinutes > 0 ? cat.Minutes / combinedMinutes * 100 : 0
                     });
                 }
@@ -194,15 +204,13 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
                 hourGroup.IsExpanded = true;
                 hourGroup.IsLoaded = true;
                 foreach (var session in hg.Sessions)
-                    hourGroup.Activities.Add(CreateActivity(session));
+                    hourGroup.Activities.Add(CreateActivity(session, categoryMap));
                 foreach (var web in hourWeb)
                     hourGroup.Activities.Add(CreateWebActivity(web));
             }
 
             builtGroups.Add((hourGroup, isCurrent));
         }
-
-        // 仅有网页、没有应用会话的小时也生成分组
         var appHours = hourlyGroups.Select(h => h.Hour).ToHashSet();
         var webOnlyHours = webSessions
             .Select(w => w.StartTime.Hour)
@@ -262,7 +270,8 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
                     {
                         var duration = (s.EndTime.Value - s.StartTime).TotalMinutes;
                         totalMinutes += duration;
-                        if (IsProductiveCategory(s.Category))
+                        var resolvedName = AppStatsEngine.ResolveCategory(s, categoryMap).Name;
+                        if (AnalyticsEngine.IsProductiveCategory(resolvedName))
                             productivityScore += (int)duration;
                     }
                 }
@@ -313,17 +322,18 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
         }
     }
 
-    private static TimelineActivity CreateActivity(Core.Entities.AppSession session)
+    private static TimelineActivity CreateActivity(Core.Entities.AppSession session, IReadOnlyDictionary<string, (string Name, string ColorHex)> categoryMap)
     {
         var duration = session.EndTime.HasValue ? (session.EndTime.Value - session.StartTime).TotalMinutes : 0;
+        var (category, categoryColor) = AppStatsEngine.ResolveCategory(session, categoryMap);
         return new TimelineActivity
         {
             Time = session.StartTime.ToString("HH:mm"),
             Duration = FormatDuration(duration),
             Title = session.AppName ?? session.ProcessName ?? "",
             Subtitle = session.WindowTitle ?? "",
-            Category = session.Category ?? "其他",
-            CategoryColor = GetCategoryColor(session.Category),
+            Category = category,
+            CategoryColor = categoryColor,
             ProcessName = session.ProcessName ?? ""
         };
     }
@@ -339,7 +349,7 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
             Title = string.IsNullOrWhiteSpace(session.Title) ? session.Domain : session.Title,
             Subtitle = $"🌐 {session.Domain} · {session.Browser}",
             Category = category,
-            CategoryColor = GetCategoryColor(category),
+            CategoryColor = AppStatsEngine.DefaultColorFor(category),
             ProcessName = session.Domain
         };
     }
@@ -375,8 +385,9 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
             });
 
             group.Activities.Clear();
+            var categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
             foreach (var session in sessions)
-                group.Activities.Add(CreateActivity(session));
+                group.Activities.Add(CreateActivity(session, categoryMap));
             foreach (var web in webInHour)
                 group.Activities.Add(CreateWebActivity(web));
 
@@ -423,27 +434,6 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
         }
         catch (Exception ex) { Log.Warning(ex, "[Timeline] 加载时段图标失败"); }
     }
-
-    private static readonly Dictionary<string, bool> ProductiveCategories = new() { ["开发"] = true, ["开发工具"] = true, ["办公"] = true, ["办公软件"] = true };
-    private static bool IsProductiveCategory(string? category) => !string.IsNullOrEmpty(category) && ProductiveCategories.TryGetValue(category, out var isProd) && isProd;
-
-    private static string GetCategoryColor(string? category) => !string.IsNullOrEmpty(category) && CategoryColors.TryGetValue(category, out var color) ? color : "#6B7280";
-    private static readonly Dictionary<string, string> CategoryColors = new()
-    {
-        ["开发"] = "#4A90E4",
-        ["浏览"] = "#50C878",
-        ["沟通"] = "#FF6B6B",
-        ["娱乐"] = "#9B59B6",
-        ["办公"] = "#F39C12",
-        ["设计"] = "#E74C3C",
-        ["其他"] = "#95A5A6",
-        ["搜索"] = "#0EA5E9",
-        ["视频"] = "#F97316",
-        ["社交"] = "#22C55E",
-        ["购物"] = "#EF4444",
-        ["邮件"] = "#06B6D4",
-        ["新闻"] = "#A855F7"
-    };
 
     private static string FormatDuration(double totalMinutes)
     {

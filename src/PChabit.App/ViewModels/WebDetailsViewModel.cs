@@ -6,6 +6,7 @@ using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Services;
 
 
 namespace PChabit.App.ViewModels;
@@ -13,11 +14,15 @@ namespace PChabit.App.ViewModels;
 public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.WebStatsData>
 {
     private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly IWebsiteCategoryService _websiteCategoryService;
     private bool _isCategoriesInitialized;
 
-    public WebDetailsViewModel(IDbContextFactory<PChabitDbContext> dbFactory) : base()
+    public WebDetailsViewModel(
+        IDbContextFactory<PChabitDbContext> dbFactory,
+        IWebsiteCategoryService websiteCategoryService) : base()
     {
         _dbFactory = dbFactory;
+        _websiteCategoryService = websiteCategoryService;
         Title = "网页访问详情";
         _startDateOffset = new DateTimeOffset(DateTime.Today);
         _endDateOffset = new DateTimeOffset(DateTime.Today);
@@ -102,6 +107,7 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
     private bool _hasMoreData = false;
     private List<Core.Entities.WebSession> _allSessions = new();
     private Dictionary<string, string> _domainCategoryMap = new();
+    private Dictionary<string, string> _categoryColorMap = new(StringComparer.OrdinalIgnoreCase);
     
     [ObservableProperty]
     private bool _hasMoreVisits = false;
@@ -138,7 +144,7 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
     {
         Log.Information("WebDetails: 开始查询数据库, StartDate={StartDate}, EndDate={EndDate}", StartDate, EndDate);
         var sessions = await LoadSessionsAsync();
-        _domainCategoryMap = await LoadDomainCategoryMapAsync();
+        LoadCategoryLookups();
 
         Log.Information("WebDetails: 查询完成, 共 {Count} 条记录", sessions.Count);
         var summary = ComputeSummaryStats(sessions);

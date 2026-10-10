@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Services;
 
 
 namespace PChabit.App.ViewModels;
@@ -38,89 +39,45 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         });
     }
 
+    /// <summary>一次性加载 域名映射(仅启用分类) 与 分类名→颜色，供整批会话解析。</summary>
+    private void LoadCategoryLookups()
+    {
+        var categories = _websiteCategoryService.GetAllCategoriesSync();
+        var colorMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var catById = new Dictionary<int, string>();
+        foreach (var c in categories)
+        {
+            colorMap[c.Name] = string.IsNullOrWhiteSpace(c.Color) ? "#9CA3AF" : c.Color;
+            catById[c.Id] = c.Name;
+        }
+
+        var domainMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in _websiteCategoryService.GetAllMappingsSync()
+                     .OrderByDescending(m => m.DomainPattern.Length))
+        {
+            if (!catById.TryGetValue(m.CategoryId, out var name)) continue;
+            var key = m.DomainPattern.ToLowerInvariant();
+            domainMap.TryAdd(key, name); // 最长 pattern 已排在前面
+        }
+
+        _domainCategoryMap = domainMap;
+        _categoryColorMap = colorMap;
+    }
+
+    /// <summary>解析域名分类：用户映射优先，否则服务内置关键词兜底（全项目唯一规则）。</summary>
     private string GetCategory(string domain)
     {
         if (string.IsNullOrEmpty(domain)) return "浏览";
-        
-        var lowerDomain = domain.ToLower();
+
+        var lowerDomain = domain.ToLowerInvariant();
         foreach (var kvp in _domainCategoryMap)
         {
-            if (DomainMatches(lowerDomain, kvp.Key))
+            if (WebsiteCategoryService.DomainMatches(lowerDomain, kvp.Key))
                 return kvp.Value;
         }
-        return GetCategoryFallback(domain);
+        return _websiteCategoryService.GetDefaultCategoryName(domain);
     }
 
-    private static string GetCategoryFallback(string domain)
-    {
-        if (string.IsNullOrEmpty(domain)) return "浏览";
-        
-        var lowerDomain = domain.ToLower();
-        
-        if (lowerDomain.Contains("google") || lowerDomain.Contains("baidu") || 
-            lowerDomain.Contains("bing") || lowerDomain.Contains("sogou") ||
-            lowerDomain.Contains("duckduckgo"))
-            return "搜索";
-        
-        if (lowerDomain.Contains("github") || lowerDomain.Contains("gitlab") ||
-            lowerDomain.Contains("stackoverflow") || lowerDomain.Contains("csdn") ||
-            lowerDomain.Contains("juejin") || lowerDomain.Contains("segmentfault") ||
-            lowerDomain.Contains("npmjs") || lowerDomain.Contains("nuget"))
-            return "开发";
-        
-        if (lowerDomain.Contains("youtube") || lowerDomain.Contains("bilibili") ||
-            lowerDomain.Contains("netflix") || lowerDomain.Contains("youku") ||
-            lowerDomain.Contains("iqiyi") || lowerDomain.Contains("douyin"))
-            return "视频";
-        
-        if (lowerDomain.Contains("twitter") || lowerDomain.Contains("weibo") ||
-            lowerDomain.Contains("facebook") || lowerDomain.Contains("instagram") ||
-            lowerDomain.Contains("linkedin") || lowerDomain.Contains("zhihu") ||
-            lowerDomain.Contains("xiaohongshu") || lowerDomain.Contains("douban"))
-            return "社交";
-        
-        if (lowerDomain.Contains("amazon") || lowerDomain.Contains("taobao") ||
-            lowerDomain.Contains("jd") || lowerDomain.Contains("tmall") ||
-            lowerDomain.Contains("pinduoduo"))
-            return "购物";
-        
-        if (lowerDomain.Contains("mail") || lowerDomain.Contains("outlook") ||
-            lowerDomain.Contains("gmail") || (lowerDomain.Contains("qq") && lowerDomain.Contains("mail")))
-            return "邮件";
-        
-        if (lowerDomain.Contains("notion") || lowerDomain.Contains("docs.qq") ||
-            lowerDomain.Contains("yuque") || lowerDomain.Contains("confluence") ||
-            lowerDomain.Contains("feishu") || lowerDomain.Contains("dingtalk"))
-            return "办公";
-        
-        if (lowerDomain.Contains("news") || lowerDomain.Contains("bbc") ||
-            lowerDomain.Contains("cnn") || lowerDomain.Contains("sina") ||
-            lowerDomain.Contains("sohu") || lowerDomain.Contains("163"))
-            return "新闻";
-        
-        return "浏览";
-    }
-
-    private string GetCategoryColor(string category)
-    {
-        return GetCategoryColorHex(category);
-    }
-
-    private static string GetCategoryColorHex(string category)
-    {
-        return category switch
-        {
-            "搜索" => "#0078D4",
-            "开发" => "#512BD4",
-            "视频" => "#FF8C00",
-            "社交" => "#107C10",
-            "购物" => "#E81123",
-            "邮件" => "#00B7C3",
-            "办公" => "#6B7280",
-            "新闻" => "#8764B8",
-            _ => "#9CA3AF"
-        };
-    }
-
+    private string GetCategoryColor(string category) =>
+        _categoryColorMap.TryGetValue(category, out var color) ? color : "#9CA3AF";
 }
-

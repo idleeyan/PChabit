@@ -62,7 +62,7 @@
                                     <Button
                                         Padding="12,6"
                                         Command="{x:Bind ViewModel.OpenHistoryReportCommand}"
-                                        Content="历史分析" />
+                                        Content="网页浏览历史" />
                                     <Button
                                         Padding="12,6"
                                         Command="{x:Bind ViewModel.RunAiInsightCommand}"
@@ -170,7 +170,7 @@
                                             HorizontalAlignment="Right"
                                             Padding="10,4"
                                             Command="{x:Bind ViewModel.OpenHistoryReportCommand}"
-                                            Content="打开历史分析 →" />
+                                            Content="查看网页浏览历史 →" />
                                     </Grid>
                                     <TextBlock
                                         FontSize="13"
@@ -990,16 +990,6 @@
                     VerticalAlignment="Stretch"
                     Width="{Binding ActualWidth, ElementName=RootPivot}">
                     <local:SankeyView HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
-                </Grid>
-            </PivotItem>
-
-            <PivotItem Header="历史" Tag="history">
-                <Grid
-                    HorizontalAlignment="Stretch"
-                    VerticalAlignment="Stretch"
-                    Width="{Binding ActualWidth, ElementName=RootPivot}"
-                    Height="{Binding ActualHeight, ElementName=RootPivot}">
-                    <local:HistoryReportTab HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
                 </Grid>
             </PivotItem>
         </Pivot>

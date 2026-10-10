@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
+using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
@@ -292,12 +293,17 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
                 .Select(g => new { ProcessName = g.Key, ClickCount = g.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount), MoveDistance = g.Sum(s => s.TotalMoveDistance), ScrollCount = g.Sum(s => s.ScrollCount) })
                 .OrderByDescending(g => g.ClickCount).ToList();
             
-            var mappings = await dbContext.ProgramCategoryMappings.Include(m => m.Category).ToListAsync();
-            
+            var categories = await dbContext.ProgramCategories
+                .AsNoTracking()
+                .Include(c => c.ProgramMappings)
+                .Where(c => c.IsActive)
+                .ToListAsync();
+            var categoryMap = AppStatsEngine.BuildCategoryMap(categories);
+
             foreach (var program in programStats)
             {
-                var categoryMapping = mappings.FirstOrDefault(m => m.ProcessName.Equals(program.ProcessName, StringComparison.OrdinalIgnoreCase));
-                var category = categoryMapping?.Category?.Name ?? "其他";
+                var (category, _) = AppStatsEngine.ResolveCategory(
+                    new Core.Entities.AppSession { ProcessName = program.ProcessName }, categoryMap);
                 stats.Program.Add(new ProgramMouseStat { ProcessName = program.ProcessName, Category = category, ClickCount = program.ClickCount, MoveDistance = program.MoveDistance, ScrollCount = program.ScrollCount, Duration = TimeSpan.Zero });
             }
         }

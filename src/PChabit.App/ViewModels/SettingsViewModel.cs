@@ -1,14 +1,9 @@
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
-using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 
 
@@ -18,7 +13,6 @@ public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ISettingsService _settingsService;
     private readonly MonitorManager _monitorManager;
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
     [ObservableProperty]
     private bool _startWithWindows = true;
     
@@ -199,15 +193,6 @@ public partial class SettingsViewModel : ViewModelBase
     
     [ObservableProperty]
     private string _statusMessage = "";
-    
-    [ObservableProperty]
-    private string _categorySearchText = "";
-    
-    [ObservableProperty]
-    private bool _isCategorySelectionMode;
-    
-    [ObservableProperty]
-    private int _selectedCategoryCount;
 
     public ObservableCollection<ThemeOption> ThemeOptions { get; } = new()
     {
@@ -221,24 +206,16 @@ public partial class SettingsViewModel : ViewModelBase
         new LanguageOption { Key = "zh-CN", Label = "简体中文" },
         new LanguageOption { Key = "en-US", Label = "English" }
     };
-    
-    public ObservableCollection<CategoryMapping> CategoryMappings { get; } = new();
-    
-    public ObservableCollection<CategoryDisplayItem> Categories { get; } = new();
 
-    [ObservableProperty]
-    private string _newCategoryName = "";
-
-    public SettingsViewModel(ISettingsService settingsService, MonitorManager monitorManager, IDbContextFactory<PChabitDbContext> dbFactory) : base()
+    public SettingsViewModel(ISettingsService settingsService, MonitorManager monitorManager) : base()
     {
         _settingsService = settingsService;
         _monitorManager = monitorManager;
-        _dbFactory = dbFactory;
         Title = "设置";
-        
-        // LoadSettings 已改为异步，在 InitializeAsync 中调用以避免构造函数中同步文件 I/O 阻塞 UI
-        LoadCategoryMappings();
-        
+
+        // 分类 UI 已于 3.30.0 迁至独立「分类管理」页；原分类加载/映射代码于 3.32.0 删除。
+        // 分类种子改由 DatabaseInitializer 在启动期补齐，不再依赖用户是否打开过本页。
+
         Log.Information("SettingsViewModel: 构造函数完成");
     }
 
@@ -248,68 +225,23 @@ public partial class SettingsViewModel : ViewModelBase
 
         try
         {
-            // Phase 1: 线程池 — 文件 I/O + DB 查询
-            var (catItems, totalCount) = await Task.Run(async () =>
-            {
-                _settingsService.Load();
+            // Phase 1: 线程池 — 文件 I/O（设置项从 JSON 读入）
+            await Task.Run(() => _settingsService.Load());
 
-                await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-                await InitializeDefaultCategoriesAsync(dbContext);
-
-                var categories = await dbContext.ProgramCategories
-                    .Include(c => c.ProgramMappings)
-                    .Where(c => c.IsActive)
-                    .OrderBy(c => c.SortOrder)
-                    .ThenBy(c => c.Name)
-                    .ToListAsync();
-
-                var mappings = await dbContext.ProgramCategoryMappings.ToListAsync();
-
-                var items = categories.Select(category =>
-                {
-                    var programCount = mappings.Count(m => m.CategoryId == category.Id);
-                    return new CategoryDisplayItem
-                    {
-                        Id = category.Id,
-                        Name = category.Name,
-                        Description = category.Description ?? "",
-                        Icon = category.Icon,
-                        Color = category.Color,
-                        IsSystem = category.IsSystem,
-                        ProgramCount = programCount,
-                        SortOrder = category.SortOrder
-                    };
-                }).ToList();
-
-                Log.Information("SettingsViewModel: 获取到 {Count} 个分类", items.Count);
-                Log.Information("SettingsViewModel: 获取到 {Count} 个映射", mappings.Count);
-
-                return (items, items.Count);
-            });
-
-            // Phase 2: UI 线程 — 设置 UI 状态 + ObservableCollection 更新
+            // Phase 2: UI 线程 — 写入设置项 UI 状态
             await RunOnUIThreadAsync(() =>
             {
                 LoadUiFromSettings();
-
-                Categories.Clear();
-                foreach (var item in catItems)
-                {
-                    Categories.Add(item);
-                }
                 return Task.CompletedTask;
             });
 
-            UpdateSelectedCategoryCount();
             UpdateConnectedBrowsers();
-            StatusMessage = $"已加载 {totalCount} 个类别";
             Log.Information("SettingsViewModel: InitializeAsync 完成");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "SettingsViewModel: InitializeAsync 失败");
-            StatusMessage = "加载类别失败";
+            StatusMessage = "加载设置失败";
         }
     }
 
