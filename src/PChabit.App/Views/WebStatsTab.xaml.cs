@@ -118,6 +118,33 @@ public sealed partial class WebStatsTab : UserControl
     private void Refresh_Click(object sender, RoutedEventArgs e) => _ = RefreshDataAsync();
     private void Search_Click(object sender, RoutedEventArgs e) => _ = RefreshDataAsync();
 
+    /// <summary>
+    /// 滚动到浏览历史区块并确保其数据已加载（3.36.0 跨页落点用）。
+    /// 原先落点是切到「网页浏览历史」页签，现该内容已并入本页底部。
+    /// </summary>
+    public async Task ScrollToHistoryAsync()
+    {
+        await HistorySection.EnsureLoadedAsync();
+
+        // 等布局完成后再取偏移。ChangeView 需要相对滚动位置的偏移量，
+        // 用 TransformToVisual 把控件坐标换算成根ScrollViewer 内的偏移。
+        await Task.Delay(150);
+        try
+        {
+            var point = new Windows.Foundation.Point(0, 0);
+            var inRoot = HistorySection.TransformToVisual(RootScroll);
+            if (inRoot != null)
+            {
+                var pos = inRoot.TransformPoint(point);
+                RootScroll.ChangeView(null, pos.Y, null, disableAnimation: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "滚动到浏览历史区块失败");
+        }
+    }
+
     private void LoadMore_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.LoadMoreVisitsCommand.Execute(null);

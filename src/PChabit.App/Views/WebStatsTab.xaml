@@ -6,11 +6,15 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:PChabit.App.Controls"
+    xmlns:views="using:PChabit.App.Views"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     mc:Ignorable="d">
 
-    <ScrollViewer Padding="24" VerticalScrollBarVisibility="Auto">
+    <ScrollViewer
+        x:Name="RootScroll"
+        Padding="24"
+        VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="20">
 
             <!-- 日期范围快捷按钮 -->
@@ -620,6 +624,9 @@
                         Visibility="Collapsed" />
                 </StackPanel>
             </Border>
+
+            <!-- 3.36.0：原「网页浏览历史」独立页签（WebView2 报告）原生化后并入本页 -->
+            <views:WebHistorySection x:Name="HistorySection" />
 
         </StackPanel>
     </ScrollViewer>

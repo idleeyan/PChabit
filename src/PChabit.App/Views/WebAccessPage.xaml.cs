@@ -6,30 +6,32 @@ using PChabit.App.Services;
 
 namespace PChabit.App.Views;
 
+/// <summary>
+/// 网页访问页（3.36.0）。
+///
+/// 原为「访问统计 / 网页浏览历史」双页签；现已合并为单页——
+/// 历史内容原生化后并入统计页底部（<see cref="WebHistorySection"/>）。
+/// 导航 key "WebAccess" 保持不变，分析页的跳转入口无需改动。
+/// </summary>
 public sealed partial class WebAccessPage : Page
 {
     public WebAccessPage()
     {
         InitializeComponent();
+        Log.Information("WebAccessPage: 构造完成（单页，历史已并入）");
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e)
+    protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
 
-        // 跨页落点：NavigateTo("WebAccess", "history") 直接打开网页浏览历史页签
+        // 跨页落点：NavigateTo("WebAccess", "history") 滚动到浏览历史区块并加载它。
+        // 3.36.0 起本页已无二级页签，历史内容是页面底部的原生区块。
         if (e.Parameter is string tag &&
             string.Equals(tag, "history", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var item in RootPivot.Items)
-            {
-                if (item is PivotItem { Tag: string t } pivot &&
-                    string.Equals(t, tag, StringComparison.OrdinalIgnoreCase))
-                {
-                    RootPivot.SelectedItem = pivot;
-                    break;
-                }
-            }
+            await StatsSection.ScrollToHistoryAsync();
+            Log.Information("WebAccessPage: 已落点至浏览历史区块");
         }
     }
 

@@ -8,6 +8,12 @@
     xmlns:views="using:PChabit.App.Views"
     mc:Ignorable="d">
 
+    <!--
+        3.36.0：去掉「访问统计 / 网页浏览历史」二级页签，合并为单页。
+        原「网页浏览历史」是 WebView2 加载 report.html，浅色硬编码样式与全应用
+        主题自适应的原生卡片画风割裂；现已将其域名明细原生化并入统计页底部
+        （见 WebHistorySection），故不再需要独立页签。
+    -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -32,13 +38,6 @@
             </Grid>
         </Border>
 
-        <Pivot x:Name="RootPivot" Grid.Row="1">
-            <PivotItem Header="访问统计" Tag="stats">
-                <views:WebStatsTab />
-            </PivotItem>
-            <PivotItem Header="网页浏览历史" Tag="history">
-                <views:HistoryReportTab />
-            </PivotItem>
-        </Pivot>
+        <views:WebStatsTab x:Name="StatsSection" Grid.Row="1" />
     </Grid>
 </Page>

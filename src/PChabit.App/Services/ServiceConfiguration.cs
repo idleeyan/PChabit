@@ -133,7 +133,8 @@ public static class ServiceConfiguration
         services.AddTransient<WebsiteCategoryEditDialogViewModel>();
         services.AddTransient<WebsiteCategoryEditDialog>();
         services.AddTransient<SankeyViewModel>();
-        services.AddTransient<HistoryReportViewModel>();
+        // 3.36.0：HistoryReportTab（WebView2 报告）已删除，改为 WebHistorySection
+        services.AddTransient<WebHistorySectionViewModel>();
         services.AddTransient<NotesViewModel>();
         
         return services;
