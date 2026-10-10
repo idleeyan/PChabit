@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.35.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.36.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
