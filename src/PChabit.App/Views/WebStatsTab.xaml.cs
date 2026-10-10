@@ -61,7 +61,6 @@ public sealed partial class WebStatsTab : UserControl
 
         DomainStatsList.ItemsSource = ViewModel.DomainStats;
         BrowsingPatternsList.ItemsSource = ViewModel.BrowsingPatterns;
-        HourlyActivityList.ItemsSource = ViewModel.HourlyActivity;
         DailyTrendList.ItemsSource = ViewModel.DailyTrend;
         RecentVisitsList.ItemsSource = ViewModel.RecentVisits;
         TrafficAttributionList.ItemsSource = ViewModel.TrafficAttributionItems;

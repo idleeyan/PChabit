@@ -134,6 +134,15 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <!-- 3.35.0：硬件监控移出侧栏（与使用统计主线无关，属辅助信息），
+                         入口改设在此处；导航 key "Monitor" 保留，桌面挂件双击仍可用。 -->
+                    <Button
+                        HorizontalAlignment="Left"
+                        Margin="44,0,0,0"
+                        Padding="12,6"
+                        Click="OpenHardwareMonitor_Click"
+                        Content="打开硬件监控 →" />
+
                     <Grid Margin="44,0,0,0" ColumnSpacing="16">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />

@@ -77,6 +77,13 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
     public ObservableCollection<HourlyUsageItem> HourlyUsage { get; } = new();
     public ObservableCollection<string> CategoryOptions { get; } = new();
 
+    /// <summary>
+    /// 「每小时活动」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>，
+    /// 供 <c>HourlyBarChart</c> 统一呈现）。
+    /// 用可观察集合：控件自行订阅集合变化，无需额外的属性变更通知。
+    /// </summary>
+    public ObservableCollection<Controls.HourlyBarRow> HourlyUsageRows { get; } = new();
+
     /// <summary>周期下拉选项。</summary>
     public IReadOnlyList<PeriodOption> PeriodOptions { get; } = new[]
     {
@@ -160,14 +167,17 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
         GeneratePieChartData(report);
 
         HourlyUsage.Clear();
+        HourlyUsageRows.Clear();
         foreach (var h in report.Hourly)
         {
-            HourlyUsage.Add(new HourlyUsageItem
+            var item = new HourlyUsageItem
             {
                 Hour = h.Label,
                 Minutes = (int)h.Minutes,
                 Activity = Math.Min(100, (int)(h.Minutes / 60 * 100))
-            });
+            };
+            HourlyUsage.Add(item);
+            HourlyUsageRows.Add(new Controls.HourlyBarRow(item.Hour, item.Activity));
         }
 
         // 分类筛选选项：全部分类 + 实际出现的分类

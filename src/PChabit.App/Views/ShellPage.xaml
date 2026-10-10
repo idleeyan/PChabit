@@ -70,15 +70,11 @@
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
 
-                <NavigationViewItemHeader Content="系统" />
-
-                <NavigationViewItem
-                    Content="硬件监控"
-                    Tag="Monitor">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE950;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
+                <!--
+                    3.35.0：「系统」分组与「硬件监控」导航项已移除。
+                    硬件监控属辅助信息，与使用统计主线无关；入口改到「设置 › 监控」分区。
+                    导航 key "Monitor" 仍保留在 NavigationService，桌面挂件双击照旧可用。
+                -->
 
                 <NavigationViewItemHeader Content="洞察" />
 

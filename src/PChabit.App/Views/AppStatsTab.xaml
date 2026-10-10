@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewModel="using:PChabit.App.ViewModels"
+    xmlns:controls="using:PChabit.App.Controls"
     xmlns:wv2="using:Microsoft.Web.WebView2.Win32"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
@@ -348,19 +349,13 @@
                             Text="每小时活动"
                             ToolTipService.ToolTip="显示每小时的应用使用时长（分钟）" />
 
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyUsage, Mode=OneWay}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="viewModel:HourlyUsageItem">
-                                    <Grid Margin="0,2">
-                                        <TextBlock FontSize="11" Text="{x:Bind Hour}" />
-                                        <ProgressBar
-                                            Margin="50,0,0,0"
-                                            VerticalAlignment="Center"
-                                            Value="{x:Bind Activity}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- 3.35.0：改用共享图表控件（原为自写 ItemsControl + ProgressBar） -->
+                        <controls:HourlyBarChart
+                            EmptyText="所选范围内暂无数据"
+                            LabelWidth="50"
+                            RowSpacing="2"
+                            ValueWidth="0"
+                            Rows="{x:Bind ViewModel.HourlyUsageRows, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
             </Grid>

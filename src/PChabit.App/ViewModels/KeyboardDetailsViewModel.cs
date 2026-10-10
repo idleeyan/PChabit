@@ -56,6 +56,19 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     public ObservableCollection<HourlyMouseStat> HourlyMouseStats { get; } = new();
     public ObservableCollection<ProgramMouseStat> ProgramMouseStats { get; } = new();
     public ObservableCollection<MouseClickDetail> MouseClickDetails { get; } = new();
+
+    /// <summary>
+    /// 「每小时按键分布」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>）。
+    /// 用可观察集合：控件自行订阅集合变化。
+    /// 原实现进度条上限硬编码 1000，此处由控件按数据自动取值。
+    /// </summary>
+    public ObservableCollection<Controls.HourlyBarRow> HourlyKeyRows { get; } = new();
+
+    /// <summary>
+    /// 「每小时鼠标统计」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>）。
+    /// 原显示文本为组合式「点击: N | 距离: Npx」，此处用 <c>Display</c> 保留该信息。
+    /// </summary>
+    public ObservableCollection<Controls.HourlyBarRow> HourlyMouseRows { get; } = new();
     
     // === Phase 1 中间数据（纯 POCO，无 WinRT 类型）===
 
@@ -173,7 +186,12 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
             KeyUsageList.Add(item);
         }
         HourlyData.Clear();
-        foreach (var item in k.Hourly) HourlyData.Add(item);
+        HourlyKeyRows.Clear();
+        foreach (var item in k.Hourly)
+        {
+            HourlyData.Add(item);
+            HourlyKeyRows.Add(new Controls.HourlyBarRow(item.Hour, item.Presses));
+        }
         TopShortcuts.Clear();
         foreach (var item in k.Shortcuts) TopShortcuts.Add(item);
         AppKeyUsage.Clear();
@@ -189,7 +207,15 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         AverageClickInterval = m.AverageClickInterval;
         
         HourlyMouseStats.Clear();
-        foreach (var item in m.Hourly) HourlyMouseStats.Add(item);
+        HourlyMouseRows.Clear();
+        foreach (var item in m.Hourly)
+        {
+            HourlyMouseStats.Add(item);
+            HourlyMouseRows.Add(new Controls.HourlyBarRow(
+                $"{item.Hour}:00",
+                item.ClickCount,
+                $"{item.ClickCount} 次 · {item.MoveDistance:N0} px"));
+        }
         ProgramMouseStats.Clear();
         foreach (var item in m.Program) ProgramMouseStats.Add(item);
         MouseClickDetails.Clear();

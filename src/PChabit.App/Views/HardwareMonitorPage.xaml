@@ -41,6 +41,11 @@
 
             <Grid>
                 <TextBlock
+                    FontSize="12"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Text="实时采集 CPU / 内存 / GPU / 磁盘 / 网络与进程占用"
+                    TextWrapping="Wrap" />
+                <TextBlock
                     Style="{StaticResource PageTitleStyle}"
                     Text="硬件监控" />
                 <StackPanel

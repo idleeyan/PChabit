@@ -93,6 +93,13 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
     public ObservableCollection<WebSessionDetailItem> RecentVisits { get; } = new();
     public ObservableCollection<TrafficAttributionItem> TrafficAttributionItems { get; } = new();
 
+    /// <summary>
+    /// 「每小时活动分布」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>）。
+    /// 用可观察集合：控件自行订阅集合变化。
+    /// 原实现进度条上限硬编码 50，此处由控件按数据自动取值。
+    /// </summary>
+    public ObservableCollection<Controls.HourlyBarRow> HourlyActivityRows { get; } = new();
+
     [ObservableProperty]
     private string _trafficEmptyText = "暂无浏览器流量归因数据";
 
@@ -186,7 +193,12 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         foreach (var item in s.DomainStats) DomainStats.Add(item);
 
         HourlyActivity.Clear();
-        foreach (var item in s.HourlyActivity) HourlyActivity.Add(item);
+        HourlyActivityRows.Clear();
+        foreach (var item in s.HourlyActivity)
+        {
+            HourlyActivity.Add(item);
+            HourlyActivityRows.Add(new Controls.HourlyBarRow(item.HourLabel, item.VisitCount));
+        }
 
         DailyTrend.Clear();
         foreach (var item in s.DailyTrend) DailyTrend.Add(item);

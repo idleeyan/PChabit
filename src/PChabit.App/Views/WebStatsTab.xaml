@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:PChabit.App.Controls"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     mc:Ignorable="d">
@@ -384,34 +385,16 @@
                             FontWeight="SemiBold"
                             Text="每小时活动分布" />
 
-                        <ListView
-                            x:Name="HourlyActivityList"
-                            SelectionMode="None"
-                            MaxHeight="300">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,2">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="50" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="60" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <TextBlock Text="{Binding HourLabel}" />
-                                        <ProgressBar
-                                            Grid.Column="1"
-                                            Margin="8,0"
-                                            VerticalAlignment="Center"
-                                            Maximum="50"
-                                            Value="{Binding VisitCount}" />
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            HorizontalAlignment="Right"
-                                            Text="{Binding VisitCount}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
+                        <!-- 3.35.0：改用共享图表控件。原实现 ProgressBar Maximum 硬编码 50，
+                             数据超过 50 的小时会被截断；共享控件按数据自动取值。 -->
+                        <controls:HourlyBarChart
+                            EmptyText="暂无访问数据"
+                            LabelWidth="50"
+                            RowSpacing="2"
+                            Scrollable="True"
+                            MaxChartHeight="300"
+                            ValueWidth="60"
+                            Rows="{Binding HourlyActivityRows}" />
                     </StackPanel>
                 </Border>
 

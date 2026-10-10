@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewModel="using:PChabit.App.ViewModels"
+    xmlns:controls="using:PChabit.App.Controls"
     mc:Ignorable="d">
     
     <ScrollViewer Padding="24">
@@ -155,17 +156,13 @@
                 <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="16">
                         <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时按键分布" ToolTipService.ToolTip="每小时的按键次数分布" />
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyData, Mode=OneWay}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="viewModel:HourlyKeyItem">
-                                    <Grid Margin="0,4">
-                                        <TextBlock Width="50" Text="{x:Bind Hour}" />
-                                        <ProgressBar Margin="60,0,80,0" Maximum="1000" Value="{x:Bind Presses}" />
-                                        <TextBlock HorizontalAlignment="Right" Text="{x:Bind Presses}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- 3.35.0：改用共享图表控件（原为自写 ItemsControl + ProgressBar，Maximum 硬编码 1000） -->
+                        <controls:HourlyBarChart
+                            EmptyText="所选日期暂无按键数据"
+                            LabelWidth="50"
+                            RowSpacing="4"
+                            ValueWidth="70"
+                            Rows="{x:Bind ViewModel.HourlyKeyRows, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
                 
@@ -277,25 +274,12 @@
                 <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                     <StackPanel Spacing="16">
                         <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时鼠标统计" ToolTipService.ToolTip="每小时的鼠标点击、移动和滚动统计" />
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyMouseStats, Mode=OneWay}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="viewModel:HourlyMouseStat">
-                                    <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="50" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{x:Bind Label}" />
-                                        <ProgressBar Grid.Column="1" Margin="8,0" Maximum="1000" Value="{x:Bind ClickCount}" />
-                                        <TextBlock Grid.Column="2" MinWidth="120" TextAlignment="Right">
-                                            <Run Text="点击:" /><Run Text="{x:Bind ClickCount}" />
-                                            <Run Text=" | " /><Run Text="{x:Bind MoveDistance}" /><Run Text="px" />
-                                        </TextBlock>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <controls:HourlyBarChart
+                            EmptyText="所选日期暂无鼠标数据"
+                            LabelWidth="50"
+                            RowSpacing="4"
+                            ValueWidth="140"
+                            Rows="{x:Bind ViewModel.HourlyMouseRows, Mode=OneWay}" />
                     </StackPanel>
                 </Border>
                 

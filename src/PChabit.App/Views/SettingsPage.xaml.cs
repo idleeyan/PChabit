@@ -909,4 +909,22 @@ public sealed partial class SettingsPage : Page
             StickySyncNowButton.IsEnabled = true;
         }
     }
+
+    /// <summary>
+    /// 打开硬件监控页（3.35.0：硬件监控移出侧栏后的入口）。
+    /// 导航 key "Monitor" 未变，桌面挂件双击与此处走同一入口。
+    /// </summary>
+    private void OpenHardwareMonitor_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var ok = App.GetService<PChabit.App.Services.NavigationService>()
+                .NavigateTo("Monitor");
+            Log.Information("设置页→硬件监控: {Ok}", ok);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "设置页跳转硬件监控失败");
+        }
+    }
 }
