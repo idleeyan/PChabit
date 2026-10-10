@@ -2,6 +2,48 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.38.0] - 2026-10-10
+
+### 修复：浏览历史「域名明细」是死数据（已停更 20 天）
+
+**现象**：网页访问 › 浏览历史 › 域名明细的数据自 2026-09-20 起不再变化，
+无论刷新多少次都是同样 1293 个域名 / 25101 条记录。
+
+**根因**：`HistoryIngestService.IngestAsync` 的开关判断是
+
+```csharp
+if (!_settings.BrowserSyncEnabled || !_settings.BrowserHistoryIngestEnabled)
+```
+
+而本机 `settings.json` 里 `BrowserSyncEnabled = false`（它是「浏览器同步总开关」，
+管的是 WebDAV 云端合并那条链路）。于是**关掉云端同步，连本机扩展推送的实时入库
+也被一起掐断** —— 而这条链路根本不依赖 WebDAV。
+
+之所以查不出来，有三个叠加原因：
+
+1. 被跳过的分支只记 `Log.Debug`，而默认日志级别看不到，等于完全静默
+2. 界面上**已无任何开关**能改回 `BrowserSyncEnabled`（该 UI 早已移除，
+   `settings.json` 里的值成了不可见的单向门）
+3. 页面只显示「历史库 25103 条」这类总量，看起来一切正常，没有任何异常提示
+
+**修复**：
+
+- `IngestAsync` 只判断专用开关 `BrowserHistoryIngestEnabled`，
+  不再被云端同步总开关连带掐断（`HistorySyncService` 走 WebDAV 的那条路径保持原判断）
+- 跳过分支从 `Log.Debug` 提到 `Log.Warning`，并在消息里说明「数据将停止更新」
+- 浏览历史区块新增**陈旧告警条**：超过 2 天无新记录即显示，
+  区分两种原因——采集被关（给「开启采集」按钮）/ 扩展掉线（提示检查授权）；
+  采集开关在界面上无处可改时，告警条本身就是恢复入口
+
+### 验证
+
+- 核实数据库：`BrowserHistoryItems` 最新记录 2026-09-20 04:13，
+  而同期 `WebSessions` / `AppSessions` / `NetworkTrafficSamples` 均更新到当日 21:xx
+  → 确认只有历史库停更，且扩展当前处于已连接状态（21:35 有连接日志）
+- Release 构建 0 错误；单元测试 154/154 通过
+- publish 471 文件、3.38.0.0、部署 `D:\Tool\PChabit`
+- 修复后扩展推送即恢复入库（详见下方验证记录）
+
 ## [3.37.0] - 2026-10-10
 
 ### 变更：网页访问页活动数据收敛为4 张卡片

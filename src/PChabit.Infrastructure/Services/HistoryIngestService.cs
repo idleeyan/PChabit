@@ -26,9 +26,15 @@ public class HistoryIngestService : IHistoryIngestService
 
     public async Task<int> IngestAsync(string browser, IReadOnlyList<HistoryEntry> entries, CancellationToken ct = default)
     {
-        if (!_settings.BrowserSyncEnabled || !_settings.BrowserHistoryIngestEnabled)
+        // 只看历史采集专用开关。BrowserSyncEnabled 是「浏览器同步总开关」，
+        // 管的是 WebDAV 云端合并那条链路（HistorySyncService），不应连带掐断
+        // 扩展推送的本地实时入库——否则关掉云端同步后本机历史库会静默停更。
+        if (!_settings.BrowserHistoryIngestEnabled)
         {
-            Log.Debug("历史入库已关闭，跳过 {N} 条", entries?.Count ?? 0);
+            // 静默跳过只留 Debug 会导致「界面数据停更但毫无线索」——
+            // 历史上就因此让浏览历史静默停写 20 天。改为警告级别。
+            Log.Warning("历史入库已关闭（BrowserHistoryIngest=false），跳过 {N} 条。数据将停止更新",
+                entries?.Count ?? 0);
             return 0;
         }
 

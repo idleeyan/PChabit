@@ -57,6 +57,45 @@
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                 Text="数据来自浏览器本机历史库，与上方按会话统计的「网站访问排行」口径不同" />
 
+            <!--
+                3.37.0：数据陈旧告警。浏览历史依赖扩展推送，采集一旦被关
+                界面就会静默停更，用户无从区分「没变化」与「坏了」。
+            -->
+            <Border
+                Padding="12,10"
+                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Visibility="{x:Bind ViewModel.IsStale, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                        Glyph="&#xE7BA;" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Text="{x:Bind ViewModel.StaleReason, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <Button
+                        Grid.Column="2"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Padding="12,6"
+                        Click="EnableIngest_Click"
+                        Content="开启采集"
+                        Visibility="{x:Bind ViewModel.IsIngestDisabled, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </Grid>
+            </Border>
+
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

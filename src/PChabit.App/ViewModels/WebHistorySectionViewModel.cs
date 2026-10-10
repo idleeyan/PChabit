@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
+using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
@@ -35,6 +36,10 @@ public sealed class HistoryDomainRow
 public partial class WebHistorySectionViewModel : ViewModelBase
 {
     private readonly IDbContextFactory<PChabitDbContext> _factory;
+    private readonly ISettingsService _settings;
+
+    /// <summary>数据超过该时长未更新即视为陈旧。</summary>
+    private static readonly TimeSpan StaleThreshold = TimeSpan.FromDays(2);
 
     [ObservableProperty]
     private bool _isLoading;
@@ -57,18 +62,84 @@ public partial class WebHistorySectionViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusMessage = "";
 
+    /// <summary>
+    /// 数据陈旧提示（3.37.0）。浏览历史依赖浏览器扩展推送，
+    /// 一旦采集被关掉或扩展断开，界面就会静默停更——用户无从判断
+    /// 「数据没变化」是正常还是坏了。这里显式给出提示与恢复入口。
+    /// </summary>
+    public bool IsStale { get; private set; }
+
+    /// <summary>陈旧原因说明；IsStale 为 false 时为空。</summary>
+    public string StaleReason { get; private set; } = string.Empty;
+
+    /// <summary>采集开关当前是否处于关闭状态（界面无其它入口可改，需在此恢复）。</summary>
+    public bool IsIngestDisabled { get; private set; }
+
     public ObservableCollection<HistoryDomainRow> AllDomains { get; } = new();
     public ObservableCollection<HistoryDomainRow> FilteredDomains { get; } = new();
 
     /// <summary>筛选结果为空时为 true（供 XAML 绑定空态提示）。</summary>
     public bool HasNoRows => !IsLoading && FilteredDomains.Count == 0;
 
-    public WebHistorySectionViewModel(IDbContextFactory<PChabitDbContext> factory)
+    public WebHistorySectionViewModel(
+        IDbContextFactory<PChabitDbContext> factory,
+        ISettingsService settings)
     {
         _factory = factory;
+        _settings = settings;
     }
 
     partial void OnIsLoadingChanged(bool value) => OnPropertyChanged(nameof(HasNoRows));
+
+    /// <summary>重新评估陈旧状态（供加载完成后与开关变更后调用）。</summary>
+    private void EvaluateFreshness()
+    {
+        IsIngestDisabled = !_settings.BrowserHistoryIngestEnabled;
+
+        if (TotalRecords == 0)
+        {
+            IsStale = false;
+            StaleReason = "";
+            return;
+        }
+
+        var last = AllDomains.Count > 0 ? AllDomains.Max(x => x.LastVisit) : DateTime.MinValue;
+        var gap = DateTime.Now - last;
+        IsStale = gap > StaleThreshold;
+
+        StaleReason = IsStale switch
+        {
+            true when IsIngestDisabled =>
+                $"浏览历史采集已在设置中被关闭，数据停留在 {last:yyyy-MM-dd}（{gap.TotalDays:F0} 天前）",
+            true =>
+                $"已 {gap.TotalDays:F0} 天没有新记录（最后更新 {last:yyyy-MM-dd HH:mm}），请确认浏览器扩展已连接并授权「浏览历史」权限",
+            false => ""
+        };
+
+        OnPropertyChanged(nameof(IsStale));
+        OnPropertyChanged(nameof(StaleReason));
+        OnPropertyChanged(nameof(IsIngestDisabled));
+    }
+
+    /// <summary>恢复历史采集（界面上已无其它入口，settings.json 里的开关被关后无从改回）。</summary>
+    [RelayCommand]
+    private void EnableIngest()
+    {
+        try
+        {
+            _settings.BrowserHistoryIngestEnabled = true;
+            // 历史已停更期间，BrowserSyncEnabled（云端同步总开关）也可能被一并关掉，
+            // 但它不该拦住本机实时入库——读一次以确保不会误关回去。
+            StatusMessage = "已开启浏览历史采集，稍后会自动刷新（需浏览器扩展在线）";
+            EvaluateFreshness();
+            Log.Information("WebHistorySection: 用户重新开启了浏览历史采集");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "WebHistorySection: 开启采集失败");
+            StatusMessage = "开启失败: " + ex.Message;
+        }
+    }
 
     public async Task LoadAsync()
     {
@@ -92,6 +163,7 @@ public partial class WebHistorySectionViewModel : ViewModelBase
                     ? $"最近访问 {result.Max(x => x.LastVisit):yyyy-MM-dd HH:mm}"
                     : "";
 
+                EvaluateFreshness();
                 ApplyFilter();
                 return Task.CompletedTask;
             });
