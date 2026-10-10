@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:controls="using:PChabit.App.Controls"
     xmlns:views="using:PChabit.App.Views"
+    xmlns:vm="using:PChabit.App.ViewModels"
     HorizontalAlignment="Stretch"
     VerticalAlignment="Stretch"
     mc:Ignorable="d">
@@ -262,10 +263,27 @@
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="提示：在域名上右键可直接设置分类" />
+                            Text="访问次数 · 停留时长 · 估算下行流量；右键可设置分类" />
+
+                        <!-- 表头 -->
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="70" />
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="85" />
+                                <ColumnDefinition Width="60" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock FontSize="11" FontWeight="SemiBold" Text="域名" />
+                            <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Text="访问" />
+                            <TextBlock Grid.Column="2" FontSize="11" FontWeight="SemiBold" Text="时长" />
+                            <TextBlock Grid.Column="3" FontSize="11" FontWeight="SemiBold" Text="下行流量" />
+                            <TextBlock Grid.Column="4" FontSize="11" FontWeight="SemiBold" Text="占比" />
+                        </Grid>
 
                         <ListView
                             x:Name="DomainStatsList"
+                            ItemsSource="{x:Bind ViewModel.DomainActivity, Mode=OneWay}"
                             SelectionMode="None">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem">
@@ -284,12 +302,14 @@
                             </ListView.ItemContainerStyle>
                             <ListView.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Margin="0,8">
+<Grid Margin="0,8">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="80" />
-                                            <ColumnDefinition Width="80" />
-                                        </Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="70" />
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="85" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
 
                                         <StackPanel Spacing="2">
                                             <HyperlinkButton
@@ -320,11 +340,30 @@
                                             Grid.Column="2"
                                             VerticalAlignment="Center"
                                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding FormattedDuration}" />
+                                            Text="{Binding DurationText}" />
+
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding DownText}"
+                                            ToolTipService.ToolTip="该域名的估算下行流量" />
+
+                                        <TextBlock
+                                            Grid.Column="4"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding ShareText}" />
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="流量为估算口径：仅统计 Chrome/Edge/Firefox 进程下行流量，按同小时各域名有效浏览时长比例拆分；未含其他浏览器与系统流量，仅供参考"
+                            TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
 
@@ -383,22 +422,84 @@
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="12">
-                    <StackPanel Spacing="16">
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="每小时活动分布" />
+                    <StackPanel Spacing="12">
+                        <StackPanel>
+                            <TextBlock
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="活动时间分布" />
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="按所选时间段统计，应用使用与网页浏览同属活动范围" />
+                        </StackPanel>
 
-                        <!-- 3.35.0：改用共享图表控件。原实现 ProgressBar Maximum 硬编码 50，
-                             数据超过 50 的小时会被截断；共享控件按数据自动取值。 -->
-                        <controls:HourlyBarChart
-                            EmptyText="暂无访问数据"
-                            LabelWidth="50"
-                            RowSpacing="2"
-                            Scrollable="True"
-                            MaxChartHeight="300"
-                            ValueWidth="60"
-                            Rows="{Binding HourlyActivityRows}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="62" />
+                                <ColumnDefinition Width="62" />
+                                <ColumnDefinition Width="52" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock FontSize="11" FontWeight="SemiBold" Text="时段" />
+                            <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Text="合计" />
+                            <TextBlock Grid.Column="2" FontSize="11" FontWeight="SemiBold" Text="应用" />
+                            <TextBlock Grid.Column="3" FontSize="11" FontWeight="SemiBold" Text="网页" />
+                            <TextBlock Grid.Column="4" FontSize="11" FontWeight="SemiBold" Text="访问" />
+                        </Grid>
+
+                        <ListView
+                            ItemsSource="{x:Bind ViewModel.HourlyCombined, Mode=OneWay}"
+                            MaxHeight="300"
+                            SelectionMode="None">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid
+                                        Padding="0,2"
+                                        ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="56" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="62" />
+                                            <ColumnDefinition Width="62" />
+                                            <ColumnDefinition Width="52" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Text="{Binding HourLabel}" />
+
+                                        <ProgressBar
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Value="{Binding TotalMinutes}" />
+
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding AppText}" />
+
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding WebText}" />
+
+                                        <TextBlock
+                                            Grid.Column="4"
+                                            VerticalAlignment="Center"
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{Binding VisitText}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
                     </StackPanel>
                 </Border>
 
@@ -455,93 +556,6 @@
                     </StackPanel>
                 </Border>
             </Grid>
-
-            <!-- 网页流量归因（估算） -->
-            <Border
-                Padding="16"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="12">
-                <StackPanel Spacing="12">
-                    <Grid>
-                        <StackPanel>
-                            <TextBlock
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="网页流量归因（估算）" />
-                            <TextBlock
-                                FontSize="11"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="浏览器下行流量按同小时网页有效浏览时长加权拆分到域名" />
-                        </StackPanel>
-                        <TextBlock
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{Binding TrafficEmptyText}" />
-                    </Grid>
-
-                    <ListView
-                        x:Name="TrafficAttributionList"
-                        SelectionMode="None"
-                        MaxHeight="320">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Grid Margin="0,6">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="200" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="90" />
-                                        <ColumnDefinition Width="70" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Border
-                                            Width="10"
-                                            Height="10"
-                                            CornerRadius="5"
-                                            VerticalAlignment="Center"
-                                            Background="{Binding CategoryColor, Converter={StaticResource StringToBrushConverter}}" />
-                                        <TextBlock
-                                            FontWeight="Medium"
-                                            Text="{Binding Domain}"
-                                            TextTrimming="CharacterEllipsis" />
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <Border
-                                            Height="8"
-                                            HorizontalAlignment="Left"
-                                            Width="{Binding BarWidth}"
-                                            Background="{Binding CategoryColor, Converter={StaticResource StringToBrushConverter}}"
-                                            CornerRadius="4" />
-                                    </StackPanel>
-
-                                    <TextBlock
-                                        Grid.Column="2"
-                                        HorizontalAlignment="Right"
-                                        FontWeight="SemiBold"
-                                        Text="{Binding DownText}" />
-
-                                    <TextBlock
-                                        Grid.Column="3"
-                                        HorizontalAlignment="Right"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Text="{Binding ShareText}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-
-                    <TextBlock
-                        FontSize="11"
-                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Text="估算口径：仅统计 Chrome/Edge/Firefox 进程下行流量，按同小时各域名有效浏览时长比例拆分；未含其他浏览器与系统流量，结果仅供参考"
-                        TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
 
             <!-- 最近访问记录 -->
             <Border

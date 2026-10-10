@@ -59,11 +59,9 @@ public sealed partial class WebStatsTab : UserControl
         TopDomainText.Content = ViewModel.TopDomain;
         TopDomainText.Tag = ViewModel.TopDomain;
 
-        DomainStatsList.ItemsSource = ViewModel.DomainStats;
         BrowsingPatternsList.ItemsSource = ViewModel.BrowsingPatterns;
         DailyTrendList.ItemsSource = ViewModel.DailyTrend;
         RecentVisitsList.ItemsSource = ViewModel.RecentVisits;
-        TrafficAttributionList.ItemsSource = ViewModel.TrafficAttributionItems;
 
         LoadMoreButton.Visibility = ViewModel.HasMoreVisits ? Visibility.Visible : Visibility.Collapsed;
     }

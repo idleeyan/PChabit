@@ -85,23 +85,27 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
     [ObservableProperty]
     private string _topDomain = "-";
     
-    public ObservableCollection<DomainStatItem> DomainStats { get; } = new();
-    public ObservableCollection<WebHourlyActivityItem> HourlyActivity { get; } = new();
     public ObservableCollection<DailyTrendItem> DailyTrend { get; } = new();
     public ObservableCollection<BrowsingPatternItem> BrowsingPatterns { get; } = new();
     public ObservableCollection<WebSessionDetailItem> AllVisits { get; } = new();
     public ObservableCollection<WebSessionDetailItem> RecentVisits { get; } = new();
-    public ObservableCollection<TrafficAttributionItem> TrafficAttributionItems { get; } = new();
+
+    /// <summary>
+    /// 3.37.0：合并后的域名表（原「网站访问排行」+「网页流量归因」）。
+    /// </summary>
+    public ObservableCollection<DomainActivityRow> DomainActivity { get; } = new();
+
+    /// <summary>
+    /// 3.37.0：应用 + 网页的小时活动合成行，按所选时间段统计。
+    /// </summary>
+    public ObservableCollection<HourlyActivityCombinedRow> HourlyCombined { get; } = new();
 
     /// <summary>
     /// 「每小时活动分布」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>）。
     /// 用可观察集合：控件自行订阅集合变化。
     /// 原实现进度条上限硬编码 50，此处由控件按数据自动取值。
     /// </summary>
-    public ObservableCollection<Controls.HourlyBarRow> HourlyActivityRows { get; } = new();
 
-    [ObservableProperty]
-    private string _trafficEmptyText = "暂无浏览器流量归因数据";
 
     /// <summary>参与流量归因的浏览器进程（进程名归一化后）。豆包浏览器进程名待确认后可按需追加。</summary>
     private static readonly HashSet<string> BrowserProcesses = new(StringComparer.OrdinalIgnoreCase)
@@ -164,6 +168,11 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         var browserUsage = await LoadBrowserUsageAsync();
         var attribution = ComputeTrafficAttribution(sessions, browserUsage);
 
+        // 3.37.0：合并两类视图——排行+流量归因合成一张表；应用+网页小时活动合成一组行
+        var domainActivity = BuildDomainActivity(domains, attribution);
+        var appHourly = await LoadAppHourlyAsync();
+        var hourlyCombined = BuildHourlyCombined(hourly, appHourly);
+
         return new WebStatsData
         {
             Summary = summary,
@@ -174,7 +183,9 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             RecentVisits = recent,
             HasMore = more,
             AllSessions = sessions,
-            TrafficAttribution = attribution
+            TrafficAttribution = attribution,
+            DomainActivity = domainActivity,
+            HourlyCombined = hourlyCombined
         };
     }
 
@@ -189,16 +200,11 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
 
         _allSessions = s.AllSessions;
 
-        DomainStats.Clear();
-        foreach (var item in s.DomainStats) DomainStats.Add(item);
+        DomainActivity.Clear();
+        foreach (var item in s.DomainActivity) DomainActivity.Add(item);
 
-        HourlyActivity.Clear();
-        HourlyActivityRows.Clear();
-        foreach (var item in s.HourlyActivity)
-        {
-            HourlyActivity.Add(item);
-            HourlyActivityRows.Add(new Controls.HourlyBarRow(item.HourLabel, item.VisitCount));
-        }
+        HourlyCombined.Clear();
+        foreach (var item in s.HourlyCombined) HourlyCombined.Add(item);
 
         DailyTrend.Clear();
         foreach (var item in s.DailyTrend) DailyTrend.Add(item);
@@ -213,10 +219,6 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
             RecentVisits.Add(item);
             AllVisits.Add(item);
         }
-
-        TrafficAttributionItems.Clear();
-        foreach (var item in s.TrafficAttribution) TrafficAttributionItems.Add(item);
-        TrafficEmptyText = s.TrafficAttribution.Count > 0 ? string.Empty : "所选范围暂无浏览器流量归因数据";
 
         HasMoreVisits = s.HasMore;
     }
