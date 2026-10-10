@@ -2,6 +2,43 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.34.0] - 2026-10-10
+
+### 变更：侧栏收口 —— 应用统计与键鼠详情合并为「应用使用」
+
+侧栏「使用」组下的「应用统计」与「键鼠详情」两项内容同源（都是应用使用行为统计），
+拆成两页导致来回切换。合并为单页双页签：**应用排行 / 键鼠详情**。
+
+- `KeyboardDetailsPage` 按陷阱 29 转为 `KeyboardDetailsTab`（UserControl）：
+  根节点 / `x:Class` / `</Page>` 同步改，去掉 `OnNavigatedTo`，
+  改 `Loaded` + 供宿主调用的 `EnsureLoadedAsync()`
+- 新建宿主 `AppUsagePage`（Pivot 双页签），删除转发壳页 `AppStatsPage`
+- **旧导航 key 保留为别名**：`AppStats` / `KeyboardDetails` 均注册到 `AppUsagePage`，
+  `NavigationService._aliasPivotTags` 自动补 `AppUsageNavArgs`，
+  使既有调用（仪表盘「查看全部 →」）落到「应用排行」页签，行为不变
+- 侧栏 11 项 → 10 项
+
+### 修正：原方案「删掉 WebAccessPage / CategoryManagementPage 壳页」判断有误
+
+方案文档曾把这两页列为「转发壳页」，实施前逐项核实发现**不成立**：
+
+- `WebAccessPage.OnNavigatedTo` 承载 3.31.1 刚修好的跨页落点
+  （分析页 AI 行动项 → `NavigateTo("WebAccess", "history")` 直接打开「网页浏览历史」页签）。
+  删掉该页会导致此行为回归
+- `CategoryManagementPage` 本身就是分类管理的正常宿主页（标题栏 + 双页签），无壳可上提
+
+「转发壳页」这一判断只对 `AppStatsPage` 成立（其内容除标题栏外仅一行 `<views:AppStatsTab/>`），
+该页已随本次合并删除。方案文档已同步更正。
+
+### 验证
+
+- Release 构建 0 错误；单元测试 154/154 通过
+- publish 后部署 `D:\Tool\PChabit`，旧页 `.xbf` 由部署脚本自动清理
+- uiautomation 实测：侧栏显示「应用使用」，两页签均可加载并有数据，
+  旧 key 别名跳转落点正确，新增 ERR/FTL = 0
+
+---
+
 ## [3.33.0] - 2026-10-10
 
 ### 变更：合并两套分类管理 CRUD（重复实现从 4 处降为 0）

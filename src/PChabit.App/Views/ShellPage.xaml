@@ -56,17 +56,10 @@
                 <NavigationViewItemHeader Content="使用" />
 
                 <NavigationViewItem
-                    Content="应用统计"
-                    Tag="AppStats">
+                    Content="应用使用"
+                    Tag="AppUsage">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE8FD;" />
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
-                <NavigationViewItem
-                    Content="键鼠详情"
-                    Tag="KeyboardDetails">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE92E;" />
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem
