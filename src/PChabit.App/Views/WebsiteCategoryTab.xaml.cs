@@ -81,9 +81,9 @@ public sealed partial class WebsiteCategoryTab : UserControl
 
         var result = await dialog.ShowAsync();
 
-        if (result == ContentDialogResult.Primary && dialog.Success && dialog.ResultCategory != null)
+        if (result == ContentDialogResult.Primary && dialog.Success && dialog.ResultWebsiteCategory != null)
         {
-            await ViewModel.AddCategoryAsync(dialog.ResultCategory);
+            await ViewModel.AddCategoryAsync(dialog.ResultWebsiteCategory);
             CategoryList.ItemsSource = ViewModel.Categories;
             TotalCategoriesText.Text = $"共 {ViewModel.Categories.Count} 个分类";
         }
@@ -101,9 +101,9 @@ public sealed partial class WebsiteCategoryTab : UserControl
 
         var result = await dialog.ShowAsync();
 
-        if (result == ContentDialogResult.Primary && dialog.Success && dialog.ResultCategory != null)
+        if (result == ContentDialogResult.Primary && dialog.Success && dialog.ResultWebsiteCategory != null)
         {
-            await ViewModel.UpdateCategoryAsync(dialog.ResultCategory);
+            await ViewModel.UpdateCategoryAsync(dialog.ResultWebsiteCategory);
             CategoryList.ItemsSource = ViewModel.Categories;
             UpdateCategoryDetailUI();
         }

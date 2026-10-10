@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PChabit.Core.Entities;
 
-public class ProgramCategory
+public class ProgramCategory : ICategoryEntity
 {
     [Key]
     public int Id { get; set; }
@@ -34,7 +34,7 @@ public class ProgramCategory
     public virtual ICollection<ProgramCategoryMapping> ProgramMappings { get; set; } = new List<ProgramCategoryMapping>();
 }
 
-public class ProgramCategoryMapping
+public class ProgramCategoryMapping : IMappingEntity
 {
     [Key]
     public int Id { get; set; }

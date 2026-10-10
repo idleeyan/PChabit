@@ -2,6 +2,52 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.33.0] - 2026-10-10
+
+### 变更：合并两套分类管理 CRUD（重复实现从 4 处降为 0）
+
+3.30.0 把分类管理挪到独立页时，应用分类与网站分类保留了两套逐行对称的实现。
+改一处 UI 行为（例如分类名校验规则）必须记得改另一处，改漏不会报错、只会静默不一致。
+
+**通用 CRUD 上移**（新增 `CategoryCrudViewModelBase<TCategory, TMapping>`）：
+
+- `CategoryManagementViewModel` 328 行 → 89 行
+- `WebsiteCategoryManagementViewModel` 325 行 → 60 行
+- Initialize / SelectCategory / ApplyFilter / Add / Update / Delete 全部共用一份实现
+- 线程约定统一：DB 查询在线程池、`ObservableCollection` 填充在UI 线程（陷阱 5.6）
+
+**编辑对话框合并**（两份 XAML 相似度 98.9%，仅差一个 `PrimaryButtonClick`）：
+
+- 删除 `WebsiteCategoryEditDialog.xaml`（141 行），改为纯代码类继承 `CategoryEditDialog`
+- 统一走应用版的 `Closing` + `GetDeferral()` 写法（陷阱 2 推荐），
+  网站版原先用的 `PrimaryButtonClick` 无法做异步验证
+- 新增 `CategoryEditDialogViewModelBase`，校验与物化逻辑一份实现
+
+**实体接口化**：新增 `ICategoryEntity` / `IMappingEntity`（Core 层），
+两组同构实体实现之，使泛型基类无需反射即可访问公共字段。
+
+### 修复：网站分类种子数据存在第二份副本
+
+`WebsiteCategoryManagementViewModel.InitializeAsync` 里内联了一整份默认网站分类
+与域名映射数据（58 行），与3.32.0 刚移到 `WebsiteCategoryService` 的那份完全重复。
+两份各自维护，改一处就会导致「首次运行种子」与「补齐种子」结果不一致。
+本次删除内联副本，种子补齐统一由 `DatabaseInitializer` 在启动期完成。
+
+### 技术要点：ContentDialog 的 `x:Bind` 必须显式声明 `x:DataType`
+
+合并后 `CategoryEditDialog` 的 `ViewModel` 属性类型是基类，但 XAML 里省略 `x:DataType` 时，
+编译器会把 `x:Bind` 推断成属性的**实际类型**（`CategoryEditDialogViewModel`），
+生成 `Update_ViewModel(CategoryEditDialogViewModel obj, ...)`，导致派生类场景报
+CS1503 类型不匹配。补上 `x:DataType="vm:CategoryEditDialogViewModelBase"` 后正常。
+
+### 验证
+
+- Release 构建 0 错误；单元测试 154/154 通过
+- publish 后部署 `D:\Tool\PChabit`，uiautomation 实测分类管理页两个页签正常
+- 新增 ERR/FTL = 0
+
+---
+
 ## [3.32.0] - 2026-10-10
 
 ### 修复：分类种子逻辑依赖死代码（新装机器分类管理页会空）

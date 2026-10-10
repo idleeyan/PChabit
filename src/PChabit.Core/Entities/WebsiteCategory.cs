@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace PChabit.Core.Entities;
 
-public class WebsiteCategory
+public class WebsiteCategory : ICategoryEntity
 {
     [Key]
     public int Id { get; set; }
@@ -34,7 +34,7 @@ public class WebsiteCategory
     public virtual ICollection<WebsiteDomainMapping> DomainMappings { get; set; } = new List<WebsiteDomainMapping>();
 }
 
-public class WebsiteDomainMapping
+public class WebsiteDomainMapping : IMappingEntity
 {
     [Key]
     public int Id { get; set; }

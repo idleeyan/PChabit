@@ -61,9 +61,9 @@ public sealed partial class CategoryManagementTab : UserControl
 
             var result = await dialog.ShowAsync();
 
-            if (result == ContentDialogResult.Primary)
+            if (result == ContentDialogResult.Primary && dialog.Success && dialog.ResultCategory != null)
             {
-                var category = dialog.ViewModel.GetCategory();
+                var category = (ProgramCategory)dialog.ResultCategory;
                 await ViewModel.AddCategoryAsync(category);
             }
         }
@@ -87,7 +87,7 @@ public sealed partial class CategoryManagementTab : UserControl
 
         if (result == ContentDialogResult.Primary)
         {
-            var category = dialog.ViewModel.GetCategory();
+            var category = (ProgramCategory)dialog.ResultCategory!;
             await ViewModel.UpdateCategoryAsync(category);
         }
     }

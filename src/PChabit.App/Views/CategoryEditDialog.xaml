@@ -1,14 +1,22 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <ContentDialog
     x:Class="PChabit.App.Views.CategoryEditDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:PChabit.App.ViewModels"
     mc:Ignorable="d"
     PrimaryButtonText="确定"
     SecondaryButtonText="取消"
-    DefaultButton="Primary">
+    DefaultButton="Primary"
+    x:DataType="vm:CategoryEditDialogViewModelBase">
+    <!--
+        3.33.0：应用分类与网站分类共用本界面（两份 XAML 原相似度 98.9%）。
+        x:DataType 必须显式指向基类 —— 省略时编译器会把 x:Bind 推断成
+        ViewModel 属性的实际类型（CategoryEditDialogViewModel），
+        导致 WebsiteCategoryEditDialog 继承本类时类型不匹配（CS1503）。
+    -->
     
     <ContentDialog.Resources>
         <x:Double x:Key="ContentDialogMaxWidth">500</x:Double>
