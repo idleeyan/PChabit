@@ -6,13 +6,19 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:PChabit.App.ViewModels"
+    xmlns:controls="using:PChabit.App.Controls"
     mc:Ignorable="d">
 
+    <!--
+        3.38.0：UserControl 只能有单一 Content，故用 Grid 承载
+        「主卡片」与「域名详情弹窗」两层。
+    -->
+    <Grid>
     <!--
         3.36.0：原「网页浏览历史」独立页签（WebView2 + report.html）原生化后并入本页。
         HTML 报告是浅色硬编码样式（#f3f4f6 背景、白卡片投影、24px 标题），
         与全应用主题自适应的原生卡片画风割裂，故改为原生界面。
-        保留其独有价值：按域名聚合的明细（搜索 + CSV 导出）。
+        保留其独有价值：按域名聚合的明细（搜索 + CSV 导出 + 域名下钻）。
         「每日趋势 / 24h 分布 / TOP10」等与上方统计卡片重复，不再重复呈现。
     -->
     <Border
@@ -137,14 +143,22 @@
                     <ColumnDefinition Width="80" />
                     <ColumnDefinition Width="130" />
                 </Grid.ColumnDefinitions>
-                <TextBlock FontSize="11" FontWeight="SemiBold" Text="域名" />
+                <TextBlock FontSize="11" FontWeight="SemiBold" Text="域名（可点击查看详情）" />
                 <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Text="记录数" />
                 <TextBlock Grid.Column="2" FontSize="11" FontWeight="SemiBold" Text="唯一 URL" />
                 <TextBlock Grid.Column="3" FontSize="11" FontWeight="SemiBold" Text="占比" />
                 <TextBlock Grid.Column="4" FontSize="11" FontWeight="SemiBold" Text="最近访问" />
             </Grid>
 
+            <!--
+                3.38.0：域名改为可点击，还原原 HTML 报告的域名详情能力。
+                ListViewItem 选中态本身已是蓝色底，额外再放 HyperlinkButton 会
+                出现双重高亮，故只加 Hover 提示 + 点击事件。
+            -->
             <ListView
+                x:Name="DomainList"
+                IsItemClickEnabled="True"
+                ItemClick="DomainList_ItemClick"
                 ItemsSource="{x:Bind ViewModel.FilteredDomains, Mode=OneWay}"
                 MaxHeight="360"
                 SelectionMode="None">
@@ -152,7 +166,8 @@
                     <DataTemplate x:DataType="vm:HistoryDomainRow">
                         <Grid
                             Padding="4,2"
-                            ColumnSpacing="12">
+                            ColumnSpacing="12"
+                            ToolTipService.ToolTip="点击查看该域名的详细情况">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="2*" />
                                 <ColumnDefinition Width="90" />
@@ -194,4 +209,207 @@
             </ListView>
         </StackPanel>
     </Border>
+
+    <!--
+        3.38.0：域名详情弹窗，还原原 HTML 报告 report.js 的 showDomainDetail 能力
+        （统计卡片 + 每日趋势 + 24h 时段分布 + URL 列表前 20）。
+        用 ContentDialog 而非自绘浮层：可复用应用既有的焦点/ESC 关闭行为，
+        且不需要处理遮罩与 z 序。
+    -->
+    <ContentDialog
+        x:Name="DetailDialog"
+        CloseButtonText="关闭"
+        DefaultButton="Close"
+        PrimaryButtonText="在浏览器中打开"
+        Title="{x:Bind ViewModel.DetailDomain, Mode=OneWay}">
+
+        <ScrollViewer MaxHeight="560">
+            <StackPanel Spacing="16">
+                <!-- 统计卡片 -->
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border
+                        Padding="10"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="8">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="总记录数" />
+                            <TextBlock
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.DetailTotalVisits, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border
+                        Grid.Column="1"
+                        Padding="10"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="8">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="独立页面" />
+                            <TextBlock
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.DetailUniqueUrls, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border
+                        Grid.Column="2"
+                        Padding="10"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="8">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="首次访问" />
+                            <TextBlock
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.DetailFirstVisitText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border
+                        Grid.Column="3"
+                        Padding="10"
+                        Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                        CornerRadius="8">
+                        <StackPanel Spacing="2">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="最后访问" />
+                            <TextBlock
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.DetailLastVisitText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 每日访问趋势：原生柱状（与全应用图表风格统一） -->
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Text="每日访问趋势" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.DetailDailyTrend, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HistoryDailyPoint">
+                                <StackPanel
+                                    Margin="0,0,4,0"
+                                    Width="26"
+                                    ToolTipService.ToolTip="{x:Bind DateLabel}">
+                                    <Grid Height="70">
+                                        <!-- 反转Y 轴让柱子向上生长 -->
+                                        <ProgressBar
+                                            HorizontalAlignment="Stretch"
+                                            VerticalAlignment="Bottom"
+                                            Height="{x:Bind CountHeight, Mode=OneWay}"
+                                            Maximum="1"
+                                            Value="1" />
+                                    </Grid>
+                                    <TextBlock
+                                        Margin="0,4,0,0"
+                                        FontSize="10"
+                                        HorizontalAlignment="Center"
+                                        Text="{x:Bind DateLabel}" />
+                                    <TextBlock
+                                        FontSize="10"
+                                        HorizontalAlignment="Center"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind Count}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- 24 小时时段分布：复用共享图表控件 -->
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Text="时段分布" />
+                    <controls:HourlyBarChart
+                        EmptyText="该域名暂无时段数据"
+                        LabelWidth="46"
+                        RowSpacing="2"
+                        ValueWidth="56"
+                        Rows="{x:Bind ViewModel.DetailHourlyRows, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- URL 列表（原报告取前 20） -->
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Text="访问过的页面（按记录数取前 20）" />
+                    <ListView
+                        ItemsSource="{x:Bind ViewModel.DetailUrls, Mode=OneWay}"
+                        MaxHeight="240"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HistoryUrlRow">
+                                <Grid
+                                    Padding="0,4"
+                                    ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="52" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="60" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind Count}" />
+                                    <StackPanel Grid.Column="1" Spacing="1">
+                                        <TextBlock
+                                            FontSize="12"
+                                            Text="{x:Bind Title}"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTipService.ToolTip="{x:Bind Title}" />
+                                        <TextBlock
+                                            FontSize="11"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{x:Bind Url}"
+                                            TextTrimming="CharacterEllipsis"
+                                            ToolTipService.ToolTip="{x:Bind Url}" />
+                                    </StackPanel>
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind LastVisitText}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </ContentDialog>
+    </Grid>
 </UserControl>

@@ -52,4 +52,42 @@ public sealed partial class WebHistorySection : UserControl
         _loaded = false;
         await EnsureLoadedAsync();
     }
+
+    /// <summary>
+    /// 点击行 → 打开域名详情（3.38.0，还原原 HTML 报告的域名下钻）。
+    /// 用 ItemClick 而非 SelectionChanged：后者在「点击后保持选中」时语义不清，
+    /// 且会与 ListViewItem 自身的选中高亮叠加成双重高亮。
+    /// </summary>
+    private async void DomainList_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not HistoryDomainRow row) return;
+
+        ViewModel.OpenDetailCommand.Execute(row.Domain);
+
+        try
+        {
+            // ContentDialog 必须设 XamlRoot，否则 ShowAsync 抛异常（陷阱 2）
+            DetailDialog.XamlRoot = XamlRoot;
+
+            // 主按钮「在浏览器中打开」：需要 deferral 才能阻止默认关闭行为。
+            // 处理器在 ShowAsync 后统一退订，避免多次打开时不断累积（陷阱 31）。
+            void OnPrimaryClick(ContentDialog s, ContentDialogButtonClickEventArgs args)
+            {
+                args.Cancel = true;
+                ViewModel.OpenDomainInBrowserCommand.Execute(row.Domain);
+            }
+            DetailDialog.PrimaryButtonClick += OnPrimaryClick;
+
+            await DetailDialog.ShowAsync();
+            DetailDialog.PrimaryButtonClick -= OnPrimaryClick;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "WebHistorySection: 域名详情弹窗失败 {Domain}", row.Domain);
+        }
+        finally
+        {
+            ViewModel.CloseDetailCommand.Execute(null);
+        }
+    }
 }

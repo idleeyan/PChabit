@@ -22,6 +22,42 @@ public sealed class HistoryDomainRow
     public string PercentageText => $"{Percentage:0.0}%";
 }
 
+/// <summary>域名详情里的单条 URL（3.38.0，对应原报告模态框的 URL 列表）。Count 为该 URL 的记录条数。</summary>
+public sealed class HistoryUrlRow
+{
+    public string Title { get; init; } = string.Empty;
+    public string Url { get; init; } = string.Empty;
+    public int Count { get; init; }
+    public DateTime LastVisit { get; init; }
+
+    public string LastVisitText => LastVisit == default ? "—" : LastVisit.ToString("MM-dd");
+}
+
+/// <summary>域名详情的每日访问趋势（对应原报告模态框的折线图）。</summary>
+public sealed class HistoryDailyPoint
+{
+    public string DateLabel { get; init; } = string.Empty;
+    public int Count { get; init; }
+
+    /// <summary>
+    /// 归一化柱高（0~1），供 ProgressBar 渲染。
+    /// 原报告用的是 Chart.js 折线，这里改为原生柱状以统一画风，
+    /// 故需要按当日最大值归一化。
+    /// </summary>
+    public double CountHeight { get; init; }
+}
+
+/// <summary>
+/// 域名下的单条明细记录（3.38.0，供域名详情下钻使用）。
+///
+/// 注意：刻意不携带 <c>BrowserHistoryItem.VisitCount</c>。该字段在入库时
+/// 会被「跨批次重复推送」累加（同一 Url|VisitTime 再次推送时 += n，
+/// 见 <c>HistoryIngestService.IngestCoreAsync</c>），实测 google.com 单条记录
+/// 曾累积到 2074——它是入库侧的重复计数，不是真实访问次数，拿来统计会虚高数倍。
+/// 因此全链路统一按「记录条数」计数。
+/// </summary>
+public sealed record HistoryDetailRecord(string Url, string Title, DateTime Visit);
+
 /// <summary>
 /// 浏览历史区块 ViewModel（3.36.0）。
 ///
@@ -77,6 +113,39 @@ public partial class WebHistorySectionViewModel : ViewModelBase
 
     public ObservableCollection<HistoryDomainRow> AllDomains { get; } = new();
     public ObservableCollection<HistoryDomainRow> FilteredDomains { get; } = new();
+
+    /// <summary>
+    /// 域名 → 其全部明细记录（3.38.0）。
+    /// 供点击域名后展示详情；只保留 Domain/Url/Title/VisitTime/VisitCount，
+    /// 不驻留原始实体以免占用额外内存（本机历史库 2.5 万+条）。
+    /// </summary>
+    private readonly Dictionary<string, List<HistoryDetailRecord>> _details =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    // ---- 域名详情（弹窗）状态 ----
+
+    /// <summary>详情弹窗是否可见。</summary>
+    public bool IsDetailOpen { get; private set; }
+
+    public string DetailDomain { get; private set; } = string.Empty;
+    public int DetailTotalVisits { get; private set; }
+    public int DetailUniqueUrls { get; private set; }
+    public string DetailFirstVisitText { get; private set; } = "—";
+    public string DetailLastVisitText { get; private set; } = "—";
+
+    /// <summary>
+    /// 24 小时时段分布（0~23 的访问次数），供共享图表控件呈现。
+    /// 类型须与 <c>HourlyBarChart.Rows</c> 一致（IReadOnlyList），
+    /// 否则 x:Bind 编译期报 WMC1121 拒绝数组到接口的隐式转换。
+    /// </summary>
+    public IReadOnlyList<Controls.HourlyBarRow> DetailHourlyRows { get; private set; } =
+        Array.Empty<Controls.HourlyBarRow>();
+
+    /// <summary>每日访问趋势（原生折线用数据点）。</summary>
+    public IReadOnlyList<HistoryDailyPoint> DetailDailyTrend { get; private set; } = Array.Empty<HistoryDailyPoint>();
+
+    /// <summary>按记录数排序的前 20 个 URL（口径与列表的「记录数」一致）。</summary>
+    public IReadOnlyList<HistoryUrlRow> DetailUrls { get; private set; } = Array.Empty<HistoryUrlRow>();
 
     /// <summary>筛选结果为空时为 true（供 XAML 绑定空态提示）。</summary>
     public bool HasNoRows => !IsLoading && FilteredDomains.Count == 0;
@@ -190,15 +259,18 @@ public partial class WebHistorySectionViewModel : ViewModelBase
     {
         await using var db = await _factory.CreateDbContextAsync();
 
-        // 只取聚合所需的最小字段（AsNoTracking + 投影，避免加载整表 25k+ 条）
+        // 只取聚合与下钻所需的最小字段（AsNoTracking + 投影，避免加载整表 25k+ 条）。
+        // 刻意不取 VisitCount：该字段是入库时的重复推送累积值，非真实访问次数
         var items = await db.BrowserHistoryItems
             .AsNoTracking()
-            .Select(x => new { x.Url, x.VisitTime })
+            .Select(x => new { x.Url, x.Title, x.VisitTime })
             .ToListAsync();
 
         var map = new Dictionary<string, (int Count, HashSet<string> Urls, DateTime Last)>(
             StringComparer.OrdinalIgnoreCase);
 
+        // 3.38.0：同步建立域名 → 明细记录索引，供点击域名后展示详情
+        _details.Clear();
         foreach (var it in items)
         {
             var domain = ExtractDomain(it.Url);
@@ -206,6 +278,12 @@ public partial class WebHistorySectionViewModel : ViewModelBase
 
             // VisitTime 是 Unix 毫秒（BrowserHistoryItem 约定）
             var visit = DateTimeOffset.FromUnixTimeMilliseconds(it.VisitTime).LocalDateTime;
+            if (!_details.TryGetValue(domain, out var list))
+            {
+                list = new List<HistoryDetailRecord>();
+                _details[domain] = list;
+            }
+            list.Add(new HistoryDetailRecord(it.Url ?? string.Empty, it.Title ?? string.Empty, visit));
 
             if (map.TryGetValue(domain, out var cur))
             {
@@ -220,7 +298,9 @@ public partial class WebHistorySectionViewModel : ViewModelBase
             }
         }
 
-        int total = items.Count;
+        // 分母同样按记录条数，与上面的 map 计数口径保持一致，
+        // 否则各行占比之和会远超 100%
+        int total = map.Values.Sum(v => v.Count);
         return map
             .Select(kv => new HistoryDomainRow
             {
@@ -233,6 +313,115 @@ public partial class WebHistorySectionViewModel : ViewModelBase
             .OrderByDescending(x => x.RecordCount)
             .ThenBy(x => x.Domain)
             .ToList();
+    }
+
+    /// <summary>
+    /// 打开域名详情（3.38.0，还原原 HTML 报告的域名点击行为：
+    /// 统计卡片 + 每日趋势 + 24h 时段分布 + URL 列表）。
+    /// </summary>
+    [RelayCommand]
+    private void OpenDetail(string domain)
+    {
+        if (string.IsNullOrWhiteSpace(domain)) return;
+
+        var records = _details.TryGetValue(domain, out var list)
+            ? list
+            : new List<HistoryDetailRecord>();
+        if (records.Count == 0)
+        {
+            StatusMessage = "该域名没有明细记录";
+            return;
+        }
+
+        DetailDomain = domain;
+        // 计数口径：记录条数（不累加 VisitCount，该字段是重复推送的累积值，会虚高）
+        DetailTotalVisits = records.Count;
+        DetailUniqueUrls = records.Select(r => r.Url).Distinct(StringComparer.Ordinal).Count();
+        DetailFirstVisitText = records.Min(r => r.Visit).ToString("yyyy-MM-dd");
+        DetailLastVisitText = records.Max(r => r.Visit).ToString("yyyy-MM-dd HH:mm");
+
+        // 24 小时时段分布
+        var hourly = new int[24];
+        foreach (var r in records) hourly[r.Visit.Hour]++;
+        DetailHourlyRows = Enumerable.Range(0, 24)
+            .Select(h => new Controls.HourlyBarRow($"{h:00}:00", hourly[h]))
+            .ToArray();
+
+        // 每日趋势（原生柱状需按最大值归一化才能渲染出高低差异）
+        var daily = records
+            .GroupBy(r => r.Visit.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new HistoryDailyPoint
+            {
+                DateLabel = g.Key.ToString("MM-dd"),
+                Count = g.Count(),
+                CountHeight = 0
+            })
+            .ToList();
+        int peak = daily.Count > 0 ? daily.Max(d => d.Count) : 0;
+        DetailDailyTrend = daily.Select(d => peak > 0
+            ? new HistoryDailyPoint
+            {
+                DateLabel = d.DateLabel,
+                Count = d.Count,
+                CountHeight = (double)d.Count / peak
+            }
+            : d).ToList();
+
+        // URL 列表：按记录数降序，与原报告一致只取前 20
+        DetailUrls = records
+            .GroupBy(r => r.Url, StringComparer.Ordinal)
+            .Select(g => new HistoryUrlRow
+            {
+                Title = g.First().Title,
+                Url = g.Key,
+                Count = g.Count(),
+                LastVisit = g.Max(r => r.Visit)
+            })
+            .OrderByDescending(u => u.Count)
+            .ThenBy(u => u.Url)
+            .Take(20)
+            .ToList();
+
+        IsDetailOpen = true;
+        OnPropertyChanged(nameof(IsDetailOpen));
+        OnPropertyChanged(nameof(DetailDomain));
+        OnPropertyChanged(nameof(DetailTotalVisits));
+        OnPropertyChanged(nameof(DetailUniqueUrls));
+        OnPropertyChanged(nameof(DetailFirstVisitText));
+        OnPropertyChanged(nameof(DetailLastVisitText));
+        OnPropertyChanged(nameof(DetailHourlyRows));
+        OnPropertyChanged(nameof(DetailDailyTrend));
+        OnPropertyChanged(nameof(DetailUrls));
+
+        Log.Information("WebHistorySection: 打开域名详情 {Domain}，记录 {N} 条", domain, records.Count);
+    }
+
+    [RelayCommand]
+    private void CloseDetail()
+    {
+        IsDetailOpen = false;
+        OnPropertyChanged(nameof(IsDetailOpen));
+    }
+
+    /// <summary>在浏览器中打开当前域名的首页（详情弹窗内的快捷入口）。</summary>
+    [RelayCommand]
+    private void OpenDomainInBrowser(string domain)
+    {
+        if (string.IsNullOrWhiteSpace(domain)) return;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = domain.StartsWith("http") ? domain : "https://" + domain,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "WebHistorySection: 打开域名失败 {Domain}", domain);
+            StatusMessage = "打开失败: " + ex.Message;
+        }
     }
 
     /// <summary>从 URL 提取域名（与前端 report.js 的 extractDomain 口径一致）。</summary>
@@ -277,7 +466,7 @@ public partial class WebHistorySectionViewModel : ViewModelBase
         {
             var rows = FilteredDomains.Count > 0 ? FilteredDomains : (IEnumerable<HistoryDomainRow>)AllDomains;
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("域名,记录数,唯一URL数,占比,最近访问");
+            sb.AppendLine("域名,访问次数,唯一URL数,占比,最近访问");
             foreach (var d in rows)
             {
                 sb.AppendLine(string.Join(",",

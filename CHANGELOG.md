@@ -4,6 +4,39 @@
 
 ## [3.39.0] - 2026-10-11
 
+### 变更：还原浏览历史域名的点击下钻
+
+3.36.0 把原「网页浏览历史」原生化时只保留了域名聚合表，
+**漏掉了原HTML 报告最核心的交互——点击域名查看该域名的详细情况**
+（原 `report.js` 的 `showDomainDetail`）。本次按原实现完整还原：
+
+| 原报告 | 本版 |
+|---|---|
+| 域名可点击（`.domain-link` 事件委托） | `ListView.IsItemClickEnabled` + `ItemClick` |
+| 总访问次数 / 独立页面 / 首次访问 / 最后访问 | 同名 4 张统计卡片 |
+| 每日访问趋势（Chart.js 折线） | 原生柱状（统一画风） |
+| 24 小时时段分布（Chart.js 柱状） | 复用共享控件 `HourlyBarChart` |
+| URL 列表（按访问次数取前 20） | 同（标题 + URL + 次数 + 最近访问） |
+| ESC / 点遮罩关闭 | ContentDialog 默认行为 |
+| — | 新增「在浏览器中打开」按钮 |
+
+**顺带修一处计数口径错误**（查库时发现）：
+`BrowserHistoryItem.VisitCount` 存在虚高——表行数 25208，但
+`sum(VisitCount)` 为 94165（虚高 3.7 倍）。根因是该字段在入库时会被
+「跨批次重复推送」累加（`HistoryIngestService.IngestCoreAsync`：
+同一 `Url|VisitTime` 再次推送时 `VisitCount += n`），
+实测 `https://www.google.com/` 单条记录累积到 **2074**。
+它是入库侧的重复计数而非真实访问次数，全链路改为按「记录条数」统计，
+文案统一为「记录数」以免误导。
+
+技术要点：
+
+- `UserControl` 只能有单一 `Content`（WMC0035），
+  主卡片与详情 `ContentDialog` 须用 `Grid` 包一层承载
+- 弹窗 `Rows` 绑定不能传数组：VM 属性须声明为
+  `IReadOnlyList<HourlyBarRow>`，否则 WMC1121 拒绝隐式转换
+- 每日趋势改原生柱状后需按当日峰值归一化出 `CountHeight` 才能渲染高低
+
 ### 变更：每日访问趋势并入活动时间分布（按验收反馈迭代）
 
 网页访问页的「每日访问趋势」与「活动时间分布」都是时间维度，
