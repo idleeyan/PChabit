@@ -408,154 +408,156 @@
                 </Border>
             </Grid>
 
-            <!-- 每小时活动分布 + 每日访问趋势 -->
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-
-                <Border
-                    Grid.Column="0"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="12">
-                        <StackPanel>
-                            <TextBlock
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="活动时间分布" />
-                            <TextBlock
-                                FontSize="11"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="按所选时间段统计，应用使用与网页浏览同属活动范围" />
-                        </StackPanel>
-
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="56" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="62" />
-                                <ColumnDefinition Width="62" />
-                                <ColumnDefinition Width="52" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock FontSize="11" FontWeight="SemiBold" Text="时段" />
-                            <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Text="合计" />
-                            <TextBlock Grid.Column="2" FontSize="11" FontWeight="SemiBold" Text="应用" />
-                            <TextBlock Grid.Column="3" FontSize="11" FontWeight="SemiBold" Text="网页" />
-                            <TextBlock Grid.Column="4" FontSize="11" FontWeight="SemiBold" Text="访问" />
-                        </Grid>
-
-                        <ListView
-                            ItemsSource="{x:Bind ViewModel.HourlyCombined, Mode=OneWay}"
-                            MaxHeight="300"
-                            SelectionMode="None">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid
-                                        Padding="0,2"
-                                        ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="56" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="62" />
-                                            <ColumnDefinition Width="62" />
-                                            <ColumnDefinition Width="52" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            FontSize="11"
-                                            Text="{Binding HourLabel}" />
-
-                                        <ProgressBar
-                                            Grid.Column="1"
-                                            VerticalAlignment="Center"
-                                            Value="{Binding TotalMinutes}" />
-
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            VerticalAlignment="Center"
-                                            FontSize="11"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding AppText}" />
-
-                                        <TextBlock
-                                            Grid.Column="3"
-                                            VerticalAlignment="Center"
-                                            FontSize="11"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding WebText}" />
-
-                                        <TextBlock
-                                            Grid.Column="4"
-                                            VerticalAlignment="Center"
-                                            FontSize="11"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding VisitText}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </StackPanel>
-                </Border>
-
-                <Border
-                    Grid.Column="1"
-                    Padding="16"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12">
-                    <StackPanel Spacing="16">
+            <!-- 活动时间分布（小时分布 + 每日访问，3.39.0 合并） -->
+            <Border
+                Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12">
+                <StackPanel Spacing="12">
+                    <StackPanel>
                         <TextBlock
                             FontSize="16"
                             FontWeight="SemiBold"
-                            Text="每日访问趋势" />
-
-                        <ListView
-                            x:Name="DailyTrendList"
-                            SelectionMode="None"
-                            MaxHeight="300">
-                            <ListView.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="60" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="60" />
-                                            <ColumnDefinition Width="60" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <TextBlock Text="{Binding DateLabel}" />
-
-                                        <ProgressBar
-                                            Grid.Column="1"
-                                            Margin="8,0"
-                                            VerticalAlignment="Center"
-                                            Maximum="100"
-                                            Value="{Binding VisitCount}" />
-
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            HorizontalAlignment="Right"
-                                            Text="{Binding VisitCount}" />
-
-                                        <TextBlock
-                                            Grid.Column="3"
-                                            HorizontalAlignment="Right"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding UniqueDomains}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
+                            Text="活动时间分布" />
+                        <TextBlock
+                            FontSize="11"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="按所选时间段统计 · 左：应用使用与网页浏览的小时活动；右：每日访问" />
                     </StackPanel>
-                </Border>
-            </Grid>
+
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 小时分布 -->
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="小时分布" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="56" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="62" />
+                                    <ColumnDefinition Width="52" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock FontSize="11" FontWeight="SemiBold" Text="时段" />
+                                <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Text="合计" />
+                                <TextBlock Grid.Column="2" FontSize="11" FontWeight="SemiBold" Text="应用" />
+                                <TextBlock Grid.Column="3" FontSize="11" FontWeight="SemiBold" Text="网页" />
+                                <TextBlock Grid.Column="4" FontSize="11" FontWeight="SemiBold" Text="访问" />
+                            </Grid>
+
+                            <ListView
+                                ItemsSource="{x:Bind ViewModel.HourlyCombined, Mode=OneWay}"
+                                MaxHeight="300"
+                                SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid
+                                            Padding="0,2"
+                                            ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="56" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="62" />
+                                                <ColumnDefinition Width="62" />
+                                                <ColumnDefinition Width="52" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Text="{Binding HourLabel}" />
+
+                                            <ProgressBar
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Value="{Binding TotalMinutes}" />
+
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding AppText}" />
+
+                                            <TextBlock
+                                                Grid.Column="3"
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding WebText}" />
+
+                                            <TextBlock
+                                                Grid.Column="4"
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding VisitText}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+
+                        <!-- 每日访问 -->
+                        <StackPanel Grid.Column="1" Spacing="8">
+                            <TextBlock
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="每日访问" />
+
+                            <ListView
+                                x:Name="DailyTrendList"
+                                SelectionMode="None"
+                                MaxHeight="300">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="{Binding DateLabel}" />
+
+                                            <ProgressBar
+                                                Grid.Column="1"
+                                                Margin="8,0"
+                                                VerticalAlignment="Center"
+                                                Maximum="100"
+                                                Value="{Binding VisitCount}" />
+
+                                            <TextBlock
+                                                Grid.Column="2"
+                                                HorizontalAlignment="Right"
+                                                Text="{Binding VisitCount}" />
+
+                                            <TextBlock
+                                                Grid.Column="3"
+                                                HorizontalAlignment="Right"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Text="{Binding UniqueDomains}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
 
             <!-- 最近访问记录 -->
             <Border
