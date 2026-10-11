@@ -60,7 +60,7 @@ public sealed partial class WebStatsTab : UserControl
         TopDomainText.Tag = ViewModel.TopDomain;
 
         BrowsingPatternsList.ItemsSource = ViewModel.BrowsingPatterns;
-        DailyTrendList.ItemsSource = ViewModel.DailyTrend;
+        DailySummaryText.Text = $"（每日访问 {ViewModel.TotalVisits} 次 · {ViewModel.UniqueDomains} 域名）";
         RecentVisitsList.ItemsSource = ViewModel.RecentVisits;
 
         LoadMoreButton.Visibility = ViewModel.HasMoreVisits ? Visibility.Visible : Visibility.Collapsed;

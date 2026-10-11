@@ -408,7 +408,7 @@
                 </Border>
             </Grid>
 
-            <!-- 活动时间分布（小时分布 + 每日访问，3.39.0 合并） -->
+            <!-- 活动时间分布（小时分布 + 最近访问记录，3.39.0 合并） -->
             <Border
                 Padding="16"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -417,14 +417,21 @@
                 CornerRadius="12">
                 <StackPanel Spacing="12">
                     <StackPanel>
-                        <TextBlock
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="活动时间分布" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="活动时间分布" />
+                            <TextBlock
+                                x:Name="DailySummaryText"
+                                VerticalAlignment="Bottom"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
                         <TextBlock
                             FontSize="11"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="按所选时间段统计 · 左：应用使用与网页浏览的小时活动；右：每日访问" />
+                            Text="按所选时间段统计 · 左：应用使用与网页浏览的小时活动；右：最近访问记录" />
                     </StackPanel>
 
                     <Grid ColumnSpacing="16">
@@ -509,135 +516,82 @@
                             </ListView>
                         </StackPanel>
 
-                        <!-- 每日访问 -->
+                        <!-- 最近访问记录 -->
                         <StackPanel Grid.Column="1" Spacing="8">
                             <TextBlock
                                 FontSize="12"
                                 FontWeight="SemiBold"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="每日访问" />
+                                Text="最近访问记录" />
 
                             <ListView
-                                x:Name="DailyTrendList"
+                                x:Name="RecentVisitsList"
                                 SelectionMode="None"
                                 MaxHeight="300">
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="0,4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="60" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="60" />
-                                                <ColumnDefinition Width="60" />
-                                            </Grid.ColumnDefinitions>
+                                        <Border
+                                            Margin="0,4"
+                                            Padding="12"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            CornerRadius="8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="80" />
+                                                    <ColumnDefinition Width="80" />
+                                                </Grid.ColumnDefinitions>
 
-                                            <TextBlock Text="{Binding DateLabel}" />
+                                                <StackPanel Spacing="4">
+                                                    <Grid>
+                                                        <TextBlock
+                                                            FontWeight="Medium"
+                                                            MaxLines="1"
+                                                            Text="{Binding Title}"
+                                                            TextTrimming="CharacterEllipsis" />
+                                                        <Border
+                                                            Padding="6,2"
+                                                            HorizontalAlignment="Right"
+                                                            CornerRadius="4"
+                                                            Background="{Binding CategoryColor, Converter={StaticResource StringToBrushConverter}}">
+                                                            <TextBlock
+                                                                FontSize="11"
+                                                                Text="{Binding Category}" />
+                                                        </Border>
+                                                    </Grid>
+                                                    <HyperlinkButton
+                                                        Padding="0"
+                                                        FontSize="12"
+                                                        Content="{Binding Domain}"
+                                                        Tag="{Binding Url}"
+                                                        ToolTipService.ToolTip="在浏览器中打开"
+                                                        Click="OpenDomain_Click" />
+                                                </StackPanel>
 
-                                            <ProgressBar
-                                                Grid.Column="1"
-                                                Margin="8,0"
-                                                VerticalAlignment="Center"
-                                                Maximum="100"
-                                                Value="{Binding VisitCount}" />
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{Binding VisitTime}" />
 
-                                            <TextBlock
-                                                Grid.Column="2"
-                                                HorizontalAlignment="Right"
-                                                Text="{Binding VisitCount}" />
-
-                                            <TextBlock
-                                                Grid.Column="3"
-                                                HorizontalAlignment="Right"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding UniqueDomains}" />
-                                        </Grid>
+                                                <TextBlock
+                                                    Grid.Column="2"
+                                                    VerticalAlignment="Center"
+                                                    Text="{Binding Duration}" />
+                                            </Grid>
+                                        </Border>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
+
+                            <Button
+                                x:Name="LoadMoreButton"
+                                HorizontalAlignment="Center"
+                                Click="LoadMore_Click"
+                                Content="加载更多"
+                                Visibility="Collapsed" />
                         </StackPanel>
                     </Grid>
-                </StackPanel>
-            </Border>
-
-            <!-- 最近访问记录 -->
-            <Border
-                Padding="16"
-                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="12">
-                <StackPanel Spacing="16">
-                    <TextBlock
-                        FontSize="16"
-                        FontWeight="SemiBold"
-                        Text="最近访问记录" />
-
-                    <ListView
-                        x:Name="RecentVisitsList"
-                        SelectionMode="None"
-                        MaxHeight="400">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <Border
-                                    Margin="0,4"
-                                    Padding="12"
-                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="8">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="80" />
-                                            <ColumnDefinition Width="80" />
-                                        </Grid.ColumnDefinitions>
-
-                                        <StackPanel Spacing="4">
-                                            <Grid>
-                                                <TextBlock
-                                                    FontWeight="Medium"
-                                                    MaxLines="1"
-                                                    Text="{Binding Title}"
-                                                    TextTrimming="CharacterEllipsis" />
-                                                <Border
-                                                    Padding="6,2"
-                                                    HorizontalAlignment="Right"
-                                                    CornerRadius="4"
-                                                    Background="{Binding CategoryColor, Converter={StaticResource StringToBrushConverter}}">
-                                                    <TextBlock
-                                                        FontSize="11"
-                                                        Text="{Binding Category}" />
-                                                </Border>
-                                            </Grid>
-                                            <HyperlinkButton
-                                                Padding="0"
-                                                FontSize="12"
-                                                Content="{Binding Domain}"
-                                                Tag="{Binding Url}"
-                                                ToolTipService.ToolTip="在浏览器中打开"
-                                                Click="OpenDomain_Click" />
-                                        </StackPanel>
-
-                                        <TextBlock
-                                            Grid.Column="1"
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding VisitTime}" />
-
-                                        <TextBlock
-                                            Grid.Column="2"
-                                            VerticalAlignment="Center"
-                                            Text="{Binding Duration}" />
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-
-                    <Button
-                        x:Name="LoadMoreButton"
-                        HorizontalAlignment="Center"
-                        Click="LoadMore_Click"
-                        Content="加载更多"
-                        Visibility="Collapsed" />
                 </StackPanel>
             </Border>
 
