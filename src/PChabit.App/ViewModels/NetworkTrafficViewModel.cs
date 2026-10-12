@@ -334,13 +334,9 @@ public partial class NetworkTrafficViewModel : ViewModelBase
         CategoryEmptyText = CategoryRows.Count > 0 ? string.Empty : "暂无分类流量记录";
     }
 
+    /// <summary>3.45.0：改走统一分类入口（AppStatsEngine），不再自写一份兜底。</summary>
     private string ResolveTrafficCategory(string processName)
-    {
-        var normalized = AppStatsEngine.NormalizeProcessName(processName);
-        if (normalized.Length > 0 && _categoryMap.TryGetValue(normalized, out var hit))
-            return hit.Name;
-        return "未分类";
-    }
+        => AppStatsEngine.ResolveCategoryByProcess(processName, _categoryMap).Name;
 
     private void BuildHourBars(List<PChabit.Core.Entities.ProcessNetworkUsage> procRows)
     {

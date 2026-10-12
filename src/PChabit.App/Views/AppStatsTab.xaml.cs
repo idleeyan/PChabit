@@ -210,7 +210,11 @@ public sealed partial class AppStatsTab : UserControl
             var period = ViewModel.LastPeriod ?? AnalyticsPeriod.FromKind(ViewModel.SelectedRange);
             var scope = App.Services.CreateScope();
             var vm = scope.ServiceProvider.GetRequiredService<AppDetailViewModel>();
-            vm.Configure(period, item.ProcessName, item.AppName, item.Category, item.CategoryColorHex, ViewModel.LastTotalMinutes);
+            // 3.45.0：第 5 个参数必须是「映射未命中时的原始快照分类」（item.FallbackCategory），
+            // 不能传已解析的 item.Category——后者一旦是「未分类」会被当成兜底值，
+            // 让弹窗内的详情统计把真实分类名覆盖掉（陷阱 43）。
+            vm.Configure(period, item.ProcessName, item.AppName,
+                item.FallbackCategory, item.CategoryColorHex, ViewModel.LastTotalMinutes);
             var dialog = new AppDetailDialog(vm, process => { _ = ShowCategoryPickerAsync(process); })
             {
                 XamlRoot = XamlRoot

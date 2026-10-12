@@ -10,6 +10,7 @@ using PChabit.App.Services;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
+using PChabit.Infrastructure.Services;
 using Windows.ApplicationModel.DataTransfer;
 
 namespace PChabit.App.ViewModels;
@@ -19,6 +20,8 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
     private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
     private readonly IAppIconService _iconService;
     private readonly IBackgroundAppSettings _backgroundAppSettings;
+    private readonly IAppDescriptionService? _descriptionService;
+    private Dictionary<string, string> _descMap = new(StringComparer.Ordinal);
 
     [ObservableProperty]
     private AnalyticsPeriodKind _selectedRange = AnalyticsPeriodKind.Today;
@@ -97,11 +100,16 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
         new PeriodOption(AnalyticsPeriodKind.Custom, "自定义")
     };
 
-    public AppStatsViewModel(IDbContextFactory<PChabitDbContext> dbFactory, IAppIconService iconService, IBackgroundAppSettings backgroundAppSettings)
+    public AppStatsViewModel(
+        IDbContextFactory<PChabitDbContext> dbFactory,
+        IAppIconService iconService,
+        IBackgroundAppSettings backgroundAppSettings,
+        IAppDescriptionService? descriptionService = null)
     {
         _dbFactory = dbFactory;
         _iconService = iconService;
         _backgroundAppSettings = backgroundAppSettings;
+        _descriptionService = descriptionService;
         Title = "应用统计";
     }
 
@@ -119,7 +127,25 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
         };
 
         LastPeriod = period;
-        return await AppStatsEngine.BuildAsync(_dbFactory, period, SelectedCategoryFilter, SearchText);
+        var report = await AppStatsEngine.BuildAsync(_dbFactory, period, SelectedCategoryFilter, SearchText);
+
+        // 批量加载本页应用说明（后台阶段执行，避免阻塞 UI；进程名统一规范化）
+        _descMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (_descriptionService != null && report.Rows.Count > 0)
+        {
+            try
+            {
+                _descMap = await _descriptionService.GetDescriptionsForProcessesAsync(
+                    report.Rows.Select(r => r.ProcessName));
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "应用说明批量加载失败（列表降级为空）");
+                _descMap = new Dictionary<string, string>(StringComparer.Ordinal);
+            }
+        }
+
+        return report;
     }
 
     protected override async Task ApplyStatsOnUIAsync(AppStatsReport report)
@@ -151,13 +177,17 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
                 AvgDuration = row.Sessions > 0 ? AnalyticsEngine.FormatHours(row.AvgDurationMinutes) : "—",
                 Percentage = row.Percentage,
                 Category = row.Category,
-                CategoryIcon = "📁",
                 CategoryColorHex = row.CategoryColorHex,
+                CategoryIcon = "📁",
                 CategoryColor = GetCategoryBrush(row.CategoryColorHex),
                 DeltaText = row.DeltaText,
                 DeltaDirection = row.DeltaDirection,
                 FocusMinutes = row.FocusMinutes,
-                IsBackgroundMode = backgroundApps.Contains(row.ProcessName)
+                // 3.45.0：详情弹窗需要「映射未命中时的原始快照分类」，
+                // 否则弹窗会把已解析出的分类名再喂一遍解析链，永远只显示「未分类」。
+                FallbackCategory = row.Category,
+                IsBackgroundMode = backgroundApps.Contains(row.ProcessName),
+                Description = _descMap.TryGetValue(AppStatsEngine.NormalizeProcessName(row.ProcessName), out var desc) ? desc : ""
             };
 
             AppStats.Add(item);
@@ -346,6 +376,12 @@ public class AppStatItem : ObservableObject
     public string DeltaText { get; init; } = "—";
     public string DeltaDirection { get; init; } = "none";
     public string CategoryColorHex { get; init; } = "#6B7280";
+    /// <summary>
+    /// 映射未命中时的**原始快照分类**（来自会话 `AppSession.Category`）。
+    /// 注意 <see cref="Category"/> 是已经解析过的最终展示名，把它当快照再喂回解析链
+    /// 会导致「未分类」被当成兜底值覆盖真实分类——这是陷阱 43 的第二种形态。
+    /// </summary>
+    public string FallbackCategory { get; init; } = string.Empty;
     private string _category = string.Empty;
     public string Category { get => _category; set => SetProperty(ref _category, value); }
     private string _categoryIcon = "📁";
@@ -356,6 +392,10 @@ public class AppStatItem : ObservableObject
     public ImageSource? Icon { get => _icon; set => SetProperty(ref _icon, value); }
     private bool _isBackgroundMode;
     public bool IsBackgroundMode { get => _isBackgroundMode; set => SetProperty(ref _isBackgroundMode, value); }
+    /// <summary>应用详细说明（预置库 + 用户编辑；列表行只读展示，编辑入口在详情弹窗）。</summary>
+    public string Description { get; init; } = "";
+
+    public bool HasDescription => !string.IsNullOrWhiteSpace(Description);
 }
 
 public class HourlyUsageItem { public string Hour { get; init; } = string.Empty; public int Minutes { get; init; } public int Activity { get; init; } }

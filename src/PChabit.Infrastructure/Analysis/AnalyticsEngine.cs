@@ -457,7 +457,8 @@ public static class AnalyticsEngine
         // 分类构成
         var totalForShare = sessions.Sum(Minutes);
         var categoryShares = sessions
-            .GroupBy(s => string.IsNullOrWhiteSpace(s.Category) ? "未分类" : s.Category!)
+            // 统一兜底名（陷阱 43）
+            .GroupBy(s => string.IsNullOrWhiteSpace(s.Category) ? AppStatsEngine.UncategorizedName : s.Category!)
             .Select(g =>
             {
                 var mins = g.Sum(Minutes);

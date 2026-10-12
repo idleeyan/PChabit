@@ -16,6 +16,9 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
     private IReadOnlyDictionary<string, (string Name, string ColorHex)> _categoryMap
         = new Dictionary<string, (string Name, string ColorHex)>();
 
+    /// <summary>会话快照分类表（归一化进程名 → 分类名），与映射表一起构成统一分类解析的两级输入。</summary>
+    private Dictionary<string, string> _snapshotMap = new(StringComparer.OrdinalIgnoreCase);
+
     public SankeyViewModel(
         SankeyAggregator aggregator,
         IDbContextFactory<PChabitDbContext> dbFactory) : base()
@@ -47,6 +50,9 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
         var startDt = StartDate?.Date ?? DateTime.Today.AddDays(-6);
         var endDt = EndDate?.Date.AddDays(1) ?? DateTime.Today.AddDays(1);
         _categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
+        // 3.45.0：分类解析统一走 AppStatsEngine 唯一入口，需同时取会话快照分类，
+        // 否则「历史记录库无映射的进程」在本页会显示「未分类」，与应用排行不一致（陷阱 43）。
+        _snapshotMap = await AppStatsEngine.LoadSnapshotCategoryMapAsync(_dbFactory, startDt, endDt);
         return await _aggregator.GetSankeyDataAsync(startDt, endDt, TopN);
     }
 
@@ -84,8 +90,8 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
         {
             name = n.Name,
             value = (int)n.TotalUsage.TotalMinutes,
-            category = AppStatsEngine.ResolveCategory(
-                new AppSession { ProcessName = n.ProcessName }, _categoryMap).Name
+            category = AppStatsEngine.ResolveCategoryWithSnapshot(
+                n.ProcessName, _categoryMap, _snapshotMap).Name
         }).ToList();
 
         var links = data.Links.Select(l => new

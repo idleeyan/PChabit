@@ -41,6 +41,8 @@ public static class ServiceConfiguration
         services.AddSingleton<IKeyboardMonitor, KeyboardMonitor>();
         services.AddSingleton<IMouseMonitor, MouseMonitor>();
         services.AddSingleton<IWebMonitor, WebMonitor>();
+        // AI 命令接口（3.42.0）：与浏览器同步 WebSocket 共用 8765 端口，提供 /api/* HTTP 路由
+        services.AddSingleton<AiCommandDispatcher>();
         services.AddSingleton(sp =>
         {
             var port = 8765;
@@ -55,7 +57,7 @@ public static class ServiceConfiguration
             }
             catch { /* settings 可能尚未就绪，退回默认端口 */ }
 
-            return new WebSocketServer(port);
+            return new WebSocketServer(port, sp.GetRequiredService<AiCommandDispatcher>());
         });
         services.AddSingleton<MonitorManager>();
         
@@ -80,6 +82,7 @@ public static class ServiceConfiguration
         
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<IWebsiteCategoryService, WebsiteCategoryService>();
+        services.AddScoped<IAppDescriptionService, AppDescriptionService>();
         
         services.AddSingleton<IBackupService, BackupService>();
         services.AddSingleton<BrowserSyncWebSocketHandler>();

@@ -271,6 +271,14 @@
                                                         <Run Text="{x:Bind Sessions}" /><Run Text=" 次 · 均长 " /><Run Text="{x:Bind AvgDuration}" />
                                                     </TextBlock>
                                                 </StackPanel>
+                                                <!-- 3.41.0：应用详细说明（详情弹窗可编辑） -->
+                                                <TextBlock
+                                                    MaxWidth="280"
+                                                    FontSize="11"
+                                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                                    Text="{x:Bind Description}"
+                                                    TextTrimming="CharacterEllipsis"
+                                                    Visibility="{x:Bind HasDescription, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
                                             </StackPanel>
 
                                             <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">

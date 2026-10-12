@@ -371,15 +371,16 @@
                 </Border>
             </Grid>
 
-            <!-- ============ 中部：最常使用的应用 + 分类分布 ============ -->
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
+            <!-- ============ 中部：最常使用的应用 + 分类分布 | 最常访问的网站（3.40.0 合并为一张卡片） ============ -->
+            <Border Style="{StaticResource CardStyle}">
+                <Grid ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- 最常使用的应用 -->
-                <Border Style="{StaticResource CardStyle}">
+                    <!-- 左栏：最常使用的应用 + 分类分布 -->
                     <StackPanel Spacing="14">
                         <TextBlock FontSize="15" FontWeight="SemiBold" Text="最常使用的应用" />
                         <Grid ColumnSpacing="12">
@@ -446,166 +447,185 @@
                             </ItemsControl>
                         </StackPanel>
                     </StackPanel>
-                </Border>
 
-                <!-- 最常访问的网站 -->
-                <Border Style="{StaticResource CardStyle}" Grid.Column="1">
-                    <StackPanel Spacing="14">
+                    <!-- 分隔线 -->
+                    <Rectangle
+                        Grid.Column="1"
+                        Width="1"
+                        Margin="0,4"
+                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
+
+                    <!-- 右栏：最常访问的网站 -->
+                    <StackPanel Grid.Column="2" Spacing="14">
                         <TextBlock FontSize="15" FontWeight="SemiBold" Text="最常访问的网站" />
                         <TextBlock
                             FontWeight="SemiBold"
                             FontSize="14"
                             Text="{x:Bind ViewModel.MostVisitedSite, Mode=OneWay}" />
                     </StackPanel>
-                </Border>
-            </Grid>
-
-            <!-- ============ 应用使用 Top 5（完整榜单在应用统计页） ============ -->
-            <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="14">
-                    <Grid>
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="15"
-                            FontWeight="SemiBold"
-                            Text="应用使用 Top 5" />
-                        <HyperlinkButton
-                            Padding="0"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            Click="OpenAppStats_Click"
-                            Content="查看全部 →" />
-                    </Grid>
-
-                    <TextBlock
-                        x:Name="NoAppDataHint"
-                        FontSize="13"
-                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Text="暂无应用使用数据，开始使用电脑后数据将自动显示"
-                        Visibility="Collapsed" />
-
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.TopApps, Mode=OneWay}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="viewModel:AppUsageItem">
-                                <Grid
-                                    Margin="0,4"
-                                    Padding="10"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    CornerRadius="8"
-                                    ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-
-                                    <Image Width="28" Height="28" Source="{x:Bind Icon, Mode=OneWay}" />
-
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        FontWeight="Medium"
-                                        Text="{x:Bind Name}" />
-
-                                    <!-- 分类标签（3.26.1 起与应用统计页同源：ProgramCategoryMappings 映射表） -->
-                                    <Border
-                                        Grid.Column="2"
-                                        Margin="0,0,12,0"
-                                        Padding="8,2"
-                                        VerticalAlignment="Center"
-                                        Background="{x:Bind CategoryBrush}"
-                                        CornerRadius="4">
-                                        <TextBlock
-                                            FontSize="11"
-                                            Foreground="White"
-                                            Text="{x:Bind Category}" />
-                                    </Border>
-
-                                    <TextBlock
-                                        Grid.Column="3"
-                                        VerticalAlignment="Center"
-                                        FontWeight="SemiBold"
-                                        FontSize="14"
-                                        Text="{x:Bind Duration}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                </Grid>
             </Border>
 
-            <!-- ============ 网站访问 Top 5（完整榜单在网页访问页） ============ -->
+            <!-- ============ 使用与访问 Top 5（3.40.0 合并：应用 + 网站一张卡片双栏） ============ -->
             <Border Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="14">
-                    <Grid>
+                <Grid ColumnSpacing="24">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左栏：应用使用 Top 5（完整榜单在应用统计页） -->
+                    <StackPanel Spacing="14">
+                        <Grid>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="15"
+                                FontWeight="SemiBold"
+                                Text="应用使用 Top 5" />
+                            <HyperlinkButton
+                                Padding="0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Click="OpenAppStats_Click"
+                                Content="查看全部 →" />
+                        </Grid>
+
                         <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="15"
-                            FontWeight="SemiBold"
-                            Text="网站访问 Top 5" />
-                        <HyperlinkButton
-                            Padding="0"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Center"
-                            Click="OpenWebAccess_Click"
-                            Content="查看全部 →" />
-                    </Grid>
+                            x:Name="NoAppDataHint"
+                            FontSize="13"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="暂无应用使用数据，开始使用电脑后数据将自动显示"
+                            Visibility="Collapsed" />
 
-                    <ItemsControl ItemsSource="{x:Bind ViewModel.TopWebsites, Mode=OneWay}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="viewModel:WebsiteUsageItem">
-                                <Grid
-                                    Margin="0,4"
-                                    Padding="10"
-                                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                                    CornerRadius="8"
-                                    ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.TopApps, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="viewModel:AppUsageItem">
+                                    <Grid
+                                        Margin="0,4"
+                                        Padding="10"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                        CornerRadius="8"
+                                        ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
 
-                                    <Border
-                                        Width="28"
-                                        Height="28"
-                                        Background="{StaticResource InsightBrush}"
-                                        CornerRadius="6">
+                                        <Image Width="28" Height="28" Source="{x:Bind Icon, Mode=OneWay}" />
+
                                         <TextBlock
-                                            HorizontalAlignment="Center"
+                                            Grid.Column="1"
                                             VerticalAlignment="Center"
-                                            FontSize="13"
+                                            FontWeight="Medium"
+                                            Text="{x:Bind Name}" />
+
+                                        <!-- 分类标签（3.26.1 起与应用统计页同源：ProgramCategoryMappings 映射表） -->
+                                        <Border
+                                            Grid.Column="2"
+                                            Margin="0,0,12,0"
+                                            Padding="8,2"
+                                            VerticalAlignment="Center"
+                                            Background="{x:Bind CategoryBrush}"
+                                            CornerRadius="4">
+                                            <TextBlock
+                                                FontSize="11"
+                                                Foreground="White"
+                                                Text="{x:Bind Category}" />
+                                        </Border>
+
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
                                             FontWeight="SemiBold"
-                                            Foreground="White"
-                                            Text="{x:Bind FirstLetter}" />
-                                    </Border>
+                                            FontSize="14"
+                                            Text="{x:Bind Duration}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
 
-                                    <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind Domain}" />
+                    <!-- 分隔线 -->
+                    <Rectangle
+                        Grid.Column="1"
+                        Width="1"
+                        Margin="0,4"
+                        Fill="{ThemeResource DividerStrokeColorDefaultBrush}" />
 
-                                    <TextBlock
-                                        Grid.Column="2"
-                                        Margin="0,0,12,0"
-                                        VerticalAlignment="Center"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        FontSize="12"
-                                        Text="{x:Bind VisitsText}" />
+                    <!-- 右栏：网站访问 Top 5（完整榜单在网页访问页） -->
+                    <StackPanel Grid.Column="2" Spacing="14">
+                        <Grid>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="15"
+                                FontWeight="SemiBold"
+                                Text="网站访问 Top 5" />
+                            <HyperlinkButton
+                                Padding="0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Click="OpenWebAccess_Click"
+                                Content="查看全部 →" />
+                        </Grid>
 
-                                    <TextBlock
-                                        Grid.Column="3"
-                                        VerticalAlignment="Center"
-                                        FontWeight="SemiBold"
-                                        FontSize="14"
-                                        Text="{x:Bind Duration}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.TopWebsites, Mode=OneWay}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="viewModel:WebsiteUsageItem">
+                                    <Grid
+                                        Margin="0,4"
+                                        Padding="10"
+                                        Background="{ThemeResource LayerFillColorDefaultBrush}"
+                                        CornerRadius="8"
+                                        ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border
+                                            Width="28"
+                                            Height="28"
+                                            Background="{StaticResource InsightBrush}"
+                                            CornerRadius="6">
+                                            <TextBlock
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                FontSize="13"
+                                                FontWeight="SemiBold"
+                                                Foreground="White"
+                                                Text="{x:Bind FirstLetter}" />
+                                        </Border>
+
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Text="{x:Bind Domain}" />
+
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            Margin="0,0,12,0"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            FontSize="12"
+                                            Text="{x:Bind VisitsText}" />
+
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
+                                            FontWeight="SemiBold"
+                                            FontSize="14"
+                                            Text="{x:Bind Duration}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- ============ 每小时活动图（WebView2，3.26.0 替换旋转 ProgressBar） ============ -->

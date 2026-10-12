@@ -279,15 +279,90 @@ public static class AppStatsEngine
             focusSessions, groups, pie, categoryShares, hourly);
     }
 
-    /// <summary>解析会话分类：映射命中优先，否则回退会话自带分类字段。</summary>
+    /// <summary>无映射、无会话快照时的统一兜底分类名（全应用唯一，禁止各页面另写一份）。</summary>
+    public const string UncategorizedName = "未分类";
+
+    /// <summary>
+    /// 应用分类解析的**唯一入口**（3.45.0）。
+    /// 全应用任何展示 / 统计场景都必须调用本方法，禁止各页面自行 TryGetValue 或另写兜底规则——
+    /// 历史上正是这些副本造成了「同一应用在不同页面分类不一致」。
+    /// 优先级：用户映射表（ProgramCategoryMappings）→ 会话快照分类（AppSession.Category）→ 未分类。
+    /// </summary>
+    public static (string Name, string ColorHex) ResolveCategoryByProcess(
+        string? processName,
+        IReadOnlyDictionary<string, (string Name, string ColorHex)> categoryMap,
+        string? snapshotCategory = null)
+    {
+        var normalized = NormalizeProcessName(processName ?? "");
+        if (normalized.Length > 0 && categoryMap.TryGetValue(normalized, out var hit))
+            return hit;
+        return (string.IsNullOrWhiteSpace(snapshotCategory) ? UncategorizedName : snapshotCategory,
+                DefaultColorFor(snapshotCategory));
+    }
+
+    /// <summary>
+    /// 同上，会话快照分类取自「归一化进程名 → 快照分类」表
+    /// （见 <see cref="LoadSnapshotCategoryMapAsync(PChabitDbContext, DateTime, DateTime, CancellationToken)"/>）。
+    /// 用于只有进程名、没有 AppSession 实体的场景（键鼠会话、流量记录等）。
+    /// </summary>
+    public static (string Name, string ColorHex) ResolveCategoryWithSnapshot(
+        string? processName,
+        IReadOnlyDictionary<string, (string Name, string ColorHex)> categoryMap,
+        IReadOnlyDictionary<string, string>? snapshotMap)
+    {
+        string? snapshot = null;
+        if (snapshotMap != null)
+        {
+            var normalized = NormalizeProcessName(processName ?? "");
+            if (normalized.Length > 0) snapshotMap.TryGetValue(normalized, out snapshot);
+        }
+        return ResolveCategoryByProcess(processName, categoryMap, snapshot);
+    }
+
+    /// <summary>解析会话分类：映射命中优先，否则回退会话自带分类字段（走统一入口）。</summary>
     public static (string Name, string ColorHex) ResolveCategory(
         AppSession session,
         IReadOnlyDictionary<string, (string Name, string ColorHex)> categoryMap)
+        => ResolveCategoryByProcess(session.ProcessName, categoryMap, session.Category);
+
+    /// <summary>
+    /// 会话快照分类表：归一化进程名 → 该周期内**最早**一条会话的 Category。
+    /// 取「最早一条」是为了与 <see cref="Compute"/> 中 <c>g.First()</c> 的取法一致，
+    /// 保证键鼠页等按进程聚合的页面与「应用使用排行」显示完全相同的分类。
+    /// </summary>
+    public static async Task<Dictionary<string, string>> LoadSnapshotCategoryMapAsync(
+        PChabitDbContext db,
+        DateTime start,
+        DateTime endExclusive,
+        CancellationToken ct = default)
     {
-        var normalized = NormalizeProcessName(session.ProcessName ?? "");
-        if (normalized.Length > 0 && categoryMap.TryGetValue(normalized, out var hit))
-            return hit;
-        var fallback = session.Category;
-        return (string.IsNullOrWhiteSpace(fallback) ? "未分类" : fallback, DefaultColorFor(fallback));
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var rows = await db.AppSessions
+            .AsNoTracking()
+            .Where(s => s.StartTime >= start && s.StartTime < endExclusive)
+            .OrderBy(s => s.StartTime)
+            .Select(s => new { s.ProcessName, s.Category })
+            .ToListAsync(ct);
+
+        foreach (var r in rows)
+        {
+            var normalized = NormalizeProcessName(r.ProcessName ?? "");
+            if (normalized.Length == 0) continue;
+            if (map.ContainsKey(normalized)) continue; // 已取到最早一条
+            if (string.IsNullOrWhiteSpace(r.Category)) continue;
+            map[normalized] = r.Category!;
+        }
+        return map;
+    }
+
+    /// <summary>同上，自行创建 DbContext 的便捷重载。</summary>
+    public static async Task<Dictionary<string, string>> LoadSnapshotCategoryMapAsync(
+        IDbContextFactory<PChabitDbContext> dbFactory,
+        DateTime start,
+        DateTime endExclusive,
+        CancellationToken ct = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(ct);
+        return await LoadSnapshotCategoryMapAsync(db, start, endExclusive, ct);
     }
 }

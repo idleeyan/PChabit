@@ -31,10 +31,14 @@ public record AppDetailReport(
     IReadOnlyList<AppDayPoint> DailyTrend,
     double? KeyPresses,
     double? KeysPerHour,
+    double? MouseClicks,
+    double? MouseMoveDistance,
+    double? MouseScrolls,
     double? CpuLoadAvg,
     double? GpuLoadAvg,
     double? GpuTempMax,
     bool HasInput,
+    bool HasKeyMouse,
     bool HasHardware,
     bool HasData)
 {
@@ -44,6 +48,13 @@ public record AppDetailReport(
     public string LongestText => AnalyticsEngine.FormatHours(LongestSessionMinutes);
     public string ShareText => $"{SharePct:F1}%";
     public string KpiFocusText => FocusCount > 0 ? $"{FocusText} · {FocusCount} 段" : "—";
+
+    // === 「键鼠统计」卡片六项（3.46.0：自键鼠页并入，缺失侧显示 —）===
+    public string KeyPressesText => KeyPresses is > 0 ? $"{KeyPresses:N0}" : "—";
+    public string KeysPerHourText => KeysPerHour is > 0 ? $"{KeysPerHour:F0}" : "—";
+    public string MouseClicksText => MouseClicks is > 0 ? $"{MouseClicks:N0}" : "—";
+    public string MouseMoveText => MouseMoveDistance is > 0 ? $"{MouseMoveDistance:N0} px" : "—";
+    public string MouseScrollsText => MouseScrolls is > 0 ? $"{MouseScrolls:N0}" : "—";
 }
 
 public record AppDayPoint(
@@ -75,6 +86,9 @@ public static class AppDetailEngine
         List<AppSession> cur;
         List<AppSession> prevSessions;
         long keyPresses = 0;
+        double mouseClicks = 0;
+        double mouseMoveDistance = 0;
+        double mouseScrolls = 0;
         List<(double Cpu, double Gpu, double? Temp)> hwSamples = new();
 
         await using (var db = await dbFactory.CreateDbContextAsync(ct))
@@ -82,20 +96,53 @@ public static class AppDetailEngine
             cur = await QuerySessionsAsync(db, period, processName, norm, ct);
             prevSessions = await QuerySessionsAsync(db, prev, processName, norm, ct);
 
+            // 键鼠会话表 Date 为 TEXT（'yyyy-MM-dd HH:mm:ss'），实体 DateTime + 固定格式值转换器；
+            // 范围比较走参数转换后与库内字符串同序，禁用 CompareTo(string)（走 CompareTo(object)，EF 无法翻译，
+            // 异常会被下面的 catch 静默吞掉导致统计恒为 0——详情页「输入」卡片历史不显示的根因）。
+            var dayStart = period.Start.Date;
+            var dayEnd = period.EndExclusive.Date;
+
             try
             {
-                var startKey = period.Start.ToString("yyyy-MM-dd");
-                var endKey = period.EndExclusive.ToString("yyyy-MM-dd");
                 keyPresses = await db.KeyboardSessions.AsNoTracking()
                     .Where(k => k.ProcessName != null
                                 && (k.ProcessName == processName || k.ProcessName.ToLower() == norm)
-                                && k.Date.CompareTo(startKey) >= 0
-                                && k.Date.CompareTo(endKey) < 0)
+                                && k.Date >= dayStart
+                                && k.Date < dayEnd)
                     .SumAsync(k => (long)k.TotalKeyPresses, ct);
             }
             catch
             {
                 keyPresses = 0;
+            }
+
+            try
+            {
+                var mouseRows = await db.MouseSessions.AsNoTracking()
+                    .Where(s => s.ProcessName != null
+                                && (s.ProcessName == processName || s.ProcessName.ToLower() == norm)
+                                && s.Date >= dayStart
+                                && s.Date < dayEnd)
+                    .Select(s => new
+                    {
+                        s.LeftClickCount,
+                        s.RightClickCount,
+                        s.MiddleClickCount,
+                        s.TotalMoveDistance,
+                        s.ScrollCount
+                    })
+                    .ToListAsync(ct);
+
+                // 合计属性 TotalClicks 为计算列，EF 不可翻译，显式相加后内存聚合
+                mouseClicks = mouseRows.Sum(x => x.LeftClickCount + x.RightClickCount + x.MiddleClickCount);
+                mouseMoveDistance = mouseRows.Sum(x => x.TotalMoveDistance);
+                mouseScrolls = mouseRows.Sum(x => x.ScrollCount);
+            }
+            catch
+            {
+                mouseClicks = 0;
+                mouseMoveDistance = 0;
+                mouseScrolls = 0;
             }
 
             try
@@ -135,7 +182,10 @@ public static class AppDetailEngine
 
         var focusCat = categoryForFocus ?? category;
         return Compute(period, prev, cur, prevSessions, processName, appName, category,
-            focusCat, keyPresses > 0 ? keyPresses : null, hwSamples);
+            focusCat, keyPresses > 0 ? keyPresses : null, hwSamples,
+            mouseClicks > 0 ? mouseClicks : null,
+            mouseMoveDistance > 0 ? mouseMoveDistance : null,
+            mouseScrolls > 0 ? mouseScrolls : null);
     }
 
     private static async Task<List<AppSession>> QuerySessionsAsync(
@@ -220,7 +270,10 @@ public static class AppDetailEngine
         string category,
         string categoryForFocus,
         double? keyPresses,
-        IReadOnlyList<(double Cpu, double Gpu, double? Temp)>? hardwareSamples)
+        IReadOnlyList<(double Cpu, double Gpu, double? Temp)>? hardwareSamples,
+        double? mouseClicks = null,
+        double? mouseMoveDistance = null,
+        double? mouseScrolls = null)
     {
         static double MinutesOf(AppSession s) =>
             s.EndTime.HasValue ? (s.EndTime.Value - s.StartTime).TotalMinutes : 0;
@@ -303,11 +356,18 @@ public static class AppDetailEngine
         if (keyPresses is > 0 && total > 0)
             keysPerHour = Math.Round(keyPresses.Value / (total / 60.0), 1);
 
+        // 键鼠任一侧有数据即展示卡片（3.46.0：自键鼠页「按应用键鼠统计」并入）
+        var hasKeyMouse = keyPresses is > 0
+            || mouseClicks is > 0
+            || mouseMoveDistance is > 0
+            || mouseScrolls is > 0;
+
         return new AppDetailReport(
             period,
             processName,
             string.IsNullOrWhiteSpace(appName) ? processName : appName,
-            string.IsNullOrWhiteSpace(category) ? "未分类" : category,
+            // 统一兜底名（陷阱 43）：引用 AppStatsEngine 的常量，不另写字面量
+            string.IsNullOrWhiteSpace(category) ? AppStatsEngine.UncategorizedName : category,
             total,
             sessionCount,
             avg,
@@ -322,10 +382,14 @@ public static class AppDetailEngine
             daily,
             keyPresses,
             keysPerHour,
+            mouseClicks,
+            mouseMoveDistance,
+            mouseScrolls,
             cpu,
             gpu,
             temp,
             keyPresses is > 0,
+            hasKeyMouse,
             hasHw && (cpu.HasValue || gpu.HasValue || temp.HasValue),
             sessionCount > 0);
     }

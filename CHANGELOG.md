@@ -2,6 +2,259 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.46.0] - 2026-10-13
+
+### 变更：「按应用键鼠统计」并入应用详情弹窗
+
+原「应用使用 › 键鼠详情」页的「按应用键鼠统计」卡片（以应用为主体、每行聚合
+键盘 KPM/按键 + 鼠标 点击/移动/滚动）已删除，整体迁移进应用排行点击「详情」
+弹出的 `AppDetailDialog`，作为单应用详情的「键鼠统计」卡片：
+
+- 卡片为五列指标（按键 / KPM / 点击 / 移动 / 滚动），任一侧无数据显示 `—`；
+  键鼠两侧都无数据时卡片自动隐藏
+- `AppDetailEngine` 新增 `MouseSessions` 聚合查询（点击 = 左+右+中键，
+  移动距离、滚动次数，与键鼠页口径一致），`AppDetailReport` 新增
+  `MouseClicks` / `MouseMoveDistance` / `MouseScrolls` / `HasKeyMouse`
+  及五个 `*Text` 格式化属性；`Compute` 新增三个可选参数（默认 null，向后兼容）
+- 原「输入」卡片（仅按键 + KPM）被「键鼠统计」卡片取代，信息为其超集；
+  复制摘要的输出行由「输入」改为「键鼠」五项
+- 同步清理 `KeyboardDetailsViewModel` 中随之失效的成员：`AppKeyMouseRows` /
+  `AppKeyMouseItem` / `BuildAppKeyMouseRows` / `AppKeyUsage` / `AppKeyItem` /
+  `ProgramMouseStats` / `ProgramMouseStat` / `ComputeAppKeyUsage` /
+  `ComputeProgramMouseStats` / `NormalizeProcess`，以及只为它们服务的
+  分类快照加载代码（按应用维度的分类解析已随卡片一起迁走）
+
+### 修复：应用详情「输入/键鼠」统计恒为空
+
+根因：`AppDetailEngine.BuildAsync` 的键盘查询写的是
+`k.Date.CompareTo("yyyy-MM-dd")`——`DateTime` 没有 `CompareTo(string)` 重载，
+实际绑定到 `CompareTo(object)`，EF Core 无法翻译该调用；异常又被既有的
+`try-catch` 静默吞掉，`keyPresses` 永远落回 0，「输入」卡片因此从不显示。
+改为与 `KeyboardDetailsViewModel` 一致的 `DateTime` 范围比较
+（`k.Date >= period.Start.Date && k.Date < period.EndExclusive.Date`）。
+新增的鼠标查询直接采用正确写法。
+
+### 验证
+
+- Release 构建 0 错误（44 警告均为既有）；单测 **156/156** 通过
+  （新增 `Compute_WithMouse_KeyMouseFlagsAndTexts`、`Compute_KeyAndMouse_BothSidesTexts`）
+- publish 产物 FileVersion = 3.46.0.0（461 文件，语言目录收敛 zh-CN/en-us）；
+  部署 `D:\Tool\PChabit`（805 文件，源/目标 DLL 时间戳与字节数一致）
+- `scripts/verify_346.py` 冒烟（uiautomation 实点）：
+  - 应用排行 → 详情弹窗出现「键鼠统计」卡片，实测五项
+    `按键 290 / KPM 218 / 点击 941 / 移动 — / 滚动 3,742`；
+    旧「输入」卡片标题已不存在（精确匹配为 False）
+  - 「移动」显示「—」经数据库核实为**采集侧数据缺失**：`MouseSessions.TotalMoveDistance`
+    自 2026-09-16 起全部落 0（最后非零日 09-16，此前 6-20~9-16 有 21 天非零），
+    与本次改动无关；缺失侧按预期显示 `—`
+  - 键鼠详情页「按应用键鼠统计」已消失（False），「每小时键鼠统计」「鼠标统计」
+    分区保留（True）
+  - 新增 ERR / FTL = 0
+
+## [3.45.0] - 2026-10-13
+
+### 修复：应用分类收口为全项目唯一一套逻辑（键鼠页与应用排行不再打架）
+
+用户反馈「按应用键鼠统计」里的应用分类与「应用使用排行」不一致。
+
+根因：`KeyboardDetailsViewModel` 自己 `new AppSession { ProcessName = ... }` 去调
+`AppStatsEngine.ResolveCategory`，这个临时对象没有 `Category` 字段，于是解析链第二级
+「会话快照分类」恒为空 → 只要该进程不在用户映射表里，键鼠页就一律显示「未分类」，
+而应用排行读的是真实会话快照。实测近 7 天有 4 个进程因此分叉
+（`Min.exe` / `SearchHost.exe` / `ImeService.exe` / `PassTC.exe`，
+应用排行分别为 AI 助手 / 系统工具 / 其他 / 其他，键鼠页全是「未分类」）。
+
+- `AppStatsEngine` 新增**唯一分类解析入口**，全应用任何展示/统计场景都必须走它：
+  - `ResolveCategoryByProcess(processName, categoryMap, snapshotCategory)`：
+    用户映射表 → 会话快照分类 → `未分类`
+  - `ResolveCategoryWithSnapshot(processName, categoryMap, snapshotMap)`
+  - `LoadSnapshotCategoryMapAsync(db | dbFactory, start, endExclusive)`：
+    归一化进程名 → 该周期**最早**一条会话的 `Category`（与 `Compute` 里 `g.First()` 取法一致，
+    保证按进程聚合的页面与「应用使用排行」同源）
+  - 常量 `UncategorizedName`；原 `ResolveCategory(AppSession, map)` 改为委派到统一入口
+- `KeyboardDetailsViewModel`：键盘侧与鼠标侧都走统一入口（键盘行此前完全没有分类字段，
+  只在同时有鼠标行时才带出，现已补上）；顺带删掉 `ComputeProgramMouseStatsAsync`
+  里对 `MouseSessions` 的重复查询（同一份数据查了两遍）
+- `NetworkTrafficViewModel`、`App.DesktopWidget`：各自手写的
+  `TryGetValue + "未分类"` 兜底删除，改调统一入口（悬浮插件空间有限，
+  未分类仍只显示进程名，这属于展示裁剪而非第二套逻辑）
+
+### 变更：删除键鼠详情「鼠标详细记录」卡片
+
+该卡片逐小时罗列左/右/中键点击与移动/滚动，与上方「每小时键鼠统计」四方格、
+「按应用键鼠统计」完全重复，没有增量信息。同步删除 `MouseClickDetails` 集合、
+`MousePart.ClickDetails`、`ComputeMouseClickDetails` 与 `MouseClickDetail` 模型类。
+
+### 修复：应用排行「详情」弹窗底部内容被截断
+
+根因是布局：根 `Grid`（`MaxHeight="560"`）里直接放 `StackPanel > ScrollViewer`，
+`StackPanel` 会把「期望高度」（无限）透传给 `ScrollViewer`，
+于是内容超出 560px 后**既不出滚动条也被裁掉**——「日趋势」「常用窗口 Top」等卡片看不见。
+改为 `Grid` 三行（头部 `Auto` / 加载态 `Auto` / 内容区 `*`），内容区拿到确定高度即可正常滚动。
+
+### 验证
+
+- Release 构建 0 错误（24 警告，均为既有）；单测 154/154 通过
+- publish 467 文件，`PChabit.dll` FileVersion = **3.45.0.0**，时间戳 2026-10-13 06:56；
+  `deploy_to_tool.py` 部署 `D:\Tool\PChabit`（目标 DLL 时间戳与 publish 一致）
+- `scripts/verify_345.py` 冒烟（uiautomation 实点）：
+  - 键鼠详情页「按应用键鼠统计」正常渲染，行内分类标签实测为
+    `系统工具 / AI 助手 / 系统工具 / 办公 / …`（**不再是清一色「未分类」**）
+  - 「鼠标详细记录」卡片已消失（页面文本检测 `鼠标详细记录 not in t` 为 True）
+  - 应用排行 → 详情弹窗：`日趋势`、`小时分布`、`详细说明` 均在可视区内；
+    向下滚动后 `常用窗口 Top` 也进入可视区（此前该卡片根本无法看到，因容器不给高度）
+  - 新增 ERR / FTL = 0
+- 数据库口径复核（真实库）：旧逻辑会对 `PassTC.exe` / `Min.exe` / `LM Studio.exe`
+  显示「未分类」，新逻辑分别解析为「其他 / AI 助手 / AI 助手」，与应用排行一致
+
+### 顺带收口：全库同类分叉一并修掉（不止用户报的那一处）
+
+修完键鼠页后按「有分叉的地方一定不止一处」的原则全库复查，又查出 **3 处同源问题**：
+
+1. **桑基图**（`SankeyViewModel`）：同样用 `new AppSession { ProcessName = ... }` 空壳调解析，
+   空壳的 `Category` 恒为空 → 只要进程不在映射表就显示「未分类」。已改走
+   `ResolveCategoryWithSnapshot`（加载快照表覆盖所选日期范围）。
+2. **详情弹窗把「已解析的分类名」当快照喂回解析链**（`AppStatsTab.xaml.cs` 调
+   `AppDetailViewModel.Configure` 时传的是与 `AppDetailEngine.BuildAsync` 同名的 `category` 参数）：
+   弹窗内的「总时长/会话」等详情统计其实按 `category` 再解析一遍，
+   一旦传进去的是「未分类」，它会被当成兜底值**覆盖掉真实分类**。
+   现已改为传新增的 `AppStatItem.FallbackCategory`（映射未命中时的原始快照分类）。
+3. **兜底字面量 `"未分类"` 散落 6 处**（`AppDetailViewModel` 2 处、`AnalyticsEngine`、
+   `AppDetailEngine`、`AiPromptExportFormatter`、`AiCommandDispatcher` 3 处）——
+   只要有第二个兜底值出现，就必然出现第二套口径。现全部改为引用
+   `AppStatsEngine.UncategorizedName` 常量；`grep -rn '"未分类"' src/` 只应命中该常量定义处。
+
+---
+
+## [3.44.0] - 2026-10-13
+
+### 变更：键鼠详情「应用按键统计」+「按程序鼠标统计」合并为「按应用键鼠统计」
+
+原两张卡分别只列键盘或只列鼠标，同一应用要上下对照看两次。合并为一张以应用为主体的表：
+每行同时给出按键次数 / KPM / 点击 / 移动 / 滚动，缺失的一侧显示「—」；
+两侧按归一化进程名（去 `.exe`、小写、去空格）合并。
+
+---
+
+## [3.43.0] - 2026-10-13
+
+### 变更：键鼠详情页「每小时键鼠统计」长条图合并为四方格
+
+用户反馈键鼠详情页的「每小时按键分布」与「每小时鼠标统计」两张长条状图表
+过于占用空间：改为一张全宽「每小时键鼠统计」卡片，每小时一格四方格（12 列 × 2 行），
+每格上方为时段标签（00:00~23:00），下方两个数字——左侧按键次数、右侧蓝色鼠标点击次数，
+空格即补 0，占空间大幅缩小；鼠标移动/滚动等明细保留在格子悬停 ToolTip 中。
+
+- `KeyboardDetailsViewModel`：新增 `HourlyKeyMouseCell`（Hour/KeyPresses/MouseClicks/ToolTip）
+  与 `HourlyKeyMouseCells` 集合，键盘（`HourlyKeyItem.Hour` "8:00" 格式）与鼠标
+  （`HourlyMouseStat.Hour` int）按小时双向匹配合并，遍历 0..23 固定生成 24 格；
+  移除不再使用的 `HourlyKeyRows` / `HourlyMouseRows`（3.35.0 长条图数据投影）
+- `KeyboardDetailsTab.xaml`：删除两处 `HourlyBarChart` 长条图卡片；
+  新增全宽「每小时键鼠统计」四方格卡片（ItemsControl + ItemsWrapGrid 12 列）；
+  原「应用按键统计」「按程序鼠标统计」卡片改为占整行
+- 版本：3.42.0 → 3.43.0
+
+### 验证
+
+- Release 构建 0 错误；单测 154/154 通过
+- publish 部署 `D:\Tool\PChabit`（3.43.0.0，749 文件，DLL FileVersion 已核验）
+- `scripts\verify_343_hourly_grid.py` 冒烟通过：进入键鼠详情页、「每小时键鼠统计」卡存在、
+  旧「每小时按键分布」/「每小时鼠标统计」标题不存在、24 时段标签渲染、日志新增 ERR/FTL=0
+- 截图复核：键盘统计 KPI/按键排行/编辑统计区渲染正常；
+  四方格 12 列 × 2 行，时段 00:00~23:00，每格左=按键次数右=蓝色鼠标次数，数据按时段正确对齐
+
+---
+
+## [3.42.0] - 2026-10-13
+
+### 变更：AI 命令接口（/api HTTP 路由，AI 可直接操控软件）
+
+用户提出 AI 不应靠截图 + 模拟键鼠来操控软件，应能直接以命令形式调用。
+复用现有 WebSocketServer 的 8765 端口（HttpListener），新增 `/api/*` HTTP 路由，
+由 `AiCommandDispatcher` 分发：查询、写操作、设置修改全覆盖，返回 JSON。
+
+- 命令表（`http://localhost:8765/api/...`）：
+  - `GET /api/health` — 服务健康 + 版本 + PID
+  - `GET /api/apps/stats?period=today` — 应用统计（totalMinutes / activeApps / topApp / apps 排行 / 分类构成）
+  - `GET /api/apps/detail?process=xx&period=today` — 单应用详情（时长/会话/键鼠/硬件/小时分布/日趋势）
+  - `GET /api/apps/category?process=xx` / `PUT {"process","category"}` — 查询 / 修改应用分类
+    （空 category = 取消分类删除映射）
+  - `GET /api/apps/description?process=xx` / `PUT {"process","description"}` — 查询 / 修改应用说明（3.41.0 功能）
+  - `GET /api/summary?period=today` — 分析汇总（KPI / 构成 / 洞察 / 键鼠网页硬件流量指标）
+  - `GET /api/settings` / `PUT {"key","value"}` — 读取全部设置 / 修改单个设置
+    （白名单反射 + 类型转换，保存即生效并触发 UI 同步）
+- 周期参数：today / yesterday / thisweek / lastweek / last7days / last30days / thismonth
+- 实现：
+  - `AiCommandDispatcher`（Infrastructure.Services）：命令路由 + JSON 响应 +
+    统一 400/404/500 错误处理，注入 IDbContextFactory / ISettingsService / IServiceScopeFactory
+  - `WebSocketServer`：GET 分支按 `/api/` 前缀转 dispatcher，非 /api 仍走设置页；
+    构造注入 dispatcher（DI 工厂在 ServiceConfiguration 注册 Singleton）
+  - 复用既有引擎与服务：AppStatsEngine / AppDetailEngine / AnalyticsEngine /
+    ICategoryService / IAppDescriptionService / ISettingsService（设置反射白名单）
+- 版本：3.41.0 → 3.42.0
+
+### 验证
+
+- Release 构建 0 错误；单测 154/154 通过
+- publish 部署 `D:\Tool\PChabit`（3.42.0.0，749 文件，DLL FileVersion 已核验）
+- `scripts\verify_342_ai_api.py` 全命令冒烟通过（11 项 PASS）：
+  health 版本 3.42.0、stats/detail/summary/settings 查询、category/description/settings
+  写入链路（写入→读回→恢复原值）、404/400 错误路径、日志尾部 ERR/FTL=0
+- 说明：接口仅绑定本机回环（localhost:8765），信任级别与浏览器同步 WebSocket 一致
+
+---
+
+## [3.41.0] - 2026-10-13
+
+### 变更：应用详细说明（预置库 + 用户可编辑）
+
+按需求为应用添加「详细说明」：基于本机实际安装软件（注册表 + D:\Tool + E:\Game）
+批量撰写内置预置说明库，在现有「应用使用」页的应用列表与详情弹窗中展示说明，
+并允许用户手动修改（修改后转为用户条目，预置种子不再覆盖）。
+
+- 数据层：新增 `AppDescriptions` 表（规范化进程名唯一索引 + 说明 + `IsUserEdited` 标记）
+  - `DefaultAppDescriptions` 预置库：65 条中文说明，覆盖 AI 助手 / 开发 / 浏览器 /
+    沟通 / 影音 / 下载 / 系统工具 / 游戏 / 办公 9 大类本机实际软件
+  - `AppDescriptionService`：查询（单条 / 批量）/ 保存（upsert 置用户标记）/ 启动种子
+    （跳过用户编辑行，其余增量补齐）
+  - 建表走 DatabaseInitializer 手动迁移（`MigrateAppDescriptionTablesAsync`），
+    与 EF 模型双路径一致（沿用陷阱 12 / 20 模式）
+- UI：应用排行列表行在名称下显示说明（一行省略）；应用详情弹窗新增「详细说明」
+  卡片（完整正文 + 内联编辑：编辑说明 / 保存 / 取消，见陷阱 41）
+- 版本：3.40.0 → 3.41.0
+
+### 验证
+
+- Release 构建 0 错误；单测 154/154 通过
+- publish 部署 `D:\Tool\PChabit`（3.41.0.0，467 程序文件）
+- UI Automation 冒烟：列表说明展示、详情弹窗说明卡片、内联编辑保存链路
+  （UI 更新 + 数据库 `IsUserEdited=1` + 日志）均通过；新增 ERR/FTL = 0
+- 数据库核查：AppDescriptions 65 行种子数据，关键进程全命中
+
+---
+
+## [3.40.0] - 2026-10-12
+
+### 变更：仪表盘卡片合并（按验收反馈迭代）
+
+用户反馈仪表盘信息分散，信息量不大的内容各自独占独立卡片空间。
+本次把「应用使用 Top 5」与「网站访问 Top 5」两张独立全宽卡片
+合并为一张双栏卡片，同时把中部「最常访问的网站」并入
+「最常使用的应用（含分类分布）」卡片：
+
+- 「应用使用 Top 5」+「网站访问 Top 5」→ 一张卡片左右两栏，
+  各栏保留标题与「查看全部 →」跳转入口（应用统计页 / 网页访问页）
+- 中部「最常访问的网站」并入「最常使用的应用」卡片右侧，
+  左栏应用图标 + 分类分布、右栏最常访问网站，卡片间加分隔线
+- 纯布局合并：无绑定变更、无 ViewModel 改动，数据渲染与跳转行为不变
+
+### 验证
+
+- Release 构建 0 错误；publish 部署 `D:\Tool\PChabit`
+- 截图 + UI Automation 确认：双栏标题、列表项（应用/网站各 Top 5）数据完整渲染
+
+---
+
 ## [3.39.0] - 2026-10-11
 
 ### 变更：还原浏览历史域名的点击下钻

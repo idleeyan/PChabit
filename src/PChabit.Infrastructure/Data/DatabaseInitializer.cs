@@ -96,6 +96,7 @@ public static class DatabaseInitializer
 
             await SafeMigrateAsync(connection, MigrateProgramCategoryTablesAsync, "ProgramCategory");
             await SafeMigrateAsync(connection, MigrateWebsiteCategoryTablesAsync, "WebsiteCategory");
+            await SafeMigrateAsync(connection, MigrateAppDescriptionTablesAsync, "AppDescription");
             await SafeMigrateAsync(connection, MigrateGuidTablesAsync, "GuidTables");
             await SafeMigrateAsync(connection, MigrateBackupTablesAsync, "BackupTables");
             await SafeMigrateAsync(connection, MigrateAnalysisTablesAsync, "AnalysisTables");
@@ -254,6 +255,39 @@ public static class DatabaseInitializer
         }
     }
     
+    private static async Task MigrateAppDescriptionTablesAsync(System.Data.Common.DbConnection connection)
+    {
+        var tables = new HashSet<string>();
+        
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT name FROM sqlite_master WHERE type='table'";
+            using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                tables.Add(reader.GetString(0));
+            }
+        }
+        
+        if (!tables.Contains("AppDescriptions"))
+        {
+            Log.Information("创建 AppDescriptions 表");
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = @"
+                CREATE TABLE AppDescriptions (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ProcessName TEXT NOT NULL,
+                    Description TEXT NOT NULL DEFAULT '',
+                    IsUserEdited INTEGER NOT NULL DEFAULT 0,
+                    CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+                    UpdatedAt TEXT
+                );
+                CREATE UNIQUE INDEX IX_AppDescriptions_ProcessName ON AppDescriptions (ProcessName);";
+            await createCmd.ExecuteNonQueryAsync();
+            Log.Information("AppDescriptions 表创建成功");
+        }
+    }
+
     private static async Task MigrateTableColumnsAsync(System.Data.Common.DbConnection connection, string tableName, string columnName, string columnDefinition)
     {
         var columns = new HashSet<string>();
@@ -768,6 +802,8 @@ public static class DatabaseInitializer
         // 用户若从未打开设置页，新装机器进「分类管理」会是空列表。
         await Services.CategoryService.EnsureCatalogSeededAsync(context);
         await Services.WebsiteCategoryService.EnsureCatalogSeededAsync(context);
+        // 应用详细说明预置库种子（3.41.0）
+        await Services.AppDescriptionService.EnsureDescriptionsSeededAsync(context);
     }
     
     public static async Task MigrateAsync(PChabitDbContext context)

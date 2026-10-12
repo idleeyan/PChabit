@@ -146,52 +146,50 @@
                 </Border>
             </Grid>
             
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                
-                <!-- 每小时按键分布 -->
-                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="16">
-                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时按键分布" ToolTipService.ToolTip="每小时的按键次数分布" />
-                        <!-- 3.35.0：改用共享图表控件（原为自写 ItemsControl + ProgressBar，Maximum 硬编码 1000） -->
-                        <controls:HourlyBarChart
-                            EmptyText="所选日期暂无按键数据"
-                            LabelWidth="50"
-                            RowSpacing="4"
-                            ValueWidth="70"
-                            Rows="{x:Bind ViewModel.HourlyKeyRows, Mode=OneWay}" />
-                    </StackPanel>
-                </Border>
-                
-                <!-- 应用按键统计 -->
-                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="16">
-                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="应用按键统计" ToolTipService.ToolTip="各应用的按键使用统计" />
-                        <Grid Margin="0,4">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="80" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
-                            <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="应用名称" />
-                            <TextBlock Grid.Column="1" FontSize="11" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="按键次数" />
-                            <TextBlock Grid.Column="2" FontSize="11" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="KPM" />
-                        </Grid>
-                        <ListView ItemsSource="{x:Bind ViewModel.AppKeyUsage, Mode=OneWay}" SelectionMode="None">
-                            <ListView.ItemTemplate>
-                                <DataTemplate x:DataType="viewModel:AppKeyItem">
-                                    <Grid Margin="0,4">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="80" /><ColumnDefinition Width="80" /></Grid.ColumnDefinitions>
-                                        <TextBlock Text="{x:Bind ProcessName}" />
-                                        <TextBlock Grid.Column="1" HorizontalAlignment="Right" Text="{x:Bind KeyPresses}" />
-                                        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind AvgSpeed}" />
+            <!-- ===== 每小时键鼠统计（3.43.0：长条图合并为四方格，每格左=按键、右=鼠标两个数字） ===== -->
+            <Border Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
+                <StackPanel Spacing="12">
+                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时键鼠统计" ToolTipService.ToolTip="每格上方为时段，左侧数字为按键次数，右侧蓝色数字为鼠标点击次数；悬停查看鼠标移动/滚动明细" />
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.HourlyKeyMouseCells, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <ItemsWrapGrid Orientation="Horizontal" MaximumRowsOrColumns="12" ItemWidth="92" ItemHeight="52" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="viewModel:HourlyKeyMouseCell">
+                                <Border
+                                    Margin="0,0,8,8"
+                                    Padding="8,4"
+                                    Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    ToolTipService.ToolTip="{x:Bind ToolTip}">
+                                    <Grid RowSpacing="2">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Hour}" />
+                                        <Grid Grid.Row="1" ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock FontSize="14" FontWeight="SemiBold" Text="{x:Bind KeyPresses}" ToolTipService.ToolTip="按键次数" />
+                                            <TextBlock Grid.Column="1" FontSize="14" FontWeight="SemiBold" Foreground="#0078D4" Text="{x:Bind MouseClicks}" ToolTipService.ToolTip="鼠标点击次数" />
+                                        </Grid>
                                     </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </StackPanel>
-                </Border>
-            </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
             
+            <!-- 3.46.0：原「按应用键鼠统计」卡片已删除，并入应用详情弹窗（AppDetailDialog「键鼠统计」卡片，单应用视角） -->
+
             <!-- ===== 鼠标统计区域 ===== -->
             <TextBlock
                 FontSize="16"
@@ -264,86 +262,8 @@
                 </Border>
             </Grid>
             
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                
-                <!-- 每小时鼠标统计 -->
-                <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="16">
-                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="每小时鼠标统计" ToolTipService.ToolTip="每小时的鼠标点击、移动和滚动统计" />
-                        <controls:HourlyBarChart
-                            EmptyText="所选日期暂无鼠标数据"
-                            LabelWidth="50"
-                            RowSpacing="4"
-                            ValueWidth="140"
-                            Rows="{x:Bind ViewModel.HourlyMouseRows, Mode=OneWay}" />
-                    </StackPanel>
-                </Border>
-                
-                <!-- 按程序鼠标统计 -->
-                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="16">
-                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="按程序鼠标统计" ToolTipService.ToolTip="各应用的鼠标使用统计" />
-                        <ListView ItemsSource="{x:Bind ViewModel.ProgramMouseStats, Mode=OneWay}" SelectionMode="None" MaxHeight="300">
-                            <ListView.ItemTemplate>
-                                <DataTemplate x:DataType="viewModel:ProgramMouseStat">
-                                    <Grid Padding="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel>
-                                            <TextBlock FontWeight="Medium" Text="{x:Bind ProcessName}" />
-                                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Category}" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Spacing="4">
-                                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="点击:" /><Run Text="{x:Bind ClickCount}" /></TextBlock>
-                                            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="移动:" /><Run Text="{x:Bind MoveDistance}" /><Run Text="px" /></TextBlock>
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="2" FontSize="12" Foreground="{ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"><Run Text="滚动:" /><Run Text="{x:Bind ScrollCount}" /></TextBlock>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListView.ItemTemplate>
-                        </ListView>
-                    </StackPanel>
-                </Border>
-            </Grid>
-            
-            <!-- 鼠标详细记录 -->
-            <Border Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
-                <StackPanel Spacing="16">
-                    <TextBlock FontSize="16" FontWeight="SemiBold" Text="鼠标详细记录" />
-                    <ListView ItemsSource="{x:Bind ViewModel.MouseClickDetails, Mode=OneWay}" SelectionMode="None" MaxHeight="300">
-                        <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="viewModel:MouseClickDetail">
-                                <Grid Padding="8" ColumnSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock VerticalAlignment="Center">
-                                        <Run Text="{x:Bind Date, Converter={StaticResource DateToStringConverter}}" />
-                                        <Run Text=" " /><Run Text="{x:Bind Hour}" /><Run Text=":00" />
-                                    </TextBlock>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Foreground="#107C10"><Run Text="左:" /><Run Text="{x:Bind LeftClicks}" /></TextBlock>
-                                        <TextBlock Foreground="#E81123"><Run Text="右:" /><Run Text="{x:Bind RightClicks}" /></TextBlock>
-                                        <TextBlock Foreground="#FF8C00"><Run Text="中:" /><Run Text="{x:Bind MiddleClicks}" /></TextBlock>
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="2" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="移动:" /><Run Text="{x:Bind MoveDistance}" /><Run Text="px" /></TextBlock>
-                                    <TextBlock Grid.Column="3" Foreground="{ThemeResource TextFillColorSecondaryBrush}"><Run Text="滚动:" /><Run Text="{x:Bind Scrolls}" /></TextBlock>
-                                </Grid>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </StackPanel>
-            </Border>
+            <!-- 3.46.0：原「按程序鼠标统计」「按应用键鼠统计」均已删除，按应用视角的键鼠统计并入应用详情弹窗 -->
+            <!-- 3.45.0：原「鼠标详细记录」卡片已删除（与「每小时键鼠统计」重复且无意义） -->
         </StackPanel>
     </ScrollViewer>
 </UserControl>

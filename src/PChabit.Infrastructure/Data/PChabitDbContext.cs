@@ -31,6 +31,7 @@ public class PChabitDbContext : DbContext
     public DbSet<NetworkTrafficSample> NetworkTrafficSamples { get; set; }
     public DbSet<ProcessNetworkUsage> ProcessNetworkUsages { get; set; }
     public DbSet<StickyNote> StickyNotes { get; set; }
+    public DbSet<AppDescription> AppDescriptions { get; set; }
 
     public PChabitDbContext(DbContextOptions<PChabitDbContext> options) : base(options)
     {
@@ -67,6 +68,16 @@ public class PChabitDbContext : DbContext
             ConfigureHardwareSample(modelBuilder);
             ConfigureNetworkTraffic(modelBuilder);
             ConfigureStickyNote(modelBuilder);
+            ConfigureAppDescription(modelBuilder);
+    }
+
+    private static void ConfigureAppDescription(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AppDescription>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ProcessName).IsUnique();
+        });
     }
     
     private static void ConfigureAppSession(ModelBuilder modelBuilder)

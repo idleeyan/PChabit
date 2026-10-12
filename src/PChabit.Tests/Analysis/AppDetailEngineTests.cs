@@ -46,6 +46,10 @@ public class AppDetailEngineTests
         report.KeysPerHour.Should().NotBeNull();
         report.HasInput.Should().BeTrue();
         report.HasHardware.Should().BeFalse();
+        // 3.46.0：键鼠卡片（自键鼠页并入）——键盘侧有数据即展示
+        report.HasKeyMouse.Should().BeTrue();
+        report.KeyPressesText.Should().Be(5000.ToString("N0"));
+        report.MouseClicksText.Should().Be("—");
     }
 
     [Fact]
@@ -57,6 +61,49 @@ public class AppDetailEngineTests
             "x", "X", "其他", "其他", null, null);
         report.HasData.Should().BeFalse();
         report.TotalMinutes.Should().Be(0);
+        report.HasKeyMouse.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Compute_WithMouse_KeyMouseFlagsAndTexts()
+    {
+        var period = new AnalyticsPeriod(new DateTime(2026, 9, 14), new DateTime(2026, 9, 21), "本周");
+        var cur = new List<AppSession> { S("chrome", new DateTime(2026, 9, 16, 10, 0, 0), 60) };
+        var report = AppDetailEngine.Compute(
+            period, period.Previous(), cur, new List<AppSession>(),
+            "chrome", "Chrome", "办公", "办公",
+            keyPresses: null, hardwareSamples: null,
+            mouseClicks: 1234, mouseMoveDistance: 567000, mouseScrolls: 890);
+
+        // 仅鼠标侧有数据：卡片仍展示，键盘侧显示 —
+        report.HasKeyMouse.Should().BeTrue();
+        report.HasInput.Should().BeFalse();
+        report.KeyPressesText.Should().Be("—");
+        report.KeysPerHourText.Should().Be("—");
+        report.MouseClicksText.Should().Be(1234.ToString("N0"));
+        report.MouseMoveText.Should().Be($"{567000:N0} px");
+        report.MouseScrollsText.Should().Be(890.ToString("N0"));
+    }
+
+    [Fact]
+    public void Compute_KeyAndMouse_BothSidesTexts()
+    {
+        var period = new AnalyticsPeriod(new DateTime(2026, 9, 14), new DateTime(2026, 9, 21), "本周");
+        var cur = new List<AppSession> { S("devenv", new DateTime(2026, 9, 16, 10, 0, 0), 120) };
+        var report = AppDetailEngine.Compute(
+            period, period.Previous(), cur, new List<AppSession>(),
+            "devenv", "VS", "开发", "开发",
+            keyPresses: 3600, hardwareSamples: null,
+            mouseClicks: 800, mouseMoveDistance: 12000, mouseScrolls: 60);
+
+        report.HasKeyMouse.Should().BeTrue();
+        report.HasInput.Should().BeTrue();
+        report.KeysPerHour.Should().BeApproximately(1800, 0.1); // 3600 / 2h
+        report.KeyPressesText.Should().Be(3600.ToString("N0"));
+        report.KeysPerHourText.Should().Be("1800");
+        report.MouseClicksText.Should().Be(800.ToString("N0"));
+        report.MouseMoveText.Should().Be($"{12000:N0} px");
+        report.MouseScrollsText.Should().Be(60.ToString("N0"));
     }
 
     [Fact]

@@ -284,9 +284,13 @@ public partial class App
             }
         }
 
-        var normalized = AppStatsEngine.NormalizeProcessName(process);
-        var category = _widgetCategoryMap.TryGetValue(normalized, out var entry) ? entry.Name : string.Empty;
-        return (process, category);
+        // 3.45.0：走统一分类入口，与「应用使用排行」同源；
+        // 悬浮插件空间有限，「未分类」不显示（只显示进程名），这里仅做展示裁剪。
+        var category = AppStatsEngine.ResolveCategoryByProcess(process, _widgetCategoryMap).Name;
+        return (process,
+            string.Equals(category, AppStatsEngine.UncategorizedName, StringComparison.Ordinal)
+                ? string.Empty
+                : category);
     }
 
     /// <summary>温度读数规整：无权限/无传感器时常返回 0，超量程视为无效，统一显示 "--"。</summary>

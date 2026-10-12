@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
-using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
@@ -52,23 +51,14 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     public ObservableCollection<KeyUsageItem> KeyUsageList { get; } = new();
     public ObservableCollection<HourlyKeyItem> HourlyData { get; } = new();
     public ObservableCollection<ShortcutItem> TopShortcuts { get; } = new();
-    public ObservableCollection<AppKeyItem> AppKeyUsage { get; } = new();
     public ObservableCollection<HourlyMouseStat> HourlyMouseStats { get; } = new();
-    public ObservableCollection<ProgramMouseStat> ProgramMouseStats { get; } = new();
-    public ObservableCollection<MouseClickDetail> MouseClickDetails { get; } = new();
 
     /// <summary>
-    /// 「每小时按键分布」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>）。
-    /// 用可观察集合：控件自行订阅集合变化。
-    /// 原实现进度条上限硬编码 1000，此处由控件按数据自动取值。
+    /// 「每小时键鼠统计」四方格数据（3.43.0）：每格一个小方块，
+    /// 左侧按键次数、右侧鼠标点击次数两个数字，取代 3.35.0 的两张长条图。
+    /// 遍历 0..23 生成固定 24 格，缺失时段补 0，保证格子整齐对齐。
     /// </summary>
-    public ObservableCollection<Controls.HourlyBarRow> HourlyKeyRows { get; } = new();
-
-    /// <summary>
-    /// 「每小时鼠标统计」图表数据（3.35.0 投影到 <see cref="HourlyBarRow"/>）。
-    /// 原显示文本为组合式「点击: N | 距离: Npx」，此处用 <c>Display</c> 保留该信息。
-    /// </summary>
-    public ObservableCollection<Controls.HourlyBarRow> HourlyMouseRows { get; } = new();
+    public ObservableCollection<HourlyKeyMouseCell> HourlyKeyMouseCells { get; } = new();
     
     // === Phase 1 中间数据（纯 POCO，无 WinRT 类型）===
 
@@ -89,7 +79,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         public List<KeyUsageItem> KeyUsage = new();
         public List<HourlyKeyItem> Hourly = new();
         public List<ShortcutItem> Shortcuts = new();
-        public List<AppKeyItem> AppKey = new();
     }
     
     public sealed class MousePart
@@ -102,8 +91,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         public int Scrolls;
         public string AverageClickInterval = "无数据";
         public List<HourlyMouseStat> Hourly = new();
-        public List<ProgramMouseStat> Program = new();
-        public List<MouseClickDetail> ClickDetails = new();
     }
     
     // === DbSafeViewModel 抽象方法 ===
@@ -134,7 +121,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         ComputeKeyUsage(keySessions, k);
         ComputeHourlyData(keySessions, k);
         ComputeShortcuts(keySessions, k);
-        ComputeAppKeyUsage(keySessions, k);
 
         // 鼠标数据
         var mouseSessions = await dbContext.MouseSessions
@@ -163,8 +149,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         }
         
         ComputeHourlyMouseStats(mouseSessions, m);
-        await ComputeProgramMouseStatsAsync(selectedDate, m, dbContext);
-        ComputeMouseClickDetails(mouseSessions, m);
 
         return stats;
     }
@@ -186,16 +170,12 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
             KeyUsageList.Add(item);
         }
         HourlyData.Clear();
-        HourlyKeyRows.Clear();
         foreach (var item in k.Hourly)
         {
             HourlyData.Add(item);
-            HourlyKeyRows.Add(new Controls.HourlyBarRow(item.Hour, item.Presses));
         }
         TopShortcuts.Clear();
         foreach (var item in k.Shortcuts) TopShortcuts.Add(item);
-        AppKeyUsage.Clear();
-        foreach (var item in k.AppKey) AppKeyUsage.Add(item);
 
         var m = stats.Mouse;
         TotalClicks = m.TotalClicks.ToString("N0");
@@ -207,19 +187,11 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         AverageClickInterval = m.AverageClickInterval;
         
         HourlyMouseStats.Clear();
-        HourlyMouseRows.Clear();
         foreach (var item in m.Hourly)
         {
             HourlyMouseStats.Add(item);
-            HourlyMouseRows.Add(new Controls.HourlyBarRow(
-                $"{item.Hour}:00",
-                item.ClickCount,
-                $"{item.ClickCount} 次 · {item.MoveDistance:N0} px"));
         }
-        ProgramMouseStats.Clear();
-        foreach (var item in m.Program) ProgramMouseStats.Add(item);
-        MouseClickDetails.Clear();
-        foreach (var item in m.ClickDetails) MouseClickDetails.Add(item);
+        BuildHourlyKeyMouseCells(k.Hourly, m.Hourly);
     }
     
     // === 纯数据计算辅助方法 ===
@@ -278,17 +250,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
             stats.Shortcuts.Add(new ShortcutItem { Shortcut = s.Key, Count = s.Value });
     }
     
-    private static void ComputeAppKeyUsage(List<Core.Entities.KeyboardSession> sessions, KeyboardPart stats)
-    {
-        var appGroups = sessions
-            .Where(s => !string.IsNullOrEmpty(s.ProcessName))
-            .GroupBy(s => s.ProcessName!)
-            .Select(g => new { ProcessName = g.Key, TotalPresses = g.Sum(s => s.TotalKeyPresses), AvgSpeed = g.Average(s => s.AverageTypingSpeed) })
-            .OrderByDescending(x => x.TotalPresses).Take(10);
-        foreach (var app in appGroups)
-            stats.AppKey.Add(new AppKeyItem { ProcessName = app.ProcessName, KeyPresses = app.TotalPresses, AvgSpeed = $"{app.AvgSpeed:F1}" });
-    }
-    
     private static void ComputeHourlyMouseStats(List<Core.Entities.MouseSession> sessions, MousePart stats)
     {
         foreach (var group in sessions.GroupBy(s => s.Hour).OrderBy(g => g.Key))
@@ -303,50 +264,41 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
             });
         }
     }
-    
-    private async Task ComputeProgramMouseStatsAsync(DateTime selectedDate, MousePart stats, PChabitDbContext dbContext)
-    {
-        try
-        {
-            var sessions = await dbContext.MouseSessions
-                .AsNoTracking()
-                .Where(s => s.Date >= selectedDate && s.Date < selectedDate.AddDays(1))
-                .ToListAsync();
-            
-            var programStats = sessions
-                .Where(s => !string.IsNullOrEmpty(s.ProcessName))
-                .GroupBy(s => s.ProcessName!)
-                .Select(g => new { ProcessName = g.Key, ClickCount = g.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount), MoveDistance = g.Sum(s => s.TotalMoveDistance), ScrollCount = g.Sum(s => s.ScrollCount) })
-                .OrderByDescending(g => g.ClickCount).ToList();
-            
-            var categories = await dbContext.ProgramCategories
-                .AsNoTracking()
-                .Include(c => c.ProgramMappings)
-                .Where(c => c.IsActive)
-                .ToListAsync();
-            var categoryMap = AppStatsEngine.BuildCategoryMap(categories);
 
-            foreach (var program in programStats)
-            {
-                var (category, _) = AppStatsEngine.ResolveCategory(
-                    new Core.Entities.AppSession { ProcessName = program.ProcessName }, categoryMap);
-                stats.Program.Add(new ProgramMouseStat { ProcessName = program.ProcessName, Category = category, ClickCount = program.ClickCount, MoveDistance = program.MoveDistance, ScrollCount = program.ScrollCount, Duration = TimeSpan.Zero });
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载鼠标程序统计失败");
-        }
-    }
-    
-    private static void ComputeMouseClickDetails(List<Core.Entities.MouseSession> sessions, MousePart stats)
+    /// <summary>
+    /// 合并键盘/鼠标小时数据为固定 24 格四方格（3.43.0）。
+    /// 键盘 <see cref="HourlyKeyItem.Hour"/> 形如 "8:00"，鼠标 <see cref="HourlyMouseStat.Hour"/> 为 int；
+    /// 以小时为键双向匹配，缺失时段补 0。
+    /// </summary>
+    private void BuildHourlyKeyMouseCells(List<HourlyKeyItem> keys, List<HourlyMouseStat> mouse)
     {
-        foreach (var session in sessions.OrderByDescending(s => s.Hour).Take(50))
+        HourlyKeyMouseCells.Clear();
+
+        var keyByHour = new Dictionary<int, HourlyKeyItem>();
+        foreach (var k in keys)
         {
-            stats.ClickDetails.Add(new MouseClickDetail { Date = session.Date, Hour = session.Hour, LeftClicks = session.LeftClickCount, RightClicks = session.RightClickCount, MiddleClicks = session.MiddleClickCount, MoveDistance = session.TotalMoveDistance, Scrolls = session.ScrollCount });
+            var idx = k.Hour.IndexOf(':');
+            if (idx > 0 && int.TryParse(k.Hour[..idx], out var h))
+                keyByHour[h] = k;
+        }
+        var mouseByHour = mouse.ToDictionary(x => x.Hour, x => x);
+
+        for (var h = 0; h < 24; h++)
+        {
+            keyByHour.TryGetValue(h, out var keyItem);
+            mouseByHour.TryGetValue(h, out var mouseItem);
+            HourlyKeyMouseCells.Add(new HourlyKeyMouseCell
+            {
+                Hour = $"{h:D2}:00",
+                KeyPresses = keyItem?.Presses ?? 0,
+                MouseClicks = mouseItem?.ClickCount ?? 0,
+                ToolTip = mouseItem == null
+                    ? $"按键 {keyItem?.Presses ?? 0} 次"
+                    : $"按键 {keyItem?.Presses ?? 0} 次 · 鼠标点击 {mouseItem.ClickCount} 次 · 移动 {mouseItem.MoveDistance:N0} px · 滚动 {mouseItem.ScrollCount} 次"
+            });
         }
     }
-    
+
     private static string GetKeyName(int vkCode)
     {
         return vkCode switch
@@ -397,18 +349,17 @@ public class KeyUsageItem
 }
 
 public class HourlyKeyItem { public string Hour { get; init; } = string.Empty; public int Presses { get; init; } public string Speed { get; init; } = string.Empty; }
-public class ShortcutItem { public string Shortcut { get; init; } = string.Empty; public int Count { get; init; } }
-public class AppKeyItem { public string ProcessName { get; init; } = string.Empty; public int KeyPresses { get; init; } public string AvgSpeed { get; init; } = string.Empty; }
 
-public class ProgramMouseStat : ObservableObject
+/// <summary>「每小时键鼠统计」四方格单元格（3.43.0）：左=按键次数，右=鼠标点击次数。</summary>
+public class HourlyKeyMouseCell
 {
-    public string ProcessName { get; set; } = string.Empty;
-    public string Category { get; set; } = string.Empty;
-    public int ClickCount { get; set; }
-    public double MoveDistance { get; set; }
-    public int ScrollCount { get; set; }
-    public TimeSpan Duration { get; set; }
+    public string Hour { get; init; } = string.Empty;
+    public int KeyPresses { get; init; }
+    public int MouseClicks { get; init; }
+    public string ToolTip { get; init; } = string.Empty;
 }
+
+public class ShortcutItem { public string Shortcut { get; init; } = string.Empty; public int Count { get; init; } }
 
 public class HourlyMouseStat : ObservableObject
 {
@@ -417,15 +368,4 @@ public class HourlyMouseStat : ObservableObject
     public double MoveDistance { get; set; }
     public int ScrollCount { get; set; }
     public string Label { get; set; } = string.Empty;
-}
-
-public class MouseClickDetail : ObservableObject
-{
-    public DateTime Date { get; set; }
-    public int Hour { get; set; }
-    public int LeftClicks { get; set; }
-    public int RightClicks { get; set; }
-    public int MiddleClicks { get; set; }
-    public double MoveDistance { get; set; }
-    public int Scrolls { get; set; }
 }

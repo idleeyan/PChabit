@@ -12,6 +12,7 @@ public class WebSocketServer : IDisposable
     private readonly Dictionary<string, WebSocket> _clients = new();
     private readonly Dictionary<string, string> _clientBrowserNames = new();
     private readonly CancellationTokenSource _cts;
+    private readonly AiCommandDispatcher? _aiCommandDispatcher;
     private bool _isRunning;
     private readonly object _lock = new();
 
@@ -52,12 +53,13 @@ public class WebSocketServer : IDisposable
     /// <summary>供 Moq/设计时使用。</summary>
     public WebSocketServer() : this(8765) { }
 
-    public WebSocketServer(int port = 8765)
+    public WebSocketServer(int port = 8765, AiCommandDispatcher? aiCommandDispatcher = null)
     {
         Port = port;
         _listener = new HttpListener();
         _listener.Prefixes.Add($"http://localhost:{port}/");
         _cts = new CancellationTokenSource();
+        _aiCommandDispatcher = aiCommandDispatcher;
     }
     
     public virtual Task StartAsync()
@@ -117,6 +119,12 @@ public class WebSocketServer : IDisposable
                 if (context.Request.IsWebSocketRequest)
                 {
                     _ = Task.Run(() => HandleClientAsync(context, cancellationToken), cancellationToken);
+                }
+                else if (context.Request.Url?.AbsolutePath.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) == true
+                         && _aiCommandDispatcher != null)
+                {
+                    // AI 命令接口（3.42.0）：/api/* → AiCommandDispatcher，与浏览器 WebSocket 通道共用端口
+                    _ = Task.Run(() => _aiCommandDispatcher.HandleAsync(context), cancellationToken);
                 }
                 else if (context.Request.HttpMethod == "GET")
                 {
