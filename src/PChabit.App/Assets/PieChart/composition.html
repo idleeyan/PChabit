@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <script src="echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #wrap {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            width: 100%;
+            height: 100%;
+        }
+        .pane {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            height: 100%;
+        }
+        .pane + .pane { border-left: 1px solid var(--border, #ddd); }
+        .pane-title {
+            padding: 10px 14px 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text, #333);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .chart { flex: 1; min-height: 0; }
+        .empty {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 13px;
+            background: transparent;
+        }
+        /* 与 XAML 卡片 CardBackgroundFillColorDefault 取齐，避免透明区透出 Mica 灰底 */
+        @media (prefers-color-scheme: dark) {
+            html, body { background: #2b2b2b; }
+            :root {
+                --text: #e8e8e8;
+                --sub: #9aa0a6;
+                --border: #3c4043;
+                --tooltip-bg: rgba(32,33,36,0.96);
+                --slice-border: #2b2b2b;
+            }
+            .empty { color: #777; }
+        }
+        @media (prefers-color-scheme: light) {
+            html, body { background: #ffffff; }
+            :root {
+                --text: #333;
+                --sub: #666;
+                --border: #e5e5e5;
+                --tooltip-bg: rgba(255,255,255,0.96);
+                --slice-border: #ffffff;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="wrap">
+        <div class="pane">
+            <div class="pane-title">分类构成</div>
+            <div id="chart-app" class="chart"></div>
+            <div id="empty-app" class="empty"><div>暂无数据</div></div>
+        </div>
+        <div class="pane">
+            <div class="pane-title">网页分类构成</div>
+            <div id="chart-web" class="chart"></div>
+            <div id="empty-web" class="empty"><div>暂无数据</div></div>
+        </div>
+    </div>
+    <script>
+        var appChart = null;
+        var webChart = null;
+        var __payload = null;
+
+        // 与应用 Token 对齐的色板（#3B82F6 #10B981 #F59E0B ...）
+        var PALETTE = ['#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#60A5FA', '#EF4444', '#14B8A6', '#F97316', '#6366F1', '#EC4899'];
+
+        function cssVar(name) {
+            return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
+
+        // 两个饼图共用「分类名 -> 颜色」映射，保证同分类同色，便于本机 vs 线上对比
+        function buildColorMap(appData, webData) {
+            var map = {};
+            var idx = 0;
+            (appData || []).concat(webData || []).forEach(function (item) {
+                if (!(item.name in map)) {
+                    map[item.name] = PALETTE[idx % PALETTE.length];
+                    idx++;
+                }
+            });
+            return map;
+        }
+
+        function formatMinutes(mins) {
+            mins = mins || 0;
+            var h = Math.floor(mins / 60);
+            var m = Math.round(mins % 60);
+            return h > 0 ? h + '小时' + m + '分钟' : m + '分钟';
+        }
+
+        function renderOne(chart, elId, emptyId, data, colorMap) {
+            var el = document.getElementById(elId);
+            var empty = document.getElementById(emptyId);
+
+            if (!data || data.length === 0) {
+                if (chart && !chart.isDisposed()) chart.clear();
+                el.style.visibility = 'hidden';
+                empty.style.display = 'flex';
+                return chart;
+            }
+
+            el.style.visibility = 'visible';
+            empty.style.display = 'none';
+
+            if (!chart || chart.isDisposed()) {
+                chart = echarts.init(el);
+            }
+
+            var pieData = data.map(function (item) {
+                return {
+                    name: item.name,
+                    value: item.value,
+                    itemStyle: { color: colorMap[item.name] }
+                };
+            });
+
+            chart.setOption({
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: cssVar('--tooltip-bg'),
+                    borderColor: cssVar('--border'),
+                    borderWidth: 1,
+                    textStyle: { color: cssVar('--text') },
+                    formatter: function (params) {
+                        return '<div style="padding:4px 8px;"><strong style="font-size:13px;">' + params.name + '</strong><br/>'
+                            + '<span style="color:' + cssVar('--sub') + ';">' + formatMinutes(params.value) + '</span><br/>'
+                            + '<span style="color:' + cssVar('--sub') + ';">占比: ' + params.percent.toFixed(1) + '%</span></div>';
+                    }
+                },
+                legend: {
+                    orient: 'vertical',
+                    right: 6,
+                    top: 'center',
+                    itemWidth: 10,
+                    itemHeight: 10,
+                    itemGap: 6,
+                    textStyle: { fontSize: 11, color: cssVar('--text') },
+                    formatter: function (name) {
+                        var item = data.find(function (d) { return d.name === name; });
+                        if (!item) return name;
+                        var mins = item.value || 0;
+                        var h = Math.floor(mins / 60);
+                        var m = Math.round(mins % 60);
+                        var timeStr = h > 0 ? h + 'h' + m + 'm' : Math.round(mins) + 'm';
+                        return name.length > 6 ? name.slice(0, 6) + '…' : name;
+                    },
+                    tooltip: { show: true }
+                },
+                series: [{
+                    type: 'pie',
+                    radius: ['42%', '66%'],
+                    center: ['32%', '52%'],
+                    avoidLabelOverlap: true,
+                    itemStyle: {
+                        borderRadius: 5,
+                        borderColor: cssVar('--slice-border'),
+                        borderWidth: 2
+                    },
+                    label: { show: false },
+                    labelLine: { show: false },
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 16,
+                            shadowColor: 'rgba(0,0,0,0.3)'
+                        }
+                    },
+                    data: pieData
+                }]
+            }, true);
+
+            return chart;
+        }
+
+        function renderComposition(payload) {
+            try {
+                __payload = payload || { app: [], web: [] };
+                var appData = __payload.app || [];
+                var webData = __payload.web || [];
+                var colorMap = buildColorMap(appData, webData);
+
+                appChart = renderOne(appChart, 'chart-app', 'empty-app', appData, colorMap);
+                webChart = renderOne(webChart, 'chart-web', 'empty-web', webData, colorMap);
+                return 'success: ' + appData.length + '+' + webData.length;
+            } catch (e) {
+                return 'error: ' + e.message;
+            }
+        }
+
+        function resize() {
+            if (appChart && !appChart.isDisposed()) appChart.resize();
+            if (webChart && !webChart.isDisposed()) webChart.resize();
+        }
+        window.addEventListener('resize', resize);
+
+        // 主题切换时按最新数据重绘
+        if (window.matchMedia) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+                if (__payload) renderComposition(__payload);
+            });
+        }
+    </script>
+</body>
+</html>

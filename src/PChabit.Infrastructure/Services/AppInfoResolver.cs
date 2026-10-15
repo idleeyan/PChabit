@@ -6,7 +6,6 @@ namespace PChabit.Infrastructure.Services;
 
 public class AppInfoResolver
 {
-    private static readonly TimeSpan ProcessInfoTimeout = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan CacheExpiration = TimeSpan.FromMinutes(10);
 
     private static readonly ConcurrentDictionary<uint, ProcessInfoCache> _processCache = new();

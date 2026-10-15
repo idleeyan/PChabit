@@ -48,6 +48,17 @@ docs/
 /scripts/patch_bookmark_planner.py
 /scripts/patch_ext_apply.py
 
+# 冒烟截图与旧版本一次性验证/重构脚本（开发痕迹，仅保留当前版本验证脚本）
+/scripts/_shots/
+/scripts/refactor_*.py
+/scripts/shot_*.py
+/scripts/verify_*.py
+/scripts/_verify_*.py
+/scripts/__pycache__/
+
+# AI 创作工作缓存（图标重设计等过程的候选图/截图/brief，非仓库源）
+.creative-design/
+
 # 本地程序集残留（编译产物，非仓库源）
 PChabit.LocalAssembly/
 

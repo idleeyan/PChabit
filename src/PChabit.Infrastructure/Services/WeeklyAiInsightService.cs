@@ -140,12 +140,6 @@ public sealed class WeeklyAiInsightService : IWeeklyAiInsightService
         }
     }
 
-    private static string InjectTrajectory(string packJson, List<HabitTrajectoryBuilder.HabitTrend> trends)
-    {
-        // 轨迹已由 AiContextPack.Build 直接写入，此方法保留作兼容空实现
-        return packJson;
-    }
-
     private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 }
 

@@ -141,6 +141,10 @@ public sealed partial class AnalyticsPage : Page
             return;
         }
 
+        // 3.50.0：原「节奏」「构成」两页签已合并为「节奏构成」（Tag=rhythm），两个 key 指向同一页签
+        if (key is "rhythm" or "compose")
+            key = "rhythm";
+
         foreach (var item in RootPivot.Items)
         {
             if (item is PivotItem { Tag: string tag } pivot
@@ -157,7 +161,6 @@ public sealed partial class AnalyticsPage : Page
         var anchor = key switch
         {
             "rhythm" => RhythmCard,
-            "compose" => ComposeCard,
             _ => null
         };
 

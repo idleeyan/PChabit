@@ -106,8 +106,6 @@ public static class ServiceConfiguration
         services.AddSingleton<IEfficiencyCalculator, EfficiencyCalculator>();
         services.AddSingleton<IInsightService, InsightService>();
         services.AddSingleton<INotificationService, NotificationService>();
-        services.AddSingleton<ICacheService, MemoryCacheService>();
-        services.AddMemoryCache();
         
         // 所有 ViewModel 使用 Transient，因为通过 App.GetService 从根容器解析
         // AddScoped 从根容器解析会导致俘定依赖和死锁

@@ -33,9 +33,6 @@ public sealed partial class NoteItemViewModel : ObservableObject
     public SolidColorBrush CardBrush => new(NoteColors.Get(Source.Color));
     public SolidColorBrush AccentBrush => new(NoteColors.GetAccent(Source.Color));
 
-    [ObservableProperty]
-    private bool _isSelected;
-
     private static string RelativeTime(DateTime t)
     {
         var d = DateTime.Now - t;
@@ -226,15 +223,6 @@ public partial class NotesViewModel : ViewModelBase
         await _notes.UpdateContentAsync(id, EditContent);
         await _notes.SetColorAsync(id, EditColor);
         await _notes.SetPinnedAsync(id, EditPinned);
-        EditingNote = null;
-    }
-
-    /// <summary>空内容便签在编辑取消时清理（新建但什么都没写）。</summary>
-    [RelayCommand]
-    private async Task DiscardEmptyAsync()
-    {
-        if (EditingNote != null && string.IsNullOrWhiteSpace(EditContent) && EditingNote.Source.Version <= 1)
-            await _notes.PurgeAsync(EditingNote.Id);
         EditingNote = null;
     }
 

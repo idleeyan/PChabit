@@ -210,7 +210,16 @@ public partial class HardwareMonitorViewModel : ViewModelBase
             float totalMb = HardwareMonitorOptions.DetectedRamTotalGB > 0
                 ? HardwareMonitorOptions.DetectedRamTotalGB * 1024f
                 : 0f;
-            MemUsageText = FormatCapacityPair(_monitorService.Get("MEM.Used"), totalMb > 0 ? totalMb : null, inMb: true);
+            // 3.52.0 修复：MEM.Used 传感器实测单位为 GB（如 16.9，而非 LHM 文档所述 MB），
+            // 直接按 MB 格式化会显示成 "17 MB"。用启发式兼容：值 < 1024 视为 GB → ×1024 转 MB；
+            // ≥ 1024 视为已是 MB 原样使用（覆盖 LHM 版本差异）。
+            var memUsedRaw = _monitorService.Get("MEM.Used");
+            float? memUsedMb = null;
+            if (memUsedRaw.HasValue)
+            {
+                memUsedMb = memUsedRaw.Value < 1024f ? memUsedRaw.Value * 1024f : memUsedRaw.Value;
+            }
+            MemUsageText = FormatCapacityPair(memUsedMb, totalMb > 0 ? totalMb : null, inMb: true);
 
             // ---- 磁盘 ----
             var diskRead = _monitorService.Get("DISK.Read");

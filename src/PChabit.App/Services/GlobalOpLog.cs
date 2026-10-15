@@ -66,36 +66,4 @@ public static class GlobalOpLog
     {
         lock (_sync) return _buffer.ToList();
     }
-
-    /// <summary>从磁盘读取今日日志（补充缓冲外的历史）。</summary>
-    public static List<string> ReadTodayFile()
-    {
-        try
-        {
-            var file = Path.Combine(LogDirectory, $"ops-{DateTime.Now:yyyyMMdd}.log");
-            if (!File.Exists(file)) return new List<string>();
-            return File.ReadAllLines(file).Reverse().ToList();
-        }
-        catch
-        {
-            return new List<string>();
-        }
-    }
-
-    public static string ExportToday()
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine($"# PChabit 全局操作日志 · {DateTime.Now:yyyy-MM-dd}");
-        foreach (var i in Snapshot())
-            sb.AppendLine($"- {i.Display}");
-        var disk = ReadTodayFile();
-        if (disk.Count > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine("## 今日文件 ops-log（含更早记录）");
-            foreach (var l in disk.Take(200))
-                sb.AppendLine(l);
-        }
-        return sb.ToString();
-    }
 }

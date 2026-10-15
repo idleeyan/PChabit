@@ -279,20 +279,6 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         }
     }
 
-    [RelayCommand]
-    private async Task SearchAsync()
-    {
-        await LoadDataAsync();
-    }
-
-    [RelayCommand]
-    private async Task RefreshAsync()
-    {
-        SearchText = string.Empty;
-        SelectedCategory = "全部分类";
-        await LoadDataAsync();
-    }
-
     public void SetStartDate(DateTime date)
     {
         _startDate = date;
@@ -329,31 +315,6 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
         OnPropertyChanged(nameof(EndDateOffset));
         OnPropertyChanged(nameof(StartDate));
         OnPropertyChanged(nameof(EndDate));
-    }
-
-    [RelayCommand]
-    private async Task SetDateRangeAsync(string range)
-    {
-        var endDate = DateTime.Today;
-        var startDate = range switch
-        {
-            "today" => DateTime.Today,
-            "week" => DateTime.Today.AddDays(-7),
-            "month" => DateTime.Today.AddMonths(-1),
-            _ => DateTime.Today.AddDays(-7)
-        };
-        
-        _startDateOffset = new DateTimeOffset(startDate);
-        _endDateOffset = new DateTimeOffset(endDate);
-        _startDate = startDate;
-        _endDate = endDate;
-        
-        OnPropertyChanged(nameof(StartDateOffset));
-        OnPropertyChanged(nameof(EndDateOffset));
-        OnPropertyChanged(nameof(StartDate));
-        OnPropertyChanged(nameof(EndDate));
-        
-        await LoadDataAsync();
     }
 
 }

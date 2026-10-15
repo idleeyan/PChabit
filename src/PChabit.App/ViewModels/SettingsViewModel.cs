@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
 using PChabit.Core.Interfaces;
-using PChabit.Infrastructure.Services;
 
 
 namespace PChabit.App.ViewModels;
@@ -12,7 +11,6 @@ namespace PChabit.App.ViewModels;
 public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ISettingsService _settingsService;
-    private readonly MonitorManager _monitorManager;
     [ObservableProperty]
     private bool _startWithWindows = true;
     
@@ -187,12 +185,6 @@ public partial class SettingsViewModel : ViewModelBase
     
     [ObservableProperty]
     private bool _autoCleanupEnabled = true;
-    
-    [ObservableProperty]
-    private int _connectedBrowsers = 0;
-    
-    [ObservableProperty]
-    private string _statusMessage = "";
 
     public ObservableCollection<ThemeOption> ThemeOptions { get; } = new()
     {
@@ -207,10 +199,9 @@ public partial class SettingsViewModel : ViewModelBase
         new LanguageOption { Key = "en-US", Label = "English" }
     };
 
-    public SettingsViewModel(ISettingsService settingsService, MonitorManager monitorManager) : base()
+    public SettingsViewModel(ISettingsService settingsService) : base()
     {
         _settingsService = settingsService;
-        _monitorManager = monitorManager;
         Title = "设置";
 
         // 分类 UI 已于 3.30.0 迁至独立「分类管理」页；原分类加载/映射代码于 3.32.0 删除。
@@ -235,13 +226,11 @@ public partial class SettingsViewModel : ViewModelBase
                 return Task.CompletedTask;
             });
 
-            UpdateConnectedBrowsers();
             Log.Information("SettingsViewModel: InitializeAsync 完成");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "SettingsViewModel: InitializeAsync 失败");
-            StatusMessage = "加载设置失败";
         }
     }
 
@@ -493,34 +482,6 @@ public partial class SettingsViewModel : ViewModelBase
         Log.Information("SaveSetting: 设置 {PropertyName} 已保存", propertyName);
     }
 
-    private void UpdateConnectedBrowsers()
-    {
-        ConnectedBrowsers = _monitorManager.GetConnectedBrowserCount();
-    }
-
-    private void ApplyMonitorSettings()
-    {
-        if (!TrackKeyboard)
-        {
-            _monitorManager.StopKeyboardMonitor();
-        }
-        else
-        {
-            _monitorManager.StartKeyboardMonitor();
-        }
-        
-        if (!TrackMouse)
-        {
-            _monitorManager.StopMouseMonitor();
-        }
-        else
-        {
-            _monitorManager.StartMouseMonitor();
-        }
-        
-        _monitorManager.WebMonitoringEnabled = TrackWebBrowsing;
-    }
-
     private void ApplyTheme(string themeKey)
     {
         try
@@ -578,68 +539,6 @@ public partial class SettingsViewModel : ViewModelBase
         {
             Log.Error(ex, "更新软色画刷失败");
         }
-    }
-
-    [RelayCommand]
-    private void SaveSettings()
-    {
-        _ = Task.Run(() => _settingsService.SaveAsync());
-        Log.Information("设置已保存");
-    }
-
-    [RelayCommand]
-    private void ResetToDefaults()
-    {
-        _settingsService.ResetToDefaults();
-        LoadUiFromSettings();
-        Log.Information("设置已重置为默认值");
-    }
-
-    [RelayCommand]
-    private void ExportSettings()
-    {
-        try
-        {
-            var exportPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PChabit", "settings_export.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(exportPath)!);
-            _ = Task.Run(() => _settingsService.SaveAsync());
-            File.Copy(
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "settings.json"),
-                exportPath,
-                true);
-            Log.Information("设置已导出到: {Path}", exportPath);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "导出设置失败");
-        }
-    }
-
-    [RelayCommand]
-    private void ImportSettings()
-    {
-        try
-        {
-            var importPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PChabit", "settings_export.json");
-            if (File.Exists(importPath))
-            {
-                var destPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PChabit", "settings.json");
-                File.Copy(importPath, destPath, true);
-                _settingsService.Load();
-                LoadUiFromSettings();
-                Log.Information("设置已导入");
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "导入设置失败");
-        }
-    }
-
-    [RelayCommand]
-    private void RefreshConnectionStatus()
-    {
-        UpdateConnectedBrowsers();
     }
 
 }

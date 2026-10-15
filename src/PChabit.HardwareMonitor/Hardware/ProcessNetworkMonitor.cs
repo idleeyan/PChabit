@@ -898,8 +898,6 @@ public sealed class ProcessNetworkMonitor : IDisposable
         public double RateUp;
         public long SessionDownBytes;
         public long SessionUpBytes;
-        public long LastEstatsDown;
-        public long LastEstatsUp;
         public DateTime LastActiveUtc = DateTime.UtcNow;
     }
 

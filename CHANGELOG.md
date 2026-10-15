@@ -2,6 +2,139 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.52.0] - 2026-10-15
+
+### 修复：硬件监控 + 任务栏插件异常（双实例并存根因 + 两处显示 bug）
+
+用户反馈「硬件监控异常、任务栏插件显示异常」，根因排查结论：
+
+- **根因 1（主因）：单实例互斥仅会话内生效，跨会话双实例并存**
+  - `Local\PChabit_SingleInstance` Mutex 只阻止同一终端会话内的第二个实例；
+    当存在跨会话残留实例（如 RDP/切用户留下的进程）时，两实例同时通过
+    HttpListener 绑定 8765 端口，后启动实例 `WebSocketServer.StartAsync` 抛异常，
+    被 `StartMonitoring` 的单一大 try 块捕获 → **后续硬件监控服务、任务栏/
+    托盘显示定时器、桌面悬浮插件、HardwareSampleWriter 全部未启动**，
+    表现为硬件监控页无数据/不刷新、任务栏插件不挂载。
+  - 修复：Mutex 前缀 `Local\` → `Global\` 实现跨会话互斥；另新增命名事件
+    `Global\PChabit_SingleInstance_Activate`，第二实例启动时唤起已有实例窗口
+    而非仅静默退出。
+- **根因 2：WebSocket 启动失败不应中断整条监控链**
+  - `MonitorManager.StartAllAsync` 中 WebSocket 启动改为 try/catch 容错：
+    端口被占时仅降级「网页监控不可用」，硬件监控/任务栏/桌面插件继续启动。
+- **根因 3：硬件监控页内存容量单位错误**
+  - `MEM.Used` 传感器实测单位为 GB（如 16.9），ViewModel 按 MB 格式化 →
+    显示「17 MB / 31.8 GB」（应为「16.9 GB / 31.8 GB」）。已加单位启发式
+    （<1024 视为 GB ×1024 转 MB）修正。
+- 已知说明：CPU 温度显示 `--` 为 LHM 传感器无读数的设计降级（说明文案已注明
+  「无读数时为灰色且进度条为空」），非本次回归。
+
+部署 `D:\Tool\PChabit`（FileVersion 3.52.0.0）、冒烟验证硬件监控与任务栏插件
+数据正常刷新、日志无新增错误。
+
+## [3.51.0] - 2026-10-15
+
+### 变更：应用图标整体重设计
+
+用户反馈原图标「太难看了」（白底蓝色显示器轮廓 + PChabit 文字 + 右下角
+「豆包AI生成」角标），本次全新重设计：
+
+- 新图标方向：键帽趋势标（候选B）—— 3×3 键帽矩阵（暖橙 + 深绿相间），
+  右上键帽上的上升趋势折线 + 青色端点（寓意「电脑使用习惯的持续养成」），
+  右侧圆润模块感字标「PChabit」（P 橙色、其余深绿）
+- 替换全部图标位图资产：
+  - `pchabit.ico` 多尺寸（16/24/32/48/64/128/256，透明底）
+  - `Assets\*.png` 13 个打包位图（Logo/Square150x150/Square44x44/
+    StoreLogo/Wide310x150/LockScreenLogo 及 scale-200 变体，透明底；
+    SplashScreen 为白底版）
+  - 根目录 `LOGO.png`（2048×2048 白底完整版，去除原「豆包AI生成」角标）
+- 图标同时作用于：exe 资源图标（ApplicationIcon）、窗口标题栏图标、
+  系统托盘图标、侧边栏 Logo、开始菜单/任务栏打包图标
+
+## [3.50.0] - 2026-10-15
+
+### 变更：「应用使用 › 键鼠详情」键盘统计与鼠标统计合并为同一板块
+
+原「键盘统计」「鼠标统计」为两个独立标题区域（各带一组指标卡），本次合并为
+一个统一的「键鼠统计」板块：
+
+- `KeyboardDetailsTab.xaml` 合并两区域为一个卡片板块：
+  - 板块标题「键鼠统计」（键盘 + 鼠标双图标），不再分两个小标题
+  - 指标卡统一为 5 列 × 2 行网格：行 0 = 键盘 4 项（总按键次数/平均速度/
+    峰值速度/快捷键使用）+ 鼠标总点击次数；行 1 = 鼠标 5 项（左键/右键/
+    中键/移动距离/滚动次数），保留原鼠标指标的彩色数字
+  - 平均点击间隔横条并入板块底部
+  - 按键使用排行、编辑统计、常用快捷键并入板块内（次级卡片背景区分层级）
+- 数据与 ViewModel 无任何改动（`KeyboardDetailsViewModel` 全部绑定属性原样保留）
+
+### 变更：「分析」页面「节奏」与「构成」两页签合并为「节奏构成」
+
+原「节奏」（日历热力 + 24h 分布）与「构成」（双饼图 + 应用变化）为两个独立页签，
+本次合并为一个「节奏构成」页签：
+
+- `AnalyticsPage.xaml` 删除「构成」PivotItem，其双饼图（分类构成 + 网页分类构成）
+  与「应用变化」卡片并入「节奏构成」页签底部；页面自上而下：
+  近 14 天活跃热力 → 24 小时四维分布 → 分类构成双饼图 → 应用变化
+- 页签 Header 改为「节奏构成」，Tag 保留 `rhythm`；洞察 actionKey
+  `rhythm` / `compose` 均归一化定位到该页签（`ApplyPivot`），`ComposeCard`
+  随内容保留在合并页签内
+
+## [3.49.0] - 2026-10-15
+
+### 变更：硬件监控入口移回左侧导航
+
+3.35.0 时「硬件监控」从侧栏移到了「设置 › 监控设置」的跳转按钮，本次按
+使用习惯移回左侧导航：
+
+- `ShellPage.xaml` 恢复「系统」分组与「硬件监控」导航项（Tag=`Monitor`，
+  原 glyph E950）；导航 key 从未移除，点击即打开原页面
+- 删除设置页「打开硬件监控 →」按钮及 `OpenHardwareMonitor_Click`
+- 桌面悬浮插件双击入口不受影响（同样走 `NavigateTo("Monitor")`）
+
+## [3.48.0] - 2026-10-15
+
+### 变更：分析-构成页改为双饼图面板
+
+「分析 › 构成」页的「分类构成」与「网页分类构成」由原来的两张横向
+进度条列表，合并为**一个面板内的左右两个环形饼图**（WebView2 + ECharts）：
+
+- 新增 `Assets/PieChart/composition.html`：单页双饼图，标题内嵌、跟随系统
+  深浅色主题，单侧无数据时该侧显示「暂无数据」
+- 新增 `Views/CompositionPieView` UserControl（`ChartJson` 依赖属性），
+  模式与 `HardwareTrendView` 一致；仅一个 WebView2 实例承载双图
+- 两个饼图共用「分类名 → 颜色」映射，同一分类两侧同色，便于本机 vs 线上对比；
+  悬停显示时长（小时/分钟）与占比
+- `AnalyticsViewModel` 新增 `CompositionChartJson` / `HasComposition`；
+  原 `CategoryShares`/`WebCategoryShares` 集合保留（Excel 导出等仍在用）
+
+## [3.47.0] - 2026-10-13
+
+### 维护：全项目死代码清理（不影响功能）
+
+对解决方案做了一次系统性大扫除，删除确认无引用的死代码、临时文件与构建残留，
+用户可见行为零变化：
+
+- 删除 7 个零引用整文件：`ShortcutDetector`、`TypingBurstDetector`、
+  `SerilogConfigurator`、`PerformanceMonitor`（含 `IPerformanceMonitor`/
+  `PerformanceMetrics`）、`TaskScheduler`（含 `IBackgroundTaskQueue`/
+  `BackgroundTaskQueue`）、`CacheService`（含 `ICacheService`/
+  `MemoryCacheService`/`CacheKeys`）、`DataManagementViewModel.History.cs`
+- `ServiceConfiguration` 移除 `ICacheService`/`MemoryCacheService` 注册与
+  `AddMemoryCache()`；`PChabit.Infrastructure.csproj` 移除未被使用的
+  `Microsoft.Win32.Registry` 包引用（NU1510）
+- 转换器清理：删除 3 个未注册转换器与 13 个「已注册但无 XAML 绑定」转换器
+  （共 −315 行），`App.xaml.cs` 的 `RegisterAppConverters()` 同步删 13 行注册
+- ViewModel 清理：`SettingsViewModel` 删 5 个 RelayCommand 及 `_monitorManager`
+  注入、`_connectedBrowsers`；`DashboardViewModel` 删 5 个只写属性；
+  `WebHistorySectionViewModel` 删 `_statusMessage`（7 处赋值全部无绑定）；
+  `AnalyticsViewModel`/`NotesViewModel`/`CategoryCrudViewModelBase`/
+  `WebDetailsViewModel`/`DataManagementViewModel` 各删失效命令与只写字段
+- `KeyboardDetailsViewModel` 删除 XAML 未绑定的 `HourlyData`/
+  `HourlyMouseStats` 集合及填充链路（实际渲染走 `HourlyKeyMouseCells`），
+  `ComputeHourlyData` 去掉无人使用的 `AvgSpeed` 投影
+- 全局操作日志 `GlobalOpLog` 删除随书签同步下线的 `ReadTodayFile()`/
+  `ExportToday()`
+- 构建警告由 52 行降至 22 行（剩余为既有非死代码警告）；单元测试 156/156 通过
+
 ## [3.46.0] - 2026-10-13
 
 ### 变更：「按应用键鼠统计」并入应用详情弹窗

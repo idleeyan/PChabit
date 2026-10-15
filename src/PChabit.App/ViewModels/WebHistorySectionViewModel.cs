@@ -95,9 +95,6 @@ public partial class WebHistorySectionViewModel : ViewModelBase
     [ObservableProperty]
     private string _rangeText = "";
 
-    [ObservableProperty]
-    private string _statusMessage = "";
-
     /// <summary>
     /// 数据陈旧提示（3.37.0）。浏览历史依赖浏览器扩展推送，
     /// 一旦采集被关掉或扩展断开，界面就会静默停更——用户无从判断
@@ -199,14 +196,12 @@ public partial class WebHistorySectionViewModel : ViewModelBase
             _settings.BrowserHistoryIngestEnabled = true;
             // 历史已停更期间，BrowserSyncEnabled（云端同步总开关）也可能被一并关掉，
             // 但它不该拦住本机实时入库——读一次以确保不会误关回去。
-            StatusMessage = "已开启浏览历史采集，稍后会自动刷新（需浏览器扩展在线）";
             EvaluateFreshness();
             Log.Information("WebHistorySection: 用户重新开启了浏览历史采集");
         }
         catch (Exception ex)
         {
             Log.Error(ex, "WebHistorySection: 开启采集失败");
-            StatusMessage = "开启失败: " + ex.Message;
         }
     }
 
@@ -329,7 +324,6 @@ public partial class WebHistorySectionViewModel : ViewModelBase
             : new List<HistoryDetailRecord>();
         if (records.Count == 0)
         {
-            StatusMessage = "该域名没有明细记录";
             return;
         }
 
@@ -420,7 +414,6 @@ public partial class WebHistorySectionViewModel : ViewModelBase
         catch (Exception ex)
         {
             Log.Error(ex, "WebHistorySection: 打开域名失败 {Domain}", domain);
-            StatusMessage = "打开失败: " + ex.Message;
         }
     }
 
@@ -479,13 +472,10 @@ public partial class WebHistorySectionViewModel : ViewModelBase
                 $"网页浏览历史_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
             System.IO.File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(true));
             Log.Information("WebHistorySection: 已导出 {Path}", path);
-
-            StatusMessage = $"已导出 {System.IO.Path.GetFileName(path)}";
         }
         catch (Exception ex)
         {
             Log.Error(ex, "WebHistorySection: 导出 CSV 失败");
-            StatusMessage = "导出失败: " + ex.Message;
         }
     }
 

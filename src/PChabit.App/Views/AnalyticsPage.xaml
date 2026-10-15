@@ -460,8 +460,8 @@
                 </Grid>
             </PivotItem>
 
-            <!-- 节奏：日历热力 + 24h 分布 -->
-            <PivotItem Header="节奏" Tag="rhythm">
+            <!-- 节奏 + 构成（3.50.0：原「节奏」「构成」两页签合并；节奏=日历热力+24h分布，构成=双饼图+应用变化） -->
+            <PivotItem Header="节奏构成" Tag="rhythm">
                 <Grid
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
@@ -476,7 +476,7 @@
                             Spacing="16"
                             MaxWidth="1100"
                             HorizontalAlignment="Left">
-                            <TextBlock Style="{StaticResource PageTitleStyle}" Text="使用节奏" />
+                            <TextBlock Style="{StaticResource PageTitleStyle}" Text="节奏与构成" />
                             <TextBlock
                                 FontSize="12"
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -635,167 +635,28 @@
                                     </ScrollViewer>
                                 </StackPanel>
                             </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </PivotItem>
 
-            <!-- 构成：分类占比 + 应用变化（修复右偏：锁宽 + 左对齐 + 行内 Grid 拉伸） -->
-            <PivotItem Header="构成" Tag="compose">
-                <Grid
-                    HorizontalAlignment="Stretch"
-                    VerticalAlignment="Stretch"
-                    Width="{Binding ActualWidth, ElementName=RootPivot}">
-                    <ScrollViewer
-                        Padding="20,12,20,24"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        HorizontalScrollBarVisibility="Disabled"
-                        VerticalAlignment="Stretch">
-                        <StackPanel
-                            Spacing="16"
-                            MaxWidth="1100"
-                            HorizontalAlignment="Left">
-                            <TextBlock Style="{StaticResource PageTitleStyle}" Text="时间构成" />
-                            <TextBlock
-                                FontSize="12"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="{x:Bind ViewModel.PeriodRangeText, Mode=OneWay}" />
-
+                            <!-- 分类构成 + 网页分类构成：双饼图合并面板（同分类同色，便于本机 vs 线上对比） -->
                             <Border
-                                Padding="16"
+                                Padding="12"
                                 HorizontalAlignment="Stretch"
                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
                                 CornerRadius="12"
-                                Visibility="{x:Bind ViewModel.HasCategories, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <StackPanel Spacing="10" HorizontalAlignment="Stretch">
-                                    <TextBlock FontWeight="SemiBold" Text="分类构成（本周期）" />
-                                    <ItemsControl
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Stretch"
-                                        ItemsSource="{x:Bind ViewModel.CategoryShares, Mode=OneWay}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid
-                                                    Margin="0,6"
-                                                    HorizontalAlignment="Stretch"
-                                                    ColumnSpacing="8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" MinWidth="88" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="Auto" MinWidth="48" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock
-                                                        MaxWidth="140"
-                                                        VerticalAlignment="Center"
-                                                        Text="{Binding Category}"
-                                                        TextTrimming="CharacterEllipsis"
-                                                        ToolTipService.ToolTip="{Binding Category}" />
-                                                    <ProgressBar
-                                                        Grid.Column="1"
-                                                        Height="8"
-                                                        Maximum="100"
-                                                        VerticalAlignment="Center"
-                                                        Value="{Binding Percentage}" />
-                                                    <TextBlock
-                                                        Grid.Column="2"
-                                                        Margin="8,0,0,0"
-                                                        HorizontalAlignment="Right"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Text="{Binding MinutesText}" />
-                                                    <TextBlock
-                                                        Grid.Column="3"
-                                                        Margin="8,0,0,0"
-                                                        HorizontalAlignment="Right"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        FontWeight="SemiBold"
-                                                        Text="{Binding PercentText}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
-
-                            <Border
-                                Padding="16"
-                                HorizontalAlignment="Stretch"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12"
-                                Visibility="{x:Bind ViewModel.HasWebCategories, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                <StackPanel Spacing="10" HorizontalAlignment="Stretch">
-                                    <TextBlock FontWeight="SemiBold" Text="网页分类构成（本周期）" />
+                                Visibility="{x:Bind ViewModel.HasComposition, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel Spacing="6" HorizontalAlignment="Stretch">
+                                    <local:CompositionPieView
+                                        ChartJson="{x:Bind ViewModel.CompositionChartJson, Mode=OneWay}"
+                                        MinHeight="300" />
                                     <TextBlock
                                         FontSize="12"
                                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                        Text="与左侧应用分类同一口径对齐，便于对比线上 vs 本机行为" />
-                                    <ItemsControl
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Stretch"
-                                        ItemsSource="{x:Bind ViewModel.WebCategoryShares, Mode=OneWay}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Grid
-                                                    Margin="0,6"
-                                                    HorizontalAlignment="Stretch"
-                                                    ColumnSpacing="8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" MinWidth="88" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="Auto" MinWidth="48" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock
-                                                        MaxWidth="140"
-                                                        VerticalAlignment="Center"
-                                                        Text="{Binding Category}"
-                                                        TextTrimming="CharacterEllipsis"
-                                                        ToolTipService.ToolTip="{Binding Category}" />
-                                                    <ProgressBar
-                                                        Grid.Column="1"
-                                                        Height="8"
-                                                        Maximum="100"
-                                                        VerticalAlignment="Center"
-                                                        Value="{Binding Percentage}" />
-                                                    <TextBlock
-                                                        Grid.Column="2"
-                                                        Margin="8,0,0,0"
-                                                        HorizontalAlignment="Right"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        Text="{Binding MinutesText}" />
-                                                    <TextBlock
-                                                        Grid.Column="3"
-                                                        Margin="8,0,0,0"
-                                                        HorizontalAlignment="Right"
-                                                        VerticalAlignment="Center"
-                                                        FontSize="12"
-                                                        FontWeight="SemiBold"
-                                                        Text="{Binding PercentText}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                        Text="两侧同一口径，相同分类使用相同颜色，悬停查看时长与占比" />
                                 </StackPanel>
                             </Border>
 
+                            <!-- 应用变化（对比上一周期） -->
                             <Border
                                 x:Name="ComposeCard"
                                 Padding="16"
@@ -841,6 +702,7 @@
                     </ScrollViewer>
                 </Grid>
             </PivotItem>
+
 
             <!-- 硬件：应用×样本画像 + 小时负载 -->
             <PivotItem Header="硬件" Tag="hardware">

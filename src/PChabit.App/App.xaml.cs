@@ -94,20 +94,87 @@ public partial class App : Microsoft.UI.Xaml.Application
     public static Window MainWindow => ((App)Current)._window!;
     
     private static Mutex? _instanceMutex;
+    private static EventWaitHandle? _activationEvent;
+    private static Microsoft.UI.Dispatching.DispatcherQueue? _uiDispatcherQueue;
 
     public App()
     {
         try
         {
+            // 捕获 UI 线程调度器（后台监听线程 GetForCurrentThread 会返回 null，须在此捕获）
+            _uiDispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
             // 单实例保护：多实例并发写同一 SQLite 数据库会导致同步卡死（等锁），
             // 已有实例在跑时本次启动直接退出。
-            _instanceMutex = new Mutex(true, @"Local\PChabit_SingleInstance", out bool createdNew);
+            // 3.52.0 修复：Local\ 前缀仅同终端会话互斥，跨会话（如 RDP/切用户残留）会并存双实例，
+            // 两个实例同时 HttpListener 绑定 8765 → 后启动实例 WebSocket 失败 → 监控链整体中断。
+            // 改用 Global\ 前缀跨会话互斥，并用命名事件唤起已有实例窗口。
+            _instanceMutex = new Mutex(true, @"Global\PChabit_SingleInstance", out bool createdNew);
             if (!createdNew)
             {
+                try
+                {
+                    using var evt = EventWaitHandle.OpenExisting(@"Global\PChabit_SingleInstance_Activate");
+                    evt.Set();
+                }
+                catch
+                {
+                    // 已有实例可能未启用唤起监听，忽略
+                }
                 Log.Warning("检测到已有 PChabit 实例运行，本次启动退出（单实例保护）");
                 Environment.Exit(0);
                 return;
             }
+
+            _activationEvent = new EventWaitHandle(false, EventResetMode.AutoReset, @"Global\PChabit_SingleInstance_Activate");
+            // 后台监听唤起信号：另一会话/用户再次启动时把本实例窗口带回前台
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    while (_activationEvent.WaitOne())
+                    {
+                        try
+                        {
+                            var dq = _uiDispatcherQueue;
+                            if (dq != null)
+                            {
+                                dq.TryEnqueue(() =>
+                                {
+                                    try
+                                    {
+                                        if (_trayService != null) _trayService.RestoreWindow();
+                                        _window?.Activate();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Log.Warning(ex, "唤起已有实例窗口失败");
+                                    }
+                                });
+                            }
+                            else
+                            {
+                                try
+                                {
+                                    if (_trayService != null) _trayService.RestoreWindow();
+                                    _window?.Activate();
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Warning(ex, "唤起已有实例窗口失败");
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "唤起监听异常");
+                        }
+                    }
+                }
+                catch
+                {
+                    // 事件句柄被释放（进程退出）时静默结束监听
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -192,27 +259,14 @@ public partial class App : Microsoft.UI.Xaml.Application
         Resources["NullToVisibilityConverter"] = new PChabit.App.Converters.NullToVisibilityConverter();
         Resources["DateToStringConverter"] = new PChabit.App.Converters.DateToStringConverter();
         Resources["StringToBrushConverter"] = new PChabit.App.Converters.StringToBrushConverter();
-        Resources["FirstLetterConverter"] = new PChabit.App.Converters.FirstLetterConverter();
-        Resources["HoursToStringConverter"] = new PChabit.App.Converters.HoursToStringConverter();
         Resources["TrendColorConverter"] = new PChabit.App.Converters.TrendColorConverter();
         Resources["InsightBackgroundConverter"] = new PChabit.App.Converters.InsightBackgroundConverter();
         Resources["PercentageConverter"] = new PChabit.App.Converters.PercentageConverter();
-        Resources["IntToProgramCountTextConverter"] = new PChabit.App.Converters.IntToProgramCountTextConverter();
-        Resources["ColorSelectionConverter"] = new PChabit.App.Converters.ColorSelectionConverter();
-        Resources["InverseBoolConverter"] = new PChabit.App.Converters.InverseBoolConverter();
-        Resources["CountToVisibilityConverter"] = new PChabit.App.Converters.CountToVisibilityConverter();
         Resources["InverseCountToVisibilityConverter"] = new PChabit.App.Converters.InverseCountToVisibilityConverter();
-        Resources["CountToEnabledConverter"] = new PChabit.App.Converters.CountToEnabledConverter();
-        Resources["SelectedCountConverter"] = new PChabit.App.Converters.SelectedCountConverter();
         Resources["StringToVisibilityConverter"] = new PChabit.App.Converters.StringToVisibilityConverter();
         Resources["SystemCategoryConverter"] = new PChabit.App.Converters.SystemCategoryConverter();
         Resources["InverseBooleanConverter"] = new PChabit.App.Converters.InverseBooleanConverter();
-        Resources["TimeSpanToReadableConverter"] = new PChabit.App.Converters.TimeSpanToReadableConverter();
-        Resources["DoubleToScoreConverter"] = new PChabit.App.Converters.DoubleToScoreConverter();
         Resources["HeatLevelToOpacityConverter"] = new PChabit.App.Converters.HeatLevelToOpacityConverter();
-        Resources["ActivityToColorConverter"] = new PChabit.App.Converters.ActivityToColorConverter();
-        Resources["ActivityToForegroundConverter"] = new PChabit.App.Converters.ActivityToForegroundConverter();
-        Resources["DateToDetailConverter"] = new PChabit.App.Converters.DateToDetailConverter();
         Resources["PercentageToGridLengthConverter"] = new PChabit.App.Converters.PercentageToGridLengthConverter();
     }
 

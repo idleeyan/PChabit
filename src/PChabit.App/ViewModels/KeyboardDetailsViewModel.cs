@@ -49,9 +49,7 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     private string _averageClickInterval = "无数据";
     
     public ObservableCollection<KeyUsageItem> KeyUsageList { get; } = new();
-    public ObservableCollection<HourlyKeyItem> HourlyData { get; } = new();
     public ObservableCollection<ShortcutItem> TopShortcuts { get; } = new();
-    public ObservableCollection<HourlyMouseStat> HourlyMouseStats { get; } = new();
 
     /// <summary>
     /// 「每小时键鼠统计」四方格数据（3.43.0）：每格一个小方块，
@@ -169,11 +167,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
             item.Color = GetKeyColor(item.KeyName);
             KeyUsageList.Add(item);
         }
-        HourlyData.Clear();
-        foreach (var item in k.Hourly)
-        {
-            HourlyData.Add(item);
-        }
         TopShortcuts.Clear();
         foreach (var item in k.Shortcuts) TopShortcuts.Add(item);
 
@@ -186,11 +179,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         TotalScrolls = m.Scrolls.ToString("N0");
         AverageClickInterval = m.AverageClickInterval;
         
-        HourlyMouseStats.Clear();
-        foreach (var item in m.Hourly)
-        {
-            HourlyMouseStats.Add(item);
-        }
         BuildHourlyKeyMouseCells(k.Hourly, m.Hourly);
     }
     
@@ -226,10 +214,10 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     {
         var hourlyGroups = sessions
             .GroupBy(s => s.Hour)
-            .Select(g => new { Hour = g.Key, TotalPresses = g.Sum(s => s.TotalKeyPresses), AvgSpeed = g.Average(s => s.AverageTypingSpeed) })
+            .Select(g => new { Hour = g.Key, TotalPresses = g.Sum(s => s.TotalKeyPresses) })
             .OrderBy(x => x.Hour);
         foreach (var h in hourlyGroups)
-            stats.Hourly.Add(new HourlyKeyItem { Hour = $"{h.Hour}:00", Presses = h.TotalPresses, Speed = $"{h.AvgSpeed:F1}" });
+            stats.Hourly.Add(new HourlyKeyItem { Hour = $"{h.Hour}:00", Presses = h.TotalPresses });
     }
     
     private static void ComputeShortcuts(List<Core.Entities.KeyboardSession> sessions, KeyboardPart stats)
@@ -259,8 +247,7 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
                 Hour = group.Key,
                 ClickCount = group.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount),
                 MoveDistance = group.Sum(s => s.TotalMoveDistance),
-                ScrollCount = group.Sum(s => s.ScrollCount),
-                Label = $"{group.Key:D2}:00"
+                ScrollCount = group.Sum(s => s.ScrollCount)
             });
         }
     }
@@ -348,7 +335,7 @@ public class KeyUsageItem
     public SolidColorBrush? Color { get; set; }
 }
 
-public class HourlyKeyItem { public string Hour { get; init; } = string.Empty; public int Presses { get; init; } public string Speed { get; init; } = string.Empty; }
+public class HourlyKeyItem { public string Hour { get; init; } = string.Empty; public int Presses { get; init; } }
 
 /// <summary>「每小时键鼠统计」四方格单元格（3.43.0）：左=按键次数，右=鼠标点击次数。</summary>
 public class HourlyKeyMouseCell
@@ -367,5 +354,4 @@ public class HourlyMouseStat : ObservableObject
     public int ClickCount { get; set; }
     public double MoveDistance { get; set; }
     public int ScrollCount { get; set; }
-    public string Label { get; set; } = string.Empty;
 }

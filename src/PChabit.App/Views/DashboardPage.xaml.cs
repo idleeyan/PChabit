@@ -21,7 +21,6 @@ public sealed partial class DashboardPage : Page
     // WebView2 图表状态
     private bool _chartInitialized;
     private bool _chartNavigating;
-    private bool _chartPendingPush;
     private string? _pendingChartJson;
 
     public DashboardPage()

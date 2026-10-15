@@ -12,13 +12,6 @@ namespace PChabit.App.ViewModels;
 
 public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.WebStatsData>
 {
-    private static string EffectiveMinutes(Core.Entities.WebSession s)
-    {
-        return s.ActiveDuration > TimeSpan.Zero
-            ? s.ActiveDuration.TotalMinutes.ToString("F1")
-            : s.Duration.TotalMinutes.ToString("F1");
-    }
-
     private static double EffectiveMinutesValue(Core.Entities.WebSession s)
     {
         return s.ActiveDuration > TimeSpan.Zero ? s.ActiveDuration.TotalMinutes : s.Duration.TotalMinutes;

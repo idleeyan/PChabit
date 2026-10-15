@@ -12,17 +12,6 @@ namespace PChabit.App.ViewModels;
 
 public partial class DataManagementViewModel : ViewModelBase
 {
-    [RelayCommand]
-    private void ClearLogs()
-    {
-        try
-        {
-            OperationLogs.Clear();
-            GlobalLogs.Clear();
-            PChabit.App.Services.GlobalOpLog.Action("数据管理", "已清空界面日志显示（磁盘 ops-*.log 保留）");
-        }
-        catch { }
-    }
     private void OnBackupProgressChanged(object? sender, BackupProgressEventArgs e)
     {
         RunOnUIThread(() =>
@@ -35,8 +24,8 @@ public partial class DataManagementViewModel : ViewModelBase
     {
         RunOnUIThread(() =>
         {
+            // 下载进度无对应 UI 绑定（XAML 仅显示上传进度条），仅同步状态文本
             if (e.IsUpload) UploadProgress = e.Progress;
-            else DownloadProgress = e.Progress;
             if (!string.IsNullOrEmpty(e.Status)) WebDAVStatus = e.Status;
         });
     }

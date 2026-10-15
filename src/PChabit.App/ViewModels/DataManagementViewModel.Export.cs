@@ -41,9 +41,6 @@ public partial class DataManagementViewModel : ViewModelBase
     [ObservableProperty]
     private string _exportStatus = string.Empty;
 
-    [ObservableProperty]
-    private string _lastExportPath = string.Empty;
-
     public IReadOnlyList<string> ExportFormats { get; } = new[] { "json", "markdown", "csv", "ai-prompt" };
 
     #endregion
@@ -106,7 +103,6 @@ public partial class DataManagementViewModel : ViewModelBase
 
             await File.WriteAllTextAsync(filePath, content);
 
-            LastExportPath = filePath;
             ExportStatus = $"导出成功！文件: {fileName} ({FormatSize(new FileInfo(filePath).Length)})";
             AddLog("成功", $"导出完成: {fileName}");
             Log.Information("数据已导出到: {FilePath}", filePath);

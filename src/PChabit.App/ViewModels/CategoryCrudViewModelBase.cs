@@ -72,9 +72,6 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     private int _totalCategories;
 
     [ObservableProperty]
-    private int _totalMappings;
-
-    [ObservableProperty]
     private TCategory? _selectedCategory;
 
     [ObservableProperty]
@@ -115,7 +112,6 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
 
                 AllMappings.Clear();
                 foreach (var m in mappings) AllMappings.Add(m);
-                TotalMappings = AllMappings.Count;
                 return Task.CompletedTask;
             });
 

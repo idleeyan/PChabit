@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
@@ -138,6 +139,13 @@ public partial class AnalyticsViewModel : ViewModelBase
     [ObservableProperty]
     private string _hardwareChartJson = "{}";
 
+    /// <summary>构成页双饼图 WebView2 数据 JSON（app/web 两组，value 单位分钟）。</summary>
+    [ObservableProperty]
+    private string _compositionChartJson = "{}";
+
+    /// <summary>构成页双饼图面板可见性：应用分类或网页分类任一有数据即显示。</summary>
+    public bool HasComposition => HasCategories || HasWebCategories;
+
     public ObservableCollection<AiItemViewModel> AiFindings { get; } = new();
     public ObservableCollection<AiItemViewModel> AiSuggestions { get; } = new();
     public ObservableCollection<string> AiRisks { get; } = new();
@@ -166,9 +174,6 @@ public partial class AnalyticsViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _hasFollowUpAnswer;
-
-    [ObservableProperty]
-    private bool _isFollowUpRunning;
 
     public bool AiConfigured => _aiService.IsConfigured;
 
@@ -203,9 +208,6 @@ public partial class AnalyticsViewModel : ViewModelBase
     {
         _ = LoadDataAsync();
     }
-
-    [RelayCommand]
-    private Task RefreshAsync() => LoadDataAsync();
 
     /// <summary>
     /// 页内导航请求（参数为 ActionKey：compose/rhythm 等）。
@@ -513,7 +515,6 @@ public partial class AnalyticsViewModel : ViewModelBase
             return;
         }
 
-        IsFollowUpRunning = true;
         HasFollowUpAnswer = false;
         FollowUpAnswer = "正在追问…";
         HasFollowUpAnswer = true;
@@ -558,10 +559,6 @@ public partial class AnalyticsViewModel : ViewModelBase
         {
             Log.Warning(ex, "AI 追问失败");
             FollowUpAnswer = $"追问失败：{ex.Message}";
-        }
-        finally
-        {
-            IsFollowUpRunning = false;
         }
     }
 
@@ -816,6 +813,9 @@ public partial class AnalyticsViewModel : ViewModelBase
                 foreach (var c in report.WebCategoryShares) WebCategoryShares.Add(c);
                 HasWebCategories = WebCategoryShares.Count > 0;
 
+                CompositionChartJson = BuildCompositionChartJson();
+                OnPropertyChanged(nameof(HasComposition));
+
                 ExtraMetrics = report.Extra;
                 ExtraSummaryText = BuildExtraSummary(report.Extra);
                 HasExtraMetrics = !string.IsNullOrEmpty(ExtraSummaryText);
@@ -866,6 +866,19 @@ Log.Information("AnalyticsViewModel: 加载完成 period={Period} kpis={K} heat=
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>构成页双饼图 JSON：应用分类(app) + 网页分类(web)，分钟值保留 1 位小数。</summary>
+    private string BuildCompositionChartJson()
+    {
+        var payload = new
+        {
+            app = CategoryShares
+                .Select(c => new { name = c.Category, value = Math.Round(c.Minutes, 1) }),
+            web = WebCategoryShares
+                .Select(c => new { name = c.Category, value = Math.Round(c.Minutes, 1) })
+        };
+        return JsonSerializer.Serialize(payload);
     }
 
     private static string BuildExtraSummary(AnalyticsExtraMetrics? extra)

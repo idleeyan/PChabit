@@ -67,7 +67,6 @@ public sealed partial class DataManagementPage : Page
 
             await ViewModel.LoadBackupsAsync();
             await ViewModel.LoadOverviewAsync();
-            _ = ViewModel.LoadHistoryStatsAsync();
 
             // WinUI 3 中 async void 的 await 延续未必回到 UI 线程，
             // 必须显式调度到 UI 线程，否则设置控件属性会抛出 RPC_E_WRONG_THREAD

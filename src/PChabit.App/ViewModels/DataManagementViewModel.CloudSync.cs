@@ -36,9 +36,6 @@ public partial class DataManagementViewModel : ViewModelBase
     private int _uploadProgress;
 
     [ObservableProperty]
-    private int _downloadProgress;
-
-    [ObservableProperty]
     private string _webDAVStatus = "";
 
     #endregion
@@ -209,9 +206,8 @@ public partial class DataManagementViewModel : ViewModelBase
 
         try
         {
-            var progress = new Progress<int>(p => DownloadProgress = p);
             var content = await _webDAVSyncService.DownloadFileWithProgressAsync(
-                WebDAVUrl, WebDAVUsername, WebDAVPassword, file.FullPath, progress);
+                WebDAVUrl, WebDAVUsername, WebDAVPassword, file.FullPath);
 
             if (content == null)
             {

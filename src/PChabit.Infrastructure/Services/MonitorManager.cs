@@ -245,8 +245,17 @@ public class MonitorManager : IDisposable
 
         if (WebMonitoringEnabled)
         {
-            await _webSocketServer.StartAsync();
-            _webMonitor.Start();
+            // 3.52.0 容错：WebSocket 端口被占（如跨会话残留实例）时只降级网页监控，
+            // 绝不中断后续硬件监控/任务栏/桌面插件等整条监控链。
+            try
+            {
+                await _webSocketServer.StartAsync();
+                _webMonitor.Start();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "WebSocket 服务器启动失败，网页监控不可用（其余监控继续）");
+            }
         }
 
         _healthCheckTimer.Start();

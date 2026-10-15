@@ -50,10 +50,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     [ObservableProperty]
     private double _efficiencyScore;
 
-    /// <summary>活跃时长相对个人基线 P50 的偏离百分比；null = 基线样本不足。</summary>
-    [ObservableProperty]
-    private double? _activeDeviationPct;
-
     /// <summary>今日专注分钟（DailySummary.FocusMinutesV2，可能为 null）。</summary>
     [ObservableProperty]
     private double? _focusMinutes;
@@ -90,10 +86,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     [ObservableProperty]
     private string _deviationText = "";
 
-    /// <summary>是否已有任何今日数据（决定空态与内容区切换）。</summary>
-    [ObservableProperty]
-    private bool _hasAnyData = false;
-
     // === 阶段 4：AI 速览与画像摘要（3.27.0）===
 
     /// <summary>今日速览文本。未配置 AI 时为规则摘要（不显示空卡）。</summary>
@@ -127,10 +119,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     /// <summary>当前活动的开始时刻（HH:mm）。</summary>
     [ObservableProperty]
     private string _currentAppSince = "";
-
-    /// <summary>页面是否处于实时刷新中（供 UI 显示"实时"标识）。</summary>
-    [ObservableProperty]
-    private bool _isLive = false;
 
     /// <summary>速览来源标签是否显示（无摘要时隐藏，避免留一个空标签）。</summary>
     public bool HasSummarySource => !string.IsNullOrEmpty(SummarySource);
@@ -172,7 +160,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         _refreshTimer = new Timer(
             _ => _ = OnTickAsync(),
             null, RefreshInterval, RefreshInterval);
-        IsLive = true;
         Log.Information("[Dashboard] 实时刷新已启动，间隔 {Sec} 秒", RefreshInterval.TotalSeconds);
     }
 
@@ -181,7 +168,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     {
         _refreshTimer?.Dispose();
         _refreshTimer = null;
-        IsLive = false;
     }
 
     private async Task OnTickAsync()
@@ -218,12 +204,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     public ObservableCollection<HourlyActivityItem> HourlyActivity { get; } = new();
     public ObservableCollection<CategoryDistributionItem> CategoryDistribution { get; } = new();
     public ObservableCollection<WebsiteUsageItem> TopWebsites { get; } = new();
-
-    [ObservableProperty]
-    private bool _hasAppData = false;
-
-    [ObservableProperty]
-    private bool _hasWebsiteData = false;
 
     // === Phase 1 中间数据类（纯 POCO，无 WinRT 类型） ===
 
@@ -656,7 +636,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         TodayMouseClicks = stats.TodayMouseClicks;
         TodayWebPages = stats.TodayWebPages;
         EfficiencyScore = stats.EfficiencyScore;
-        ActiveDeviationPct = stats.ActiveDeviationPct;
         FocusMinutes = stats.FocusMinutes;
         AppSwitches = stats.AppSwitches;
         FirstActiveTime = stats.FirstActiveTime;
@@ -726,9 +705,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             });
         }
 
-        HasAppData = stats.TopAppsRaw.Count > 0;
-        HasWebsiteData = stats.TopWebsites.Count > 0;
-
         // === 阶段 2：状态条与环比格式化 ===
 
         DataAsOf = DateTime.Now.ToString("HH:mm");
@@ -789,10 +765,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             CurrentAppSince = "";
             HasCurrentApp = false;
         }
-
-        // 有任一指标即视为有数据（全 0 也可能是真实数据，故以 TopApps/键鼠/网页任一非零判断）
-        HasAnyData = TopApps.Count > 0 || TopWebsites.Count > 0
-                     || (stats.TodayKeyPresses != "0" && stats.TodayKeyPresses != "0.00");
     }
 
     private string? _lastIconApp;
