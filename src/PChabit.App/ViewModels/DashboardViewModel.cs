@@ -453,6 +453,34 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
 
         var totalMinutes = appSessions.Sum(SessionMinutes);
 
+        // 每日聚合只处理「前一天」，今日行常为空壳甚至缺失；三类派生指标（专注/切换/首末活跃）
+        // 在聚合值缺失时用今日会话实时补齐，避免仪表盘恒显「--」。
+        var categoryMap = await LoadCategoryMapAsync(dbContext);
+
+        double? focusMinutes = summary?.FocusMinutesV2;
+        if (focusMinutes is null && appSessions.Count > 0)
+        {
+            // 生产力分类的活跃分钟（不设单会话 ≥25 分钟门槛：切窗即断会话，带门槛会恒为 0）
+            focusMinutes = appSessions
+                .Where(s => AnalyticsEngine.IsProductiveCategory(
+                    AppStatsEngine.ResolveCategory(s, categoryMap).Name))
+                .Sum(SessionMinutes);
+        }
+
+        var appSwitches = summary?.AppSwitches;
+        if (appSwitches is null && appSessions.Count > 0)
+            appSwitches = Math.Max(0, appSessions.Count - 1);
+
+        var firstActive = summary?.FirstActiveTime;
+        var lastActive = summary?.LastActiveTime;
+        if (appSessions.Count > 0)
+        {
+            if (string.IsNullOrEmpty(firstActive))
+                firstActive = appSessions.Min(s => s.StartTime).ToString("HH:mm");
+            if (string.IsNullOrEmpty(lastActive))
+                lastActive = appSessions.Max(s => SessionEnd(s, isToday ? now : today)).ToString("HH:mm");
+        }
+
         var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
         var totalClicks = mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
         var totalWebPages = webSessions.Count;
@@ -466,10 +494,10 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             TodayKeyPresses = totalKeyPresses.ToString("N0"),
             TodayMouseClicks = totalClicks.ToString("N0"),
             TodayWebPages = totalWebPages.ToString(),
-            FocusMinutes = summary?.FocusMinutesV2,
-            AppSwitches = summary?.AppSwitches,
-            FirstActiveTime = summary?.FirstActiveTime ?? "",
-            LastActiveTime = summary?.LastActiveTime ?? ""
+            FocusMinutes = focusMinutes,
+            AppSwitches = appSwitches,
+            FirstActiveTime = firstActive ?? "",
+            LastActiveTime = lastActive ?? ""
         };
 
         // 计算 TopApps。分类在下方统一解析（与应用统计页同源，见 3.26.1 修复说明）。
@@ -497,7 +525,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             // 3.26.1 修复：此前用 AppCategoryResolver 实时硬编码映射，绕过了 ProgramCategoryMappings
             // （200 条用户可自定义规则），导致同一进程在仪表盘与应用统计页显示不同分类。
             // 现在直接读同一张映射表，并复用 AppStatsEngine.ResolveCategory 的解析规则。
-            var categoryMap = await LoadCategoryMapAsync(dbContext);
+            // （映射表已在方法上方加载，供专注分钟实时补齐复用）
 
             stats.TopAppsRaw = topApps
                 .Select(x =>

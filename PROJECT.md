@@ -1,6 +1,6 @@
 # PChabit 项目记录
 
-> **最后更新**：2026-10-11
+> **最后更新**：2026-10-18
 > **文档定位**：**索引层**，不重复造轮子。深度内容一律查 `AI_MAINTENANCE.md`（2000+ 行，30 条陷阱）与 `CHANGELOG.md`。
 > **同步说明**：本目录位于 Verysync 同步盘 `E:\SYNC` 内，会自动同步到其他终端。**本地文件即权威源，云端文档非必需。**
 
@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.49.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.54.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
@@ -72,6 +72,9 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-10-31 | 3.54.0 | **应用图标重设计**。3.51.0 的 3×3 橙/深青方块阵 + 斜线节点在小尺寸下过密，用户反馈"还是有点丑"。重写 `scripts/generate_icons.py`：深青纵向渐变圆角底（#16424D→#0A262E，圆角 22%）+ 三根递增橙柱（#F59E0B/#FBBF24）+ 青色趋势线与端点；4× 超采样 + LANCZOS；趋势线 <48px 自动省略（24/16px 仅三柱）。一次生成 Assets 全套 PNG（Splash/宽幅/scale-200）、`pchabit.ico`（16–256 七档）、托盘三态 ICO（运行/降饱和/灰度）、扩展 icon16/48/128。验证：build 0 错误、部署 510/510、自包含通过、`ExtractAssociatedIcon` 提取 exe 图标为新设计、ShellPage 左上角 Logo 实拍更新 |
+| 2026-10-30 | 3.53.0 | **仪表盘「专注 / 应用切换 / 活跃时段」无数据修复**。查库实证：`DailySummaries.FocusMinutesV2`/`AppSwitches` 全库 63 行均为 NULL（写入端 `AggregateDailySummaryAsync` 从未赋值，只有读取端）；且每日聚合只跑「前一天」，今日行常为网络流量写入的空壳（ActiveMinutes=0、无首末活跃）→ 仪表盘读今日行三项全缺，恒显「--」。修复：① 聚合补写 `FocusMinutesV2`（生产力分类活跃分钟）与 `AppSwitches`（会话数-1，对齐 `EfficiencyCalculator`）；② `DashboardViewModel` 在聚合值缺失时用已加载的今日 AppSessions 实时补齐三项（不写库，符合「今日实时合并」约束）；③ `incomplete` 判定追加 `FocusMinutesV2==null && ActiveMinutes>0`，昨日行下次小时检查自动补算。专注口径：AppSession 为前台窗口会话，实测单会话最长 21 分钟，保留「≥25 分钟」门槛会恒 0 → 改为生产力分类活跃分钟之和。验证：build 0 错误、全量部署 510/510、自包含通过；uiautomation 实拍显示「专注 148 分钟 / 应用切换 1364 次 / 活跃时段 05:35–20:34」，日志无新增 ERR/FTL |
+| 2026-10-18 | 3.52.0 | 本机（备份终端）构建部署 3.52.0 至 `D:\Tool\PChabit`：`dotnet build` Release x64，0 错误 20 警告；产物 464 文件（清理 BuildHost-net472/netcore 测试宿主 46 个后），版本 3.52.0.0，自包含校验通过（`includedFrameworks` 在，hostfxr/hostpolicy/coreclr/e_sqlite3/WinUIEdit 齐全，源/目标 464 一致）。经 explorer 以用户身份启动（规避 TRAE 沙箱对 `pchabit.db-wal` 的写入拦截），进程稳定 51s+，本次启动段日志 0 ERR / 0 WRN / 0 FTL；数据库全链路迁移步骤（WebsiteCategory/AppDescription/GuidTables/BackupTables/AnalysisTables）依次完成、初始化完成、任务栏托盘定时器启动、仪表盘数据加载正常 |
 | 2026-10-15 | 3.49.0 | **硬件监控入口从设置页移回左侧导航**。3.35.0（db69591）曾把硬件监控移出侧栏、入口改为「设置 › 监控设置」的「打开硬件监控 →」按钮；本次恢复：`ShellPage.xaml` 在「使用」与「洞察」之间加回「系统」分组 + 硬件监控 NavigationViewItem（Tag=Monitor、glyph E950，均取自移出前版本），导航 key 从未注销故 NavigationService/App.xaml.cs 零改动；删除 SettingsPage.xaml 按钮与 SettingsPage.xaml.cs 的 `OpenHardwareMonitor_Click`；桌面悬浮插件双击入口不受影响。验证：清 obj/bin 后 dotnet build 0 错误、全量部署 509/509、自包含校验通过；uiautomation 实拍侧栏「系统 › 硬件监控」高亮并正常打开实时页（CPU/GPU/内存/磁盘/网络数据刷新），设置页按钮文本已不存在，日志 `NavView_ItemInvoked: Tag=Monitor → HardwareMonitorPage` 正常、无新增 ERR/FTL |
 | 2026-10-15 | 3.48.0 | **分析-构成页双条形列表改双饼图合并面板**。新增 `Assets/PieChart/composition.html`（单页双 ECharts 环图，共用「分类名→颜色」映射保证同分类同色，单侧空数据显示占位，prefers-color-scheme 主题重绘）与 `Views/CompositionPieView`（UserControl+WebView2+`ChartJson` DP，仿 HardwareTrendView，仅一个 WV2 实例）；`AnalyticsViewModel` 加 `CompositionChartJson`/`HasComposition`，两张 Border 卡合一。踩坑：① 删 `_pendingJson` 字段漏改两处引用致 CS0103，连锁触发 XAML pass2 WMC1509/WMC9999 假错误（同陷阱 21）；② WV2 透明背景在 Mica 卡片上透出灰底 → body 改主题实色（#fff/#2b2b2b 取齐卡片色）；③ 右标题半列宽被截断 → 标题缩短为「分类构成/网页分类构成」。验证：build 0 错误、清空全量部署 509/509、自包含校验通过、uiautomation 实拍双饼图与同色正确、日志无新增 ERR/FTL |
 | 2026-10-13 | 3.47.0 | **全项目死代码大扫除（用户可见行为零变化）**。按 A–E 五批次清理：A 编译警告实锤（CS0169 `_chartPendingPush`、CS0649 `LastEstatsDown/Up`）+ `SettingsViewModel` 5 个 RelayCommand 及 `_monitorManager` 注入 + `DataManagementViewModel.History.cs` 整文件；B 方法级死代码（`RefreshGlobalLogsAsync`/`CopyGlobalLogsAsync`/`ClearLogs`/`SearchAsync`/`RefreshAsync`/`SetDateRangeAsync`/`DiscardEmptyAsync`/`ApplyMonitorSettings` 等）+ 随之孤立的 `GlobalOpLog.ReadTodayFile()`/`ExportToday()`；C 6 个零引用整文件（`ShortcutDetector`/`TypingBurstDetector`/`SerilogConfigurator`/`PerformanceMonitor`/`TaskScheduler`/`CacheService`）+ 3 个未注册转换器；D 10 个只写属性（`DashboardViewModel` 5 个、`WebHistorySectionViewModel._statusMessage`、`DataManagementViewModel._downloadProgress`/`_lastExportPath`、`AnalyticsViewModel._isFollowUpRunning`、`NotesViewModel._isSelected`）+ `KeyboardDetailsViewModel` 的 `HourlyData`/`HourlyMouseStats` XAML 未绑定集合链路；E 13 个「已注册但无 XAML 绑定」转换器（共 −315 行）与 `RegisterAppConverters()` 13 行注册 + `PChabit.Infrastructure.csproj` 的 `Microsoft.Win32.Registry` 包引用（NU1510）+ `ServiceConfiguration` 的 `ICacheService`/`AddMemoryCache` 注册。**甄别方法**：只写属性扫描（grep `\.Prop\b` 排除点前缀）、转换器双轨核对（`RegisterAppConverters()` ∩ XAML `StaticResource`）、`x:Bind` 路径在 MarkupCompile 期校验（删错即编译失败）。构建警告 52→22 行（剩余全为既有非死代码警告：CS0108×2/CS8601×2/CS8602/CS8604/CS8625/CS4014×2/WMC1506×2），单测 **156/156**，publish 部署 `D:\Tool\PChabit` 3.47.0.0，`scripts/verify_346.py` 冒烟通过、新增 ERR/FTL=0。新增陷阱 46 |

@@ -39,7 +39,9 @@ public partial class DataCollectionService : IDisposable
                 || (existing.TotalKeys <= 0
                     && existing.TotalMouseClicks <= 0
                     && existing.ActiveMinutes <= 0
-                    && (string.IsNullOrEmpty(existing.TopApps) || existing.TopApps == "[]"));
+                    && (string.IsNullOrEmpty(existing.TopApps) || existing.TopApps == "[]"))
+                // 3.50.0 起补写专注/切换：历史行缺列时重算一次（有活动才值得重算，避免空壳日反复触发）
+                || (existing.FocusMinutesV2 == null && existing.ActiveMinutes > 0);
 
             if (incomplete)
             {
@@ -305,6 +307,24 @@ public partial class DataCollectionService : IDisposable
 
         var activeMinutes = appSessions.Sum(SessionActiveMinutes);
 
+        // 专注分钟与应用切换次数（与 AggregateAppDailyStatsAsync / EfficiencyCalculator 同口径）：
+        // 专注 = 生产力分类的活跃分钟之和；切换 = 相邻会话切换次数。
+        // 3.50.0 之前这两列从未赋值，仪表盘「专注 / 应用切换」恒为「--」。
+        // 专注不再要求单会话 ≥25 分钟：AppSession 是前台窗口会话，切窗即断，
+        // 实测单会话极少超过 25 分钟（最长 21 分钟），带门槛会恒为 0。
+        var categories = await dbContext.ProgramCategories
+            .AsNoTracking()
+            .Include(c => c.ProgramMappings)
+            .Where(c => c.IsActive)
+            .ToListAsync();
+        var categoryMap = AppStatsEngine.BuildCategoryMap(categories);
+
+        var focusMinutes = appSessions
+            .Where(s => AnalyticsEngine.IsProductiveCategory(
+                AppStatsEngine.ResolveCategory(s, categoryMap).Name))
+            .Sum(SessionActiveMinutes);
+        var appSwitches = Math.Max(0, appSessions.Count - 1);
+
         // 从 WebSession 聚合网页指标（真实会话，排除 Legacy 切片）
         var webSessions = await dbContext.WebSessions
             .AsNoTracking()
@@ -359,6 +379,8 @@ public partial class DataCollectionService : IDisposable
                 TotalKeys = totalKeys,
                 TotalMouseClicks = totalMouseClicks,
                 ActiveMinutes = activeMinutes,
+                FocusMinutesV2 = focusMinutes,
+                AppSwitches = appSwitches,
                 TopApps = topAppsJson,
                 HourlyKeyDistribution = hourlyKeysJson,
                 WebPages = webPages,
@@ -384,6 +406,8 @@ public partial class DataCollectionService : IDisposable
             summary.TotalKeys = totalKeys;
             summary.TotalMouseClicks = totalMouseClicks;
             summary.ActiveMinutes = activeMinutes;
+            summary.FocusMinutesV2 = focusMinutes;
+            summary.AppSwitches = appSwitches;
             summary.TopApps = topAppsJson;
             summary.HourlyKeyDistribution = hourlyKeysJson;
             summary.WebPages = webPages;

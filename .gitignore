@@ -181,3 +181,7 @@ coverage/
 # Package lock files (optional, uncomment if needed)
 # package-lock.json
 # yarn.lock
+
+# 开发痕迹：独立实验项目与图标预览图
+plugins/
+scripts/preview/
