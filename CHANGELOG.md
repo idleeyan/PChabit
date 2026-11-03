@@ -2,6 +2,43 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.55.0] - 2026-11-03
+
+### 变更：便签支持 Markdown 样式显示
+
+便签全面支持 Markdown 渲染（用户选项：Markdig + RichTextBlock 原生渲染、
+卡片与编辑框双位置、尽量完整语法）：
+
+- 新增 `Controls/MarkdownText.cs`：附加属性
+  `<RichTextBlock controls:MarkdownText.Text="{x:Bind ...}" />`（RichTextBlock
+  是密封类无法继承，故用附加属性挂接）。Markdig 0.45 `UseAdvancedExtensions`
+  解析 + 遍历 AST 转 `Paragraph/Span/Run`；WinUI `RichTextBlock.Blocks` 只收
+  `Paragraph`，代码块/引用/表格/分隔线用 `InlineUIContainer` 承载复合 UI
+- 支持范围：标题 1–6、**粗体**、*斜体*、~~删除线~~、`行内代码`、代码块、
+  嵌套有序/无序列表、任务列表（`TaskListInlineParser` 产出的行内节点渲染
+  ☑/☐）、引用（嵌套，左侧竖线 Border + 内嵌 RichTextBlock）、链接（可点击
+  Hyperlink）、图片（异步 BitmapImage，失败降级占位文本）、表格（Grid 等宽
+  列 + 表头加粗底色）、分隔线；单换行即换行（`UseSoftlineBreakAsHardlineBreak`，
+  便签录入习惯）；HTML 块/内联一律忽略（安全）
+- 便签卡片（`NotesPage.xaml` 卡片 DataTemplate）与编辑对话框（新增
+  「✏ 编辑 / 预览样式」RadioButton 切换，预览区 `ScrollViewer` + 渲染，
+  打开对话框自动重置为编辑模式）两处接入；QuickNoteWindow 快速录入窗保持纯文本
+- 颜色按目标控件 `ActualTheme` 深浅两套硬编码（附加属性回调里拿不到
+  ThemeResource 的主题解析），`ActualThemeChanged` 重渲染；解析异常降级纯文本
+- **顺带修一个既有缺陷**：「+ 新建便签」按钮只创建空便签入库、从不弹编辑框
+  （`NewAsync` 只调 `BeginEditAsync`，`ShowAsync` 仅在点卡片的
+  `OpenEditAsync` 路径上）。改由页面层 `NewNote_Click` 创建后立即
+  `OpenEditAsync`，新建即进编辑
+- **踩坑记录**（详见 AI_MAINTENANCE 陷阱 47）：x:Bind 初始化即触发附加属性
+  回调，回调内任何未捕获异常（如颜色串解析越界）会沿
+  `PropertyChangedCallback → SetValue → Loading` 冒泡成 App 级 FTL 崩溃
+  （进便签页即闪退），Render 的 try-catch 救不了 try 块之外的代码
+
+验证：Release 0 错误、单测 156/156、publish 部署 `D:\Tool\PChabit`
+3.55.0.0；uiautomation 实测新建便签输入 Markdown → 预览样式六项全检出
+（标题/粗体/列表/引用/☑/☐，源码符号不残留）→ 保存后卡片按样式渲染、
+既有便签 URL 全部变为可点链接；新增 ERR/FTL=0
+
 ## [3.54.0] - 2026-10-31
 
 ### 变更：应用图标重设计（替换 3.51.0 的九宫格方案）

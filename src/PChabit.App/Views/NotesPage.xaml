@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:vm="using:PChabit.App.ViewModels"
+    xmlns:controls="using:PChabit.App.Controls"
     x:Name="NotesPageRoot"
     Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
     mc:Ignorable="d">
@@ -31,7 +32,7 @@
                         SelectedItem="{x:Bind ViewModel.SelectedFilter, Mode=TwoWay}" />
                     <Button Command="{x:Bind ViewModel.SyncNowCommand}" Content="立即同步" />
                     <Button
-                        Command="{x:Bind ViewModel.NewCommand}"
+                        Click="NewNote_Click"
                         Style="{StaticResource AccentButtonStyle}"
                         Content="+ 新建便签" />
                 </StackPanel>
@@ -100,15 +101,13 @@
                                         Foreground="#8A7C45"
                                         Text="{x:Bind UpdatedText}" />
                                 </Grid>
-                                <TextBlock
+                                <RichTextBlock
                                     Grid.Row="1"
                                     Margin="0,8"
-                                    IsTextSelectionEnabled="False"
                                     LineHeight="20"
                                     MaxHeight="168"
-                                    Text="{x:Bind Preview}"
-                                    TextTrimming="CharacterEllipsis"
-                                    TextWrapping="Wrap" />
+                                    IsTextSelectionEnabled="False"
+                                    controls:MarkdownText.Text="{x:Bind Preview}" />
                                 <StackPanel
                                     Grid.Row="2"
                                     HorizontalAlignment="Right"
@@ -185,6 +184,28 @@
             Closing="EditDialog_Closing"
             SecondaryButtonText="删除">
             <StackPanel Spacing="12" Width="440">
+                <Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <RadioButton
+                            x:Name="ModeEdit"
+                            Content="✏ 编辑"
+                            MinWidth="0"
+                            Padding="10,4"
+                            Checked="Mode_Checked" />
+                        <RadioButton
+                            x:Name="ModePreview"
+                            Content="预览样式"
+                            MinWidth="0"
+                            Padding="10,4"
+                            Checked="Mode_Checked" />
+                    </StackPanel>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        HorizontalAlignment="Right"
+                        FontSize="11"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Text="支持 Markdown 语法" />
+                </Grid>
                 <TextBox
                     x:Name="EditBox"
                     AcceptsReturn="True"
@@ -193,6 +214,19 @@
                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                     Text="{x:Bind ViewModel.EditContent, Mode=TwoWay}"
                     TextWrapping="Wrap" />
+                <ScrollViewer
+                    x:Name="PreviewScroll"
+                    Height="220"
+                    Padding="10,8"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+                    <RichTextBlock
+                        x:Name="PreviewMd"
+                        IsTextSelectionEnabled="True"
+                        controls:MarkdownText.Text="{x:Bind ViewModel.EditContent, Mode=OneWay}" />
+                </ScrollViewer>
                 <Grid>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button

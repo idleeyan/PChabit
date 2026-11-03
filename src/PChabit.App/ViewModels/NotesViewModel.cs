@@ -164,12 +164,8 @@ public partial class NotesViewModel : ViewModelBase
         finally { IsBusy = false; }
     }
 
-    [RelayCommand]
-    private async Task NewAsync()
-    {
-        var note = await _notes.CreateAsync("", "yellow");
-        await BeginEditAsync(note.Id);
-    }
+    /// <summary>创建一张空白便签（不弹编辑框；弹窗由页面层 OpenEditAsync 负责，3.55.0 修复「新建后无编辑框」的既有缺陷）。</summary>
+    public Task<StickyNote?> CreateNewAsync() => _notes.CreateAsync("", "yellow");
 
     [RelayCommand]
     private async Task CycleColor(Guid id)

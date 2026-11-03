@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.54.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
+| 当前版本 | **3.55.0**（`src\PChabit.App\PChabit.App.csproj` 第 13 行 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x |
 | 代码仓库 | `github.com/idlee/PChabit` |
 
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-03 | 3.55.0 | **便签支持 Markdown 样式显示**。用户拍板：Markdig + RichTextBlock 路线、卡片 + 编辑框预览切换、尽量完整语法。① 新增 `Controls/MarkdownText.cs` 附加属性方案（RichTextBlock 密封类不能继承），Markdig 0.45 解析转原生 `Paragraph/Span`，代码块/引用/表格/分隔线用 `InlineUIContainer`；支持标题/粗斜体/删除线/行内代码/代码块/嵌套列表/任务列表（☑☐ 行内节点）/引用/链接/图片（失败降级）/表格/分隔线，单换行即换行，HTML 忽略（安全），深浅主题硬编码双色 + `ActualThemeChanged` 重渲染，异常降级纯文本。② 卡片 DataTemplate 与编辑对话框「✏ 编辑/预览样式」切换两处接入。③ **顺带修既有缺陷**：「+ 新建便签」只入库空便签从不弹编辑框（`NewAsync` 无 `ShowAsync`），改页面层 `NewNote_Click` 创建后立即 `OpenEditAsync`。**踩坑**：x:Bind 初始化触发附加属性回调，回调内异常（Hex 颜色串按 8 位解析 6 位串越界）冒泡成 App 级 FTL 崩溃（进便签页即闪退），Render 空文本检查与 try 范围需覆盖取色前路径；新增陷阱 47。验证：0 错误、156/156、部署 3.55.0.0、uiautomation 实测预览六项全检出 + 卡片渲染 + 既有便签 URL 全部变可点链接、ERR/FTL=0 |
 | 2026-10-31 | 3.54.0 | **应用图标重设计**。3.51.0 的 3×3 橙/深青方块阵 + 斜线节点在小尺寸下过密，用户反馈"还是有点丑"。重写 `scripts/generate_icons.py`：深青纵向渐变圆角底（#16424D→#0A262E，圆角 22%）+ 三根递增橙柱（#F59E0B/#FBBF24）+ 青色趋势线与端点；4× 超采样 + LANCZOS；趋势线 <48px 自动省略（24/16px 仅三柱）。一次生成 Assets 全套 PNG（Splash/宽幅/scale-200）、`pchabit.ico`（16–256 七档）、托盘三态 ICO（运行/降饱和/灰度）、扩展 icon16/48/128。验证：build 0 错误、部署 510/510、自包含通过、`ExtractAssociatedIcon` 提取 exe 图标为新设计、ShellPage 左上角 Logo 实拍更新 |
 | 2026-10-30 | 3.53.0 | **仪表盘「专注 / 应用切换 / 活跃时段」无数据修复**。查库实证：`DailySummaries.FocusMinutesV2`/`AppSwitches` 全库 63 行均为 NULL（写入端 `AggregateDailySummaryAsync` 从未赋值，只有读取端）；且每日聚合只跑「前一天」，今日行常为网络流量写入的空壳（ActiveMinutes=0、无首末活跃）→ 仪表盘读今日行三项全缺，恒显「--」。修复：① 聚合补写 `FocusMinutesV2`（生产力分类活跃分钟）与 `AppSwitches`（会话数-1，对齐 `EfficiencyCalculator`）；② `DashboardViewModel` 在聚合值缺失时用已加载的今日 AppSessions 实时补齐三项（不写库，符合「今日实时合并」约束）；③ `incomplete` 判定追加 `FocusMinutesV2==null && ActiveMinutes>0`，昨日行下次小时检查自动补算。专注口径：AppSession 为前台窗口会话，实测单会话最长 21 分钟，保留「≥25 分钟」门槛会恒 0 → 改为生产力分类活跃分钟之和。验证：build 0 错误、全量部署 510/510、自包含通过；uiautomation 实拍显示「专注 148 分钟 / 应用切换 1364 次 / 活跃时段 05:35–20:34」，日志无新增 ERR/FTL |
 | 2026-10-18 | 3.52.0 | 本机（备份终端）构建部署 3.52.0 至 `D:\Tool\PChabit`：`dotnet build` Release x64，0 错误 20 警告；产物 464 文件（清理 BuildHost-net472/netcore 测试宿主 46 个后），版本 3.52.0.0，自包含校验通过（`includedFrameworks` 在，hostfxr/hostpolicy/coreclr/e_sqlite3/WinUIEdit 齐全，源/目标 464 一致）。经 explorer 以用户身份启动（规避 TRAE 沙箱对 `pchabit.db-wal` 的写入拦截），进程稳定 51s+，本次启动段日志 0 ERR / 0 WRN / 0 FTL；数据库全链路迁移步骤（WebsiteCategory/AppDescription/GuidTables/BackupTables/AnalysisTables）依次完成、初始化完成、任务栏托盘定时器启动、仪表盘数据加载正常 |

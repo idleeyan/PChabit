@@ -62,6 +62,14 @@ public sealed partial class NotesPage : Page
             await OpenEditAsync(item.Id);
     }
 
+    /// <summary>「+ 新建便签」：创建空白便签后立即打开编辑框（3.55.0 修复新建后无编辑框的既有缺陷）。</summary>
+    private async void NewNote_Click(object sender, RoutedEventArgs e)
+    {
+        var note = await ViewModel.CreateNewAsync();
+        if (note == null) return;
+        await OpenEditAsync(note.Id);
+    }
+
     private async System.Threading.Tasks.Task OpenEditAsync(Guid id)
     {
         if (_editOpened) return;
@@ -70,6 +78,7 @@ public sealed partial class NotesPage : Page
         _editOpened = true;
         try
         {
+            ApplyEditMode(isPreview: false); // 每次打开重置为编辑模式
             await EditDialog.ShowAsync();
         }
         catch (Exception ex)
@@ -80,6 +89,21 @@ public sealed partial class NotesPage : Page
         {
             _editOpened = false;
         }
+    }
+
+    /// <summary>编辑对话框「编辑 / 预览样式」切换（3.55.0 Markdown 预览）。</summary>
+    private void Mode_Checked(object sender, RoutedEventArgs e) =>
+        ApplyEditMode(isPreview: sender == ModePreview);
+
+    private void ApplyEditMode(bool isPreview)
+    {
+        // RadioButton 的 IsChecked 已是目标值时不会触发 Checked，这里统一同步可见性
+        ModeEdit.IsChecked = !isPreview;
+        ModePreview.IsChecked = isPreview;
+        EditBox.Visibility = isPreview ? Visibility.Collapsed : Visibility.Visible;
+        PreviewScroll.Visibility = isPreview ? Visibility.Visible : Visibility.Collapsed;
+        if (isPreview)
+            Controls.MarkdownText.SetText(PreviewMd, ViewModel.EditContent); // 立即以当前内容渲染
     }
 
     private async void EditDialog_Primary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
