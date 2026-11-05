@@ -2,6 +2,44 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.64.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D3（步骤 1）——SettingsPage「关于」分区拆为 UserControl
+
+按计划分步推进（步骤 1 = 最独立的「关于」分区，验证 Page→UserControl 模式）：
+`SettingsPage.xaml` 1058 → 802 行、`SettingsPage.xaml.cs` 919 → 616 行；
+新增 `Views/Settings/AboutSettingsSection.xaml(.cs)`（265/319 行）。
+
+- **拆出内容**：`LoadAboutInfo` / `ResolvePackageVersion` / `NormalizeVersion` /
+  `LoadLatestChangelogSummary` / `OnViewChangelogClick`（关于页展示 + 更新日志弹窗）
+  及 `_fullChangelog` 字段——均为只读展示、不参与页面集中式设置读写，故为**纯搬运**。
+- **接口**：`AboutSettingsSection.Refresh()`（供宿主在构造与 `OnNavigatedTo` 调用，
+  等价原 `LoadAboutInfo()` 两个调用点）；事件绑定（`ViewChangelogButton.Click`）
+  移入分区自身构造函数。
+- **四处同步改**（陷阱 29）：根节点 `Page`→`UserControl`、`x:Class` 改为
+  `PChabit.App.Views.Settings.AboutSettingsSection`、文件内无 `Resources`、
+  结束标签 `</Page>`→`</UserControl>`。
+- **页面侧**：新增 `xmlns:settings`，原 `AboutSection` Border 替换为
+  `<settings:AboutSettingsSection x:Name="AboutSectionControl" />`；
+  `ApplySection` 改引用 `AboutSectionControl`；两处 `LoadAboutInfo()` 调用改为
+  `AboutSectionControl.Refresh()`。
+- 字节保真脚本（22 个边界锚点断言 + 行区间删除/替换），XAML 缩进原样保留。
+
+**验证**（新增 `scripts/verify_364.py`，uiautomation）：
+- **陷阱 31 回归通过**：进入设置页不崩溃，日志「SettingsPage: 构造函数完成」，新增 ERR/FTL=0。
+- **7 个分区逐个选中（SelectionItemPattern）全部成功**，右侧正确切换。
+- **「关于」内容全部加载**：可见文本含 文件版本 / WinUI 3 / 技术栈 / 更新日志 /
+  「最新更新 · 3.64.0」（CHANGELOG 摘要实时读取成功）——证明 UserControl 内
+  `x:Name` 控件正确绑定。
+- 构建 0 错误；156/156 测试；发布 3.64.0.0 部署、冒烟 PASS。
+- *验证脚本踩点*：设置页分区项与主导航存在**同名项**（如「便签」），按名称遍历会
+  误选主导航项；已加坐标过滤（x>300）修正，供后续分区拆分复用。
+
+**遗留（D3 后续步骤 2–3）**：AI / 便签 / 常规 / 监控 / 界面 / 数据 六个分区与页面
+**集中式**设置读写强耦合（`LoadSettingsToUI` 92 行 + `OnSettingChanged` 189 行按 `x:Name`
+统一遍历所有分区的控件），拆分它们需把集中逻辑**按分区打散到各分区的 Load/Save**——
+属逻辑重构而非纯搬运，风险显著更高，留作后续批次逐分区进行（每批独立编译 + UI 验证）。
+
 ## [3.63.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D2——按职责拆分 App.xaml.cs（纯搬运）
