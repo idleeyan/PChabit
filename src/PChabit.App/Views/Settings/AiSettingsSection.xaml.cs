@@ -176,6 +176,7 @@ public sealed partial class AiSettingsSection : UserControl
     /// <summary>一键把界面上 AI 字段全部落盘，并探测实际请求端点。</summary>
     private async void AiTestConnection_Click(object sender, RoutedEventArgs e)
     {
+        if (_viewModel is null) return;
         try
         {
             AiTestResult.Text = "已保存，正在测试…";

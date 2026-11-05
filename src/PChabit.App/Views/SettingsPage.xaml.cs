@@ -34,6 +34,7 @@ public sealed partial class SettingsPage : Page
             AddEventHandlers();
             AboutSectionControl.Refresh();
             AiSectionControl.Initialize(ViewModel);
+            StickyNotesControl.Initialize(ViewModel);
 
             // 选中项必须等 InitializeComponent 之后再设：解析期触发 SelectionChanged
             // 时右侧分区控件还不存在，会空引用崩溃
@@ -70,7 +71,7 @@ public sealed partial class SettingsPage : Page
         Show(MonitorSection, tag == "monitor");
         Show(TaskbarSection, tag == "interface");
         Show(DesktopWidgetSection, tag == "interface");
-        Show(StickyNotesSection, tag == "notes");
+        Show(StickyNotesControl, tag == "notes");
         Show(DataSection, tag == "data");
         Show(AiSectionControl, tag == "ai");
         Show(AboutSectionControl, tag == "about");
@@ -130,11 +131,6 @@ public sealed partial class SettingsPage : Page
         DesktopClickThroughSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetClickThrough", DesktopClickThroughSwitch.IsOn);
         DesktopClampSwitch.Toggled += (s, e) => OnSettingChanged("DesktopWidgetClampToScreen", DesktopClampSwitch.IsOn);
 
-        // 便签（3.24.0）
-        StickyEnabledSwitch.Toggled += (s, e) => OnSettingChanged("StickyNotesEnabled", StickyEnabledSwitch.IsOn);
-        StickyQuickDismissSwitch.Toggled += (s, e) => OnSettingChanged("StickyNotesQuickDismissOnFocusLost", StickyQuickDismissSwitch.IsOn);
-        StickyRetentionBox.ValueChanged += (s, e) => OnSettingChanged("StickyNotesRetentionDays", (int)e.NewValue);
-        StickySyncSwitch.Toggled += (s, e) => OnSettingChanged("StickyNotesSyncEnabled", StickySyncSwitch.IsOn);
 
     }
 
@@ -241,18 +237,6 @@ public sealed partial class SettingsPage : Page
             case "DesktopWidgetClampToScreen":
                 ViewModel.DesktopWidgetClampToScreen = (bool)value;
                 break;
-            case "StickyNotesEnabled":
-                ViewModel.StickyNotesEnabled = (bool)value;
-                break;
-            case "StickyNotesQuickDismissOnFocusLost":
-                ViewModel.StickyNotesQuickDismissOnFocusLost = (bool)value;
-                break;
-            case "StickyNotesRetentionDays":
-                ViewModel.StickyNotesRetentionDays = (int)value;
-                break;
-            case "StickyNotesSyncEnabled":
-                ViewModel.StickyNotesSyncEnabled = (bool)value;
-                break;
 
         }
 
@@ -276,6 +260,7 @@ public sealed partial class SettingsPage : Page
                 Log.Information("SettingsPage: InitializeAsync 完成");
                 LoadSettingsToUI();
                 AiSectionControl.Reload();
+                StickyNotesControl.Reload();
             }
             finally
             {
@@ -331,14 +316,6 @@ public sealed partial class SettingsPage : Page
         DesktopClickThroughSwitch.IsOn = ViewModel.DesktopWidgetClickThrough;
         DesktopClampSwitch.IsOn = ViewModel.DesktopWidgetClampToScreen;
 
-        // 便签（3.24.0）
-        StickyEnabledSwitch.IsOn = ViewModel.StickyNotesEnabled;
-        StickyHotkeyNewBox.Text = ViewModel.StickyNotesHotkeyNew;
-        StickyHotkeyBoardBox.Text = ViewModel.StickyNotesHotkeyBoard;
-        StickyQuickDismissSwitch.IsOn = ViewModel.StickyNotesQuickDismissOnFocusLost;
-        StickyRetentionBox.Value = ViewModel.StickyNotesRetentionDays;
-        StickySyncSwitch.IsOn = ViewModel.StickyNotesSyncEnabled;
-        StickyLastSyncText.Text = ViewModel.StickyNotesLastSyncText;
 
 
 
@@ -360,109 +337,7 @@ public sealed partial class SettingsPage : Page
         Log.Information("SettingsPage: 设置已加载到 UI");
     }
 
-    // ===== 便签（3.24.0）=====
-
-    /// <summary>热键失焦校验：解析 + 真实注册探测；失败还原旧值并红字提示，成功规范化落盘。</summary>
-    private void StickyHotkeyBox_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (_isLoading) return;
-        bool isNew = ReferenceEquals(sender, StickyHotkeyNewBox);
-        var box = isNew ? StickyHotkeyNewBox : StickyHotkeyBoardBox;
-        var error = isNew ? StickyHotkeyNewError : StickyHotkeyBoardError;
-        var propName = isNew ? "StickyNotesHotkeyNew" : "StickyNotesHotkeyBoard";
-        var saved = isNew ? ViewModel.StickyNotesHotkeyNew : ViewModel.StickyNotesHotkeyBoard;
-        var gesture = box.Text.Trim();
-
-        void ShowError(string msg)
-        {
-            error.Text = msg;
-            error.Visibility = Visibility.Visible;
-        }
-
-        // 空手势：注销并保存空值（总开关关闭时仅保存文本）
-        if (string.IsNullOrEmpty(gesture))
-        {
-            error.Visibility = Visibility.Collapsed;
-            if (ViewModel.StickyNotesEnabled)
-                App.GetService<GlobalHotkeyService>()?.Unregister(isNew ? App.HotkeyActionNew : App.HotkeyActionBoard);
-            if (isNew) ViewModel.StickyNotesHotkeyNew = "";
-            else ViewModel.StickyNotesHotkeyBoard = "";
-            ViewModel.SaveSetting(propName);
-            return;
-        }
-
-        if (!GlobalHotkeyService.TryParse(gesture, out _, out _, out string normalized))
-        {
-            ShowError("格式错误：需 Ctrl/Alt/Win 之一 + 字母/数字/F1-F12");
-            box.Text = saved;
-            return;
-        }
-
-        if (ViewModel.StickyNotesEnabled)
-        {
-            bool ok;
-            try
-            {
-                var hk = App.GetService<GlobalHotkeyService>();
-                hk.Start();
-                ok = hk.Register(isNew ? App.HotkeyActionNew : App.HotkeyActionBoard, normalized);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "[Notes] 设置页热键注册异常");
-                ok = false;
-            }
-            if (!ok)
-            {
-                ShowError("热键被其他程序占用，请更换");
-                box.Text = saved;
-                return;
-            }
-        }
-
-        error.Visibility = Visibility.Collapsed;
-        box.Text = normalized;
-        if (isNew) ViewModel.StickyNotesHotkeyNew = normalized;
-        else ViewModel.StickyNotesHotkeyBoard = normalized;
-        ViewModel.SaveSetting(propName);
-    }
-
-    /// <summary>立即同步：未配置 WebDAV 直接提示；执行期间禁用按钮防重入。</summary>
-    private async void StickySyncNow_Click(object sender, RoutedEventArgs e)
-    {
-        var settings = App.GetService<ISettingsService>();
-        if (settings == null || !settings.WebDAVEnabled)
-        {
-            StickyLastSyncText.Text = "请先在「数据同步」中开启并配置 WebDAV";
-            return;
-        }
-
-        StickySyncNowButton.IsEnabled = false;
-        try
-        {
-            var sync = App.GetService<StickyNoteSyncService>();
-            var result = await sync.SyncAsync(CancellationToken.None);
-            if (result.Ok)
-            {
-                settings.StickyNotesLastSync = DateTime.UtcNow;
-                settings.Save();
-                StickyLastSyncText.Text = $"已同步 {DateTime.Now:HH:mm}（本地 {result.LocalCount} / 云端 {result.CloudCount}）";
-            }
-            else
-            {
-                StickyLastSyncText.Text = "同步失败：" + result.Message;
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "[Notes] 设置页立即同步异常");
-            StickyLastSyncText.Text = "同步失败：" + ex.Message;
-        }
-        finally
-        {
-            StickySyncNowButton.IsEnabled = true;
-        }
-    }
 }
+
 
 

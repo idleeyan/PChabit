@@ -2,6 +2,35 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.66.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D3（步骤 2b）——SettingsPage「便签」分区拆为 UserControl
+
+`SettingsPage.xaml` 647 → 508 行、`SettingsPage.xaml.cs` 469 → 340 行；
+新增 `Views/Settings/StickyNotesSection.xaml(.cs)`（150 / 192 行）。
+
+- 沿用 AI 分区（3.65.0）的自治模式：便签段 4 个 case + Load 段 7 行迁入分区，
+  改造为 `RaiseChanged()` / `LoadFromViewModel()`（注入同一 `SettingsViewModel`）。
+- `StickyHotkeyBox_LostFocus`（热键解析 + 真实注册探测）、`StickySyncNow_Click`
+  （WebDAV 立即同步）及 4 条事件绑定一并搬入。
+- **踩到陷阱 29 的新变体**：Section 类名 `StickyNotesSection` 与搬入的
+  内部根 Border `x:Name="StickyNotesSection"` **同名** → `CS0542 成员名不能与封闭类型相同`
+  （XAML 生成的字段与类同名）。修复：去掉内部 Border 的 `x:Name`（宿主改用
+  `StickyNotesControl` 引用该 UserControl）。**后续分区注意：UserControl 类名不得
+  与其内部任何 `x:Name` 相同。**
+- 顺带消除本次引入的 3 个 `CS8602`（在事件处理器首部补 `_viewModel is null` 守卫），
+  警告维持 13（低于基线 24）。
+
+**验证**（新增 `scripts/verify_366.py`）：
+- 设置页打开不崩溃；便签分区选中；内容（便签 / 热键 / 同步 / 保留）加载正常。
+- **读写链路实测**：切换「聚焦丢失时快速隐藏」→ 日志
+  `设置变更 StickyNotesQuickDismissOnFocusLost = false` → **`settings.json` 该键
+  由 `true` 变为 `false`**；新增 ERR/FTL=0。
+- 构建 0 错误；156/156 测试；发布 3.66.0.0 部署、冒烟 PASS。
+
+**遗留（D3 步骤 3）**：常规 / 监控 / 界面（任务栏+桌面插件+外观三卡）/ 数据 四个
+分区，按同模式拆分。
+
 ## [3.65.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D3（步骤 2a）——SettingsPage「AI」分区拆为 UserControl
