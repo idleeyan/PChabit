@@ -2,6 +2,42 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.62.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D1——按职责拆分 SettingsService（纯搬运）
+
+1470 行单文件 → 5 个同 `partial class` 分部文件，**公开 API 零变化**
+（83 个签名逐一比对完全一致），**行为零变化**（无一行逻辑改动）：
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `SettingsService.cs` | 527 | 字段 + 通用属性（系统/监控/跟踪/隐私/WebDAV/浏览器/任务栏/备份） + 事件 + 构造函数 |
+| `SettingsService.Persistence.cs` | 215 | `Load/LoadAsync/Save/SaveAsync/ResetToDefaults/ApplySettings` + `AppSettings` DTO |
+| `SettingsService.Startup.cs` | 207 | 开机自启（注册表 Run 键 / 启动文件夹快捷方式 / COM 校验与创建） |
+| `SettingsService.Ai.cs` | 217 | AI 端点/模型/隐私/周报相关属性（16 个） |
+| `SettingsService.Widgets.cs` | 327 | 桌面悬浮插件（17）+ 便签（7）相关属性 |
+
+**方法与过程**：
+- 用一次性 Python 脚本做**字节保真搬运**：27 个边界锚点断言 + 非空行内容守恒校验
+  （仅 class 声明改写为 `partial class` 为预期差异），CRLF 行尾原样保留。
+- 调用链核查：`Save → ApplySettings → ApplyStartupSetting` 依赖的 `_settings`/
+  `_settingsPath` 字段与构造函数同在主文件，**无跨文件静态字段、无隐式初始化顺序依赖**。
+- 计划中的 `Validation.cs`（默认值/范围校验/字符串规范化）**暂未创建**：当前代码
+  仅 `AiTimeoutSeconds` 内联 `Math.Clamp`，无独立校验逻辑；默认值在 `AppSettings`
+  DTO 初始化器内。避免为空文件而拆，待出现独立校验逻辑时再建。
+
+**验证**：
+- Release 构建 0 错误（24 警告=基线）；单测 156/156。
+- **公开 API 签名对比**：拆分前后 83 个成员签名 diff 为空。
+- **运行期 load 双分支实证**：无 settings.json → 日志「设置文件不存在，使用默认: …
+  settings.json」（默认分支）；人为构造含非默认值的 settings.json → 日志「设置已加载: …
+  settings.json」（反序列化分支），两次均 0 ERR/FTL。
+- publish 3.62.0.0 部署 `D:\Tool\PChabit`；冒烟 PASS（版本匹配 / 存活 30s /
+  主窗口正常 / 0 ERR/FTL）。
+
+**未做**：设置页 7 分区 UI 逐一点开（需 uiautomation，纯搬运+编译期接口检查+
+运行期 load 实证已覆盖；如需可后续补 `scripts/smoke_ui.py`）。
+
 ## [3.61.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 C——异常收口第二批 + 日志规范
