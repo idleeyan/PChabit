@@ -2,6 +2,73 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.59.0] - 2026-11-06
+
+### 修复:点击「应用使用」崩溃(3.58.0 回归)
+
+3.58.0 为「使用时间占比」饼图新增口径切换 ComboBox(按应用/按分类)时,
+XAML 里写了 `SelectedIndex="0"`,导致 `InitializeComponent()` 加载期间**同步触发**
+`PieModeCombo_SelectionChanged`,而此时 `ViewModel` 尚未赋值(构造函数在 `InitializeComponent()`
+之后才注入),处理器访问 `ViewModel.PieMode` 抛 NRE,被 WinUI 包装为
+`Cannot create instance of type 'AppStatsTab'`,点击「应用使用」即崩溃。
+
+修复:
+- `AppStatsTab` 的 `PieModeCombo_SelectionChanged` 与 `RangeCombo_SelectionChanged`
+  首行加 `if (ViewModel is null) return;` 守卫,规避 XAML 加载期同步事件触发空引用。
+- 功能与 3.58.0 设计一致(默认按应用,可切按分类),无行为回退。
+
+验证:Release 构建 0 错误;publish 自包含部署 `D:\Tool\PChabit` 3.59.0.0 后,
+点「应用使用」正常打开,饼图口径「按应用 / 按分类」切换正常,不再崩溃。
+
+## [3.58.0] - 2026-11-06
+
+### 变更：分析页分类构成合并/删除
+
+承接 [3.57.0] 分析页精简，按用户逐项确认的「方式 B」处理分类构成（应用/网页）：
+
+- **应用分类构成并入应用使用页**：`AppStatsTab` 的「使用时间占比」饼图新增
+  **口径切换**（ComboBox「按应用 / 按分类」，默认按应用）。按分类模式复用 Engine 已产出的
+  `AppStatsEngine.CategoryShares`（按 `ResolveCategory` 聚合，含分类色），`AppStatsViewModel`
+  新增 `PieMode` 状态并缓存最近 report——切口径时用缓存重算，无需重新查库
+  （`GeneratePieChartData` → 拆出 `BuildPieChartData(report)`，按 `PieMode` 取
+  `PieSlices`（按应用）或 `CategoryShares`（按分类））
+- **网页分类构成直接删除**：分析页「构成双饼图」卡整块删除；`AnalyticsViewModel`
+  删净 `CategoryShares`/`WebCategoryShares` 集合、`CompositionChartJson`、
+  `HasComposition`/`HasCategories`/`HasWebCategories`、装载段与 `BuildCompositionChartJson()`
+- **移除对应前端物**：删除 `CompositionPieView.xaml/.cs` 控件与
+  `Assets/PieChart/composition.html` 模板（AnalysisEngine 底层 `WebCategoryShares`、
+  `BuildWebCategoryShares` 保留，供周报 / AI 解读消费，不动底层）
+
+验证：Release 构建 0 错误（沿用既有 24 条警告）；publish 自包含部署
+`D:\Tool\PChabit` 3.58.0.0 后核对构成卡消失、应用使用页饼图口径切换正常。
+
+## [3.57.0] - 2026-11-06
+
+### 变更：分析页精简为单页（合并四页签，删除冗余功能）
+
+用户反馈分析页数据过多且杂乱、实际用途不大，要求合并同类数据、删掉无用数据。本次改动：
+
+- **单页化**：原「总览 / 节奏构成 / 硬件 / 应用流向」四个 Pivot 二级页签合并为**一个纵向滚动页**
+  （`AnalyticsPage.xaml` 重写），顺序：KPI → 近 14 天活跃热力 → 24 小时四维分布 → 构成双饼图 →
+  应用变化 → 硬件汇总与负载 → 应用流向 Sankey。删除 `Pivot` 与其 Tag 页签切换逻辑
+- **KPI 卡精简为 4 项**：只保留 活跃时长 / 专注段 / 生产力占比 / 网页时长，删除
+  夜间使用 / 键盘 / 输入密度 / 网页占比 / CPU日均 / GPU日均 / GPU峰值温度（VM 增
+  `ShownKpis` 展示层过滤，Engine 底层 KPI 计算保留，供周报/AI 消费与测试）
+- **删除多源数据摘要卡**（仪表盘「今日速览」已有类似功能）
+- **删除顶部「复制周报」「导出 Excel」按钮**（未使用过；VM 删 `CopySummaryCommand`、
+  code-behind 删 `ExportExcel_Click` 与其 Excel 导出逻辑）
+- **彻底删除 AI 深度解读 + 洞察整块**（鸡肋）：VM 删 `AiItemViewModel`/`AiPlanViewModel`、
+  全部 AI 命令（RunAiInsight/CancelAiInsight/CopyAiInsight/SendFollowUp/ApplyParsedAi/
+  MarkPlanDone/MarkPlanSkipped）、`Insights` 集合、习惯养成轨迹 `HabitTrends`；code-behind
+  删 `AiSuggestion_Tapped`/`PlanDone_Click`/`PlanSkip_Click`/`InsightCard_Tapped`
+- **跨页导航改为锚点滚动**：`PivotNavigationRequested`/`AnalyticsNavArgs` 保留，但
+  `ApplyPivot` 不再切换页签，改为滚动到节奏/构成卡并高亮（history → 跳「网页访问」历史页）
+- **保留**：网页浏览历史入口、周期切换、刷新、热力图点击跳时间线、所有图表
+  （构成双饼图 / 硬件趋势 / Sankey）
+
+验证：Release 构建 0 错误（新增无警告，其余为既有 24 条），`x:Bind` 编译期全部通过；
+publish 自包含部署 `D:\Tool\PChabit` 3.57.0.0 后人工核对单页滚动布局与 KPI 4 项展示。
+
 ## [3.56.0] - 2026-11-05
 
 ### 修复：便签超过 4 张后卡片被压缩

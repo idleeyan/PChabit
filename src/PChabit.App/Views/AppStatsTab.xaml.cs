@@ -149,9 +149,25 @@ public sealed partial class AppStatsTab : UserControl
 
     private void RangeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // 陷阱：ComboBox 的 SelectedIndex/SelectedItem 在 LoadComponent 期间可能同步触发事件，
+        // 此时 ViewModel 尚未赋值（构造函数里 InitializeComponent() 之后才注入），必须跳过。
+        if (ViewModel is null) return;
         if (RangeCombo.SelectedItem is PeriodOption opt && opt.Kind != ViewModel.SelectedRange)
         {
             ViewModel.SelectedRange = opt.Kind;
+        }
+    }
+
+    private void PieModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // 同上：SelectedIndex="0" 会在 InitializeComponent 期间同步触发此处，
+        // 此时 ViewModel 为 null，未加守卫会 NRE，被 WinUI 包装成“无法创建 AppStatsTab”崩溃（3.58.0 回归根因）。
+        if (ViewModel is null) return;
+        if (sender is ComboBox combo && combo.SelectedIndex is 0 or 1)
+        {
+            var mode = combo.SelectedIndex == 1 ? "byCategory" : "byApp";
+            if (mode != ViewModel.PieMode)
+                ViewModel.PieMode = mode;
         }
     }
 

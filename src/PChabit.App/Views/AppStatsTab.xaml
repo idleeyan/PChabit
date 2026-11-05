@@ -154,11 +154,24 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <StackPanel Spacing="4">
-                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="使用时间占比" />
-                        <TextBlock
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="各应用使用时间占总时间的百分比（点击分类标签可修改应用分类）" />
+                        <Grid>
+                            <StackPanel Spacing="4">
+                                <TextBlock FontSize="16" FontWeight="SemiBold" Text="使用时间占比" />
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="按应用或按分类统计使用时间占总时间的百分比" />
+                            </StackPanel>
+                            <ComboBox
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                SelectionChanged="PieModeCombo_SelectionChanged"
+                                SelectedIndex="0"
+                                ToolTipService.ToolTip="饼图口径">
+                                <ComboBoxItem Content="按应用" />
+                                <ComboBoxItem Content="按分类" />
+                            </ComboBox>
+                        </Grid>
                     </StackPanel>
 
                     <Grid Grid.Row="1" Margin="0,16,0,0">

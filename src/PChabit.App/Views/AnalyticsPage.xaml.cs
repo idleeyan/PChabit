@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml.Navigation;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.App.ViewModels;
-using PChabit.Infrastructure.Analysis;
 
 namespace PChabit.App.Views;
 
@@ -52,54 +51,6 @@ public sealed partial class AnalyticsPage : Page
     private void Refresh_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
         => _ = ViewModel.LoadDataAsync();
 
-    private void AiSuggestion_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: AiItemViewModel item })
-            ViewModel.NavigateAiActionCommand.Execute(item);
-    }
-
-    private void PlanDone_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: AiPlanViewModel item })
-            _ = ViewModel.MarkPlanDoneCommand.ExecuteAsync(item);
-    }
-
-    private void PlanSkip_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { Tag: AiPlanViewModel item })
-            _ = ViewModel.MarkPlanSkippedCommand.ExecuteAsync(item);
-    }
-
-    private async void ExportExcel_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
-    {
-        try
-        {
-            var bytes = ViewModel.BuildExcelBytes();
-            if (bytes is null || bytes.Length == 0)
-            {
-                Log.Warning("分析 Excel：无数据可导出");
-                return;
-            }
-
-            var picker = new Windows.Storage.Pickers.FileSavePicker
-            {
-                SuggestedFileName = $"PChabit分析_{ViewModel.PeriodLabel}_{DateTime.Now:yyyyMMdd}.xlsx"
-            };
-            picker.FileTypeChoices.Add("Excel", new List<string> { ".xlsx" });
-            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-
-            var file = await picker.PickSaveFileAsync();
-            if (file == null) return;
-            await Windows.Storage.FileIO.WriteBytesAsync(file, bytes);
-            Log.Information("分析 Excel 已导出: {Path}", file.Path);
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "分析 Excel 导出失败");
-        }
-    }
-
     private void DayHeat_Tapped(object sender, TappedRoutedEventArgs e)
     {
         try
@@ -118,16 +69,9 @@ public sealed partial class AnalyticsPage : Page
         }
     }
 
-    /// <summary>洞察卡片点击：交给 ViewModel 触发 PivotNavigationRequested。</summary>
-    private void InsightCard_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: AnalyticsInsight insight })
-            ViewModel.NavigateInsightCommand.Execute(insight);
-    }
-
     /// <summary>
-    /// 应用 ActionKey 导航：优先切到同 Tag 的 PivotItem（P1 页签就位即自动生效）；
-    /// compose/rhythm 页签尚未建立时（P0），落总览并定位到对应现有卡片。
+    /// 3.57.0 单页化后：导航参数由页签切换改为「锚点滚动定位」。
+    /// history → 网页访问页；rhythm/compose → 滚动到节奏卡并高亮；flow → 滚动到底部应用流向。
     /// </summary>
     private void ApplyPivot(string key)
     {
@@ -140,39 +84,17 @@ public sealed partial class AnalyticsPage : Page
             Log.Information("分析页→网页访问-网页浏览历史");
             return;
         }
-
-        // 3.50.0：原「节奏」「构成」两页签已合并为「节奏构成」（Tag=rhythm），两个 key 指向同一页签
-        if (key is "rhythm" or "compose")
-            key = "rhythm";
-
-        foreach (var item in RootPivot.Items)
+        if (string.Equals(key, "flow", StringComparison.OrdinalIgnoreCase))
         {
-            if (item is PivotItem { Tag: string tag } pivot
-                && string.Equals(tag, key, StringComparison.OrdinalIgnoreCase))
-            {
-                RootPivot.SelectedItem = pivot;
-                Log.Information("分析页切换到页签: {Key}", key);
-                return;
-            }
-        }
-
-        // P0 回退：总览页内锚点（P1 节奏/构成页签上线后此回退自然不再触发）
-        RootPivot.SelectedIndex = 0;
-        var anchor = key switch
-        {
-            "rhythm" => RhythmCard,
-            _ => null
-        };
-
-        if (anchor is null || anchor.Visibility != Visibility.Visible)
-        {
-            Log.Information("分析页导航 {Key} 暂无对应页签/锚点，停留总览", key);
+            RhythmCard.StartBringIntoView();
+            Log.Information("分析页导航 flow：滚到节奏区");
             return;
         }
 
-        anchor.StartBringIntoView();
-        _ = HighlightCardAsync(anchor);
-        Log.Information("分析页导航 {Key} 已定位总览锚点卡片", key);
+        // rhythm / compose 及未知 key → 滚动并高亮节奏/构成卡
+        RhythmCard.StartBringIntoView();
+        _ = HighlightCardAsync(RhythmCard);
+        Log.Information("分析页导航 {Key} 定位节奏/构成卡片", key);
     }
 
     /// <summary>卡片强调色描边 1.6 秒后恢复，作为导航落点反馈。</summary>

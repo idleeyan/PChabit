@@ -65,6 +65,13 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
     [ObservableProperty]
     private string _pieChartData = "[]";
 
+    /// <summary>「使用时间占比」饼图口径切换：byApp=按应用 / byCategory=按分类（3.58.0）。</summary>
+    [ObservableProperty]
+    private string _pieMode = "byApp";
+
+    /// <summary>最近一次加载的 report（切换饼图口径时重算 PieChartData，无需重新查库）。</summary>
+    private AppStatsReport? _lastReport;
+
     [ObservableProperty]
     private string _summaryMarkdown = string.Empty;
 
@@ -152,6 +159,7 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
     {
         LastPeriod = report.Period;
         LastTotalMinutes = report.TotalMinutes;
+        _lastReport = report;
         var backgroundApps = _backgroundAppSettings.GetBackgroundApps();
 
         TotalUsageTime = AnalyticsEngine.FormatHours(report.TotalMinutes);
@@ -332,22 +340,38 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
 
     private void GeneratePieChartData(AppStatsReport report)
     {
-        if (report.PieSlices.Count == 0) { PieChartData = "[]"; return; }
+        PieChartData = BuildPieChartData(report);
+    }
 
+    /// <summary>
+    /// 依据 PieMode 生成饼图数据：byApp=按应用（PieSlices，Top 8+其他），byCategory=按分类（CategoryShares）。
+    /// 输出 [{name, value(分钟), color}]，供 piechart.html 的 renderPieChart 消费。
+    /// </summary>
+    private string BuildPieChartData(AppStatsReport report)
+    {
+        if (PieMode == "byCategory")
+        {
+            var slices = report.CategoryShares
+                .Select(c => new { name = c.Category, value = Math.Round(c.Minutes, 1), color = c.ColorHex })
+                .ToList();
+            return slices.Count == 0 ? "[]" : JsonSerializer.Serialize(slices);
+        }
+
+        if (report.PieSlices.Count == 0) return "[]";
         var topApps = report.PieSlices.Select(s => new
         {
             name = s.Name,
             value = Math.Round(s.Minutes, 1),
-            category = "",
             color = s.ColorHex
         }).ToList();
+        return JsonSerializer.Serialize(topApps);
+    }
 
-        var options = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        };
-        PieChartData = JsonSerializer.Serialize(topApps, options);
+    /// <summary>切「按应用/按分类」时，用缓存的 report 重算饼图数据。</summary>
+    partial void OnPieModeChanged(string value)
+    {
+        if (_lastReport != null)
+            GeneratePieChartData(_lastReport);
     }
 }
 
