@@ -12,9 +12,10 @@ using PChabit.Infrastructure.Analysis;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 
+using PChabit.Application.Queries;
 namespace PChabit.App.ViewModels;
 
-public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.DashboardStats>
+public partial class DashboardViewModel : DbSafeViewModel<DashboardSnapshot>
 {
     private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
     private readonly IAppIconService _iconService;
@@ -205,80 +206,10 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     public ObservableCollection<CategoryDistributionItem> CategoryDistribution { get; } = new();
     public ObservableCollection<WebsiteUsageItem> TopWebsites { get; } = new();
 
-    // === Phase 1 中间数据类（纯 POCO，无 WinRT 类型） ===
-
-    public sealed class DashboardStats
-    {
-        public string TodayActiveTime = "0小时 0分钟";
-        public string TodayKeyPresses = "0";
-        public string TodayMouseClicks = "0";
-        public string TodayWebPages = "0";
-        public double EfficiencyScore;
-        public double? ActiveDeviationPct;
-        public double? FocusMinutes;
-        public int? AppSwitches;
-        public string FirstActiveTime = "";
-        public string LastActiveTime = "";
-        public string MostUsedApp = "无数据";
-        public string MostVisitedSite = "无数据";
-
-        public List<(string ProcessName, string CategoryName, double Duration, string CategoryColorHex)> TopAppsRaw = new();
-        public List<HourlyActivityData> HourlyActivity = new();
-        public List<(string Name, double Duration, string ColorHex)> CategoryRaw = new();
-        public List<WebsiteUsageData> TopWebsites = new();
-
-        // 环比（对比昨日同时段，避免"昨天全天"与"今天截至此刻"的口径错位）
-        public double? ActiveComparePct;
-        public double? KeysComparePct;
-        public double? ClicksComparePct;
-        public double? WebComparePct;
-
-        /// <summary>图表数据（WebView2 用）。</summary>
-        public ChartSnapshot Chart = new();
-
-        /// <summary>当前正在使用的应用（阶段 5）。</summary>
-        public string CurrentAppName = "";
-        public string CurrentAppSince = "";
-    }
-
-    public sealed class HourlyActivityData
-    {
-        public string Hour = string.Empty;
-        public int Activity;
-        public string Category = string.Empty;
-    }
-
-    public sealed class WebsiteUsageData
-    {
-        public string Domain = string.Empty;
-        public int Visits;
-        public long TotalDurationTicks;
-    }
-
-    /// <summary>
-    /// 图表用的柱状图数据。纯 POCO，可安全序列化给 WebView2。
-    /// 未来小时用 <see cref="IsFuture"/> 标记，让图表画成灰色占位而非"零活跃"。
-    /// </summary>
-    public sealed class ActivityBar
-    {
-        public string Label { get; set; } = string.Empty;
-        public double Value { get; set; }
-        public string Level { get; set; } = "low";
-        public bool IsFuture { get; set; }
-    }
-
-    /// <summary>图表数据快照（Phase 1 纯 POCO，可在后台线程构造）。</summary>
-    public sealed class ChartSnapshot
-    {
-        public List<ActivityBar> Bars { get; init; } = new();
-
-        /// <summary>可写（非 init）：后台线程分步填充 Bars 与 Summary。</summary>
-        public string Summary { get; set; } = "";
-    }
 
     // === DbSafeViewModel 抽象方法实现 ===
 
-    protected override async Task<DashboardStats> LoadStatsOnBackgroundAsync()
+    protected override async Task<DashboardSnapshot> LoadStatsOnBackgroundAsync()
     {
         var today = DateTime.Today;
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
@@ -310,7 +241,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     /// 若直接用昨日全天数据，午后打开仪表盘会看到"大幅下降"的假跌。
     /// </summary>
     private static async Task FillCompareAsync(
-        PChabitDbContext dbContext, DateTime today, DashboardStats stats)
+        PChabitDbContext dbContext, DateTime today, DashboardSnapshot stats)
     {
         try
         {
@@ -375,7 +306,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     /// 由 BaselineStat.DeviationPct 自行判定（样本不足返回 null）。
     /// </summary>
     private static async Task<double?> SafeDeviationAsync(
-        PChabitDbContext dbContext, DateTime today, DashboardStats stats)
+        PChabitDbContext dbContext, DateTime today, DashboardSnapshot stats)
     {
         try
         {
@@ -399,7 +330,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         }
     }
 
-    private static async Task<DashboardStats> BuildStatsFromRawDataAsync(
+    private static async Task<DashboardSnapshot> BuildStatsFromRawDataAsync(
         PChabitDbContext dbContext, DateTime today)
     {
         var tomorrow = today.AddDays(1);
@@ -476,7 +407,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         var hours = (int)(totalMinutes / 60);
         var minutes = (int)(totalMinutes % 60);
 
-        var stats = new DashboardStats
+        var stats = new DashboardSnapshot
         {
             TodayActiveTime = $"{hours}小时 {minutes}分钟",
             TodayKeyPresses = totalKeyPresses.ToString("N0"),
@@ -630,7 +561,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
 
 
 
-    protected override async Task ApplyStatsOnUIAsync(DashboardStats stats)
+    protected override async Task ApplyStatsOnUIAsync(DashboardSnapshot stats)
     {
         TodayActiveTime = stats.TodayActiveTime;
         TodayKeyPresses = stats.TodayKeyPresses;
@@ -801,7 +732,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
     /// 规则摘要：不依赖任何外部服务，纯本地计算。
     /// 这是 AI 未配置时的降级路径——宁可给普通文本，也不给空卡片。
     /// </summary>
-    private void BuildRuleSummary(DashboardStats stats)
+    private void BuildRuleSummary(DashboardSnapshot stats)
     {
         if (stats.TopAppsRaw.Count == 0)
         {

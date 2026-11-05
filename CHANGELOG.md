@@ -2,6 +2,30 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.70.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D4（步骤 2a）——仪表盘数据快照迁往应用层
+
+`DashboardViewModel` 1123 → **1053** 行；新增
+`PChabit.Application/Queries/DashboardSnapshot.cs`（73 行）。
+
+- 把 VM 内的**数据快照类型群**（原嵌套类）整体迁往应用层并改名：
+  `DashboardStats` → `DashboardSnapshot`，连带其字段依赖的 4 个纯 POCO
+  （`HourlyActivityData` / `WebsiteUsageData` / `ActivityBar` / `ChartSnapshot`）。
+- VM 侧：删除该类型群（70 行）+ 新增 `using PChabit.Application.Queries;` +
+  8 处引用改名（含 1 处全限定 `DashboardViewModel.DashboardStats`——
+  迁出嵌套后全限定路径失效，正是本次编译先报 `CS0146 循环基类型依赖`
+  的原因，去掉限定前缀即修复）。
+- 零行为变化（纯类型搬迁 + 改名）。
+
+**验证**：构建 0 错误（11 警告）；测试 **174/174**；发布 3.70.0.0 部署；
+运行期仪表盘卡片正常、关键指标文本存在、新增 ERR/FTL=0、WRN=0。
+
+**遗留（D4 步骤 2b–3）**：`BuildStatsFromRawDataAsync`（229 行，含 EF 查库与
+聚合）拆出 `Application/Queries/DashboardQueryService`，VM 只保留
+「快照 → 绑定属性」映射；保持「今日数据实时合并、不写库」与 `Interlocked`
+刷新防重入（陷阱 27）不变。
+
 ## [3.69.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D4（步骤 1）——提取仪表盘纯计算 + 单测
