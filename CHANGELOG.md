@@ -2,6 +2,36 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.71.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D4（步骤 2b+3，收尾）——仪表盘查询链下沉应用层
+
+`DashboardViewModel` 1053 → **703** 行；新增
+`PChabit.Application/Queries/DashboardQueryService.cs`（380 行，原样搬运）。
+**至此 D4 四步全部完成，仪表盘形成「查询服务 → 快照 → 绑定」三层结构。**
+
+- 查询链整体迁移（`LoadStatsOnBackgroundAsync` 及其全部私有依赖）：
+  `BuildStatsFromRawDataAsync` / `FillCompareAsync` / `SafeScoreAsync` /
+  `SafeDeviationAsync` / `LoadCategoryMapAsync` → `DashboardQueryService.LoadAsync`，
+  行为逐字一致（今日实时合并不写库、效率/基线/环比各自容错降级）。
+- VM 构造函数不再注入 `IDbContextFactory` 与 `IEfficiencyCalculator`，
+  改注入 `DashboardQueryService`；`LoadStatsOnBackgroundAsync` 只剩一行委托调用，
+  VM 仅保留「快照 → 绑定属性」映射 + 图标加载 + 文本格式化（计划既定职责）。
+- DI 注册收口在 `ServiceCollectionExtensions.AddTaiApplication`（陷阱 3 对策：
+  注册与实现同批提交）；`PChabit.Application` 补 `Serilog` 包引用（与
+  Infrastructure 同版本策略 4.*）。
+- 新增 8 个单测（`DashboardQueryServiceTests`，内存 SQLite + Moq）：空库安全默认、
+  聚合缺失实时补齐（不写库断言）、效率计算抛异常降级 0、成功值透传、
+  未结束会话→当前活动、昨日环比（含截断点口径）、昨日无数据→环比 null、
+  Legacy Web 会话排除。测试 **174 → 182**。
+
+**验证**：构建 0 错误（24 警告 = 基线）；182/182 测试；发布 3.71.0.0 部署
+（15 文件更新）；自包含校验通过（`includedFrameworks`/5 关键 DLL/13 Assets png）；
+运行期实证：启动 30s+ 日志 0 ERR/0 FTL（3 条 WRN 为既有已知 OpenRouter 404 白名单项），
+仪表盘数据加载与旧版口径逐项一致（AppSessions=577 / KeyboardSessions=8 / 2284 键 /
+MetricsVersion=2），30 秒实时刷新精确循环、`Interlocked` 防重入未受影响，
+AI 降级路径正常（保留规则摘要）。
+
 ## [3.70.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D4（步骤 2a）——仪表盘数据快照迁往应用层
