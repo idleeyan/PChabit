@@ -2,6 +2,45 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.63.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D2——按职责拆分 App.xaml.cs（纯搬运）
+
+1170 行单文件 → 6 个同 `partial class` 分部文件（含原有 `App.DesktopWidget.cs`/
+`App.StickyNotes.cs`），**成员签名零变化**（38 个成员逐一比对一致）、**行为零变化**：
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `App.xaml.cs` | 419 | 生命周期入口：字段 + 构造 + 异常钩子 + DI/日志配置 + `OnLaunched`/`OnWindowFirstActivated`/`OnWindowClosed`/`OnNavigationFailed` |
+| `App.Window.cs` | 139 | **全部 P/Invoke 声明集中于此** + `SetWindowIcon` + `CorrectWindowBoundsIfOffscreen` + `FindMainWindowHandle` |
+| `App.Tray.cs` | 32 | `InitializeTrayService`（托盘初始化 + ExitRequested 接线） |
+| `App.Startup.cs` | 126 | `StartMonitoring`（钩子线程/采集/硬件/流量/落库链路）+ `StartBackupService` |
+| `App.Taskbar.cs` | 284 | 任务栏小窗：定时器/刷新/`BuildTaskbarRows`/格式与配色辅助/今日时长与下载量查询 |
+| `App.Shutdown.cs` | 218 | `BeginShutdown` + `PerformShutdownAsync`（5 步关闭）+ `ForceTerminate` |
+
+**方法与过程**：
+- 字节保真切割脚本：**46 个边界锚点断言** + 非空行内容守恒校验（仅新增 using 与
+  骨架行为预期差异），LF 行尾原样保留（App.xaml.cs 为 LF，与 SettingsService 的
+  CRLF 不同——脚本按实测换行处理）。
+- **P/Invoke 集中**：31-70 行的 8 个 `DllImport` + `RECT` + `EnumWindowsProc` +
+  图标常量整块移到 `App.Window.cs`；因同属一个 partial class，其它分部文件原有
+  调用点**零改动**。
+- 字段与构造函数保持集中在主文件，避免跨文件字段初始化顺序问题。
+- 首轮编译报 1 个 C# 缺 using（`NetworkTrafficPersistenceService`）+ 1 个 `WMC9999`
+  XAML 假错误——**再次验证陷阱 21：先修 C#，XAML 报错自动消失**。
+
+**验证**：
+- Release 构建 0 错误（11 警告，低于基线 24）；单测 156/156；成员签名 diff 为空（38 项）。
+- **5 个分部文件的运行期实证**（用户真实环境日志）：`系统托盘服务初始化完成`、
+  `窗口图标设置成功`、`监控器已启动`、`任务栏/托盘显示定时器已启动`、
+  `TaskbarWidget 已创建并挂载任务栏`、`数据库初始化完成`、定时备份启动——全链路正常，
+  本轮启动段无新增 ERR/FTL。
+- publish 3.63.0.0 部署 `D:\Tool\PChabit`；冒烟 PASS（版本匹配/存活 30s/主窗口/0 ERR/FTL）。
+
+**未实点**：窗口关闭最小化到托盘、托盘菜单退出流程（需 UI 交互；沙箱自动化环境下
+延迟初始化不执行，`_trayService` 未就绪会干扰验证）。退出链路代码纯搬运零改动，
+且 `PerformShutdownAsync` 各步骤在 3.61.0 批次已逐处补过日志。
+
 ## [3.62.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D1——按职责拆分 SettingsService（纯搬运）
