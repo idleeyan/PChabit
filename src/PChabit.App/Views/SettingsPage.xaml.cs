@@ -33,6 +33,7 @@ public sealed partial class SettingsPage : Page
 
             AddEventHandlers();
             AboutSectionControl.Refresh();
+            AiSectionControl.Initialize(ViewModel);
 
             // 选中项必须等 InitializeComponent 之后再设：解析期触发 SelectionChanged
             // 时右侧分区控件还不存在，会空引用崩溃
@@ -71,7 +72,7 @@ public sealed partial class SettingsPage : Page
         Show(DesktopWidgetSection, tag == "interface");
         Show(StickyNotesSection, tag == "notes");
         Show(DataSection, tag == "data");
-        Show(AiSection, tag == "ai");
+        Show(AiSectionControl, tag == "ai");
         Show(AboutSectionControl, tag == "about");
     }
 
@@ -135,100 +136,8 @@ public sealed partial class SettingsPage : Page
         StickyRetentionBox.ValueChanged += (s, e) => OnSettingChanged("StickyNotesRetentionDays", (int)e.NewValue);
         StickySyncSwitch.Toggled += (s, e) => OnSettingChanged("StickyNotesSyncEnabled", StickySyncSwitch.IsOn);
 
-        AiInsightsEnabledSwitch.Toggled += (s, e) => OnSettingChanged("AiInsightsEnabled", AiInsightsEnabledSwitch.IsOn);
-        // 输入即保存（不依赖 LostFocus，避免点按钮时未落盘 → 401）
-        AiBaseUrlBox.TextChanged += (s, e) => OnSettingChanged("AiBaseUrl", AiBaseUrlBox.Text);
-        AiApiKeyBox.TextChanged += (s, e) => OnSettingChanged("AiApiKey", AiApiKeyBox.Text);
-        AiModelBox.TextChanged += (s, e) => OnSettingChanged("AiModel", AiModelBox.Text);
-        AiModelFastBox.TextChanged += (s, e) => OnSettingChanged("AiModelFast", AiModelFastBox.Text);
-        AiTimeoutSecondsBox.ValueChanged += (s, e) => OnSettingChanged("AiTimeoutSeconds", e.NewValue);
-        AiStrictPrivacySwitch.Toggled += (s, e) => OnSettingChanged("AiStrictPrivacy", AiStrictPrivacySwitch.IsOn);
-        AiAutoWeeklyInsightSwitch.Toggled += (s, e) => OnSettingChanged("AiAutoWeeklyInsight", AiAutoWeeklyInsightSwitch.IsOn);
-        AiModeCloudRadio.Checked += (_, _) => OnEndpointModePicked("cloud");
-        AiModeLocalRadio.Checked += (_, _) => OnEndpointModePicked("local");
-        AiModeDualRadio.Checked += (_, _) => OnEndpointModePicked("dual");
-        AiLocalBaseUrlBox.TextChanged += (s, e) => OnSettingChanged("AiLocalBaseUrl", AiLocalBaseUrlBox.Text);
-        AiLocalModelBox.TextChanged += (s, e) => OnSettingChanged("AiLocalModel", AiLocalModelBox.Text);
     }
 
-    private void OnEndpointModePicked(string mode)
-    {
-        if (_isLoading) return;
-        ApplyEndpointModeHint(mode);
-        OnSettingChanged("AiEndpointMode", mode);
-    }
-
-    private void ApplyEndpointModeHint(string mode)
-    {
-        AiEndpointModeHint.Text = mode switch
-        {
-            "local" => "当前：本地 — 解读与追问都走 LM Studio",
-            "dual" => "当前：双端点 — 解读云端 · 追问本地（推荐）",
-            _ => "当前：云端 — 解读与追问都走云端 API"
-        };
-    }
-
-    private void AiCopyTestResult_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var text = AiTestResult.Text ?? "";
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                AiTestResult.Text = "（暂无测试结果）";
-                return;
-            }
-            var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
-            package.SetText(text);
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-            AiTestResult.Text = text + "\n（已复制到剪贴板）";
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "AI 测试结果复制到剪贴板失败");
-            AiTestResult.Text = $"复制失败：{ex.Message}";
-        }
-    }
-
-    /// <summary>一键把界面上 AI 字段全部落盘，并探测实际请求端点。</summary>
-    private async void AiTestConnection_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            AiTestResult.Text = "已保存，正在测试…";
-            // 强制把当前控件值写入设置
-            ViewModel.AiBaseUrl = AiBaseUrlBox.Text ?? "";
-            ViewModel.AiApiKey = AiApiKeyBox.Text ?? "";
-            ViewModel.AiModel = AiModelBox.Text ?? "";
-            ViewModel.AiModelFast = AiModelFastBox.Text ?? "";
-            ViewModel.AiLocalBaseUrl = AiLocalBaseUrlBox.Text ?? "";
-            ViewModel.AiLocalModel = AiLocalModelBox.Text ?? "";
-            ViewModel.SaveSetting("AiBaseUrl");
-            ViewModel.SaveSetting("AiApiKey");
-            ViewModel.SaveSetting("AiModel");
-            ViewModel.SaveSetting("AiModelFast");
-            ViewModel.SaveSetting("AiLocalBaseUrl");
-            ViewModel.SaveSetting("AiLocalModel");
-
-            var key = ViewModel.AiApiKey ?? "";
-            var svc = App.GetService<PChabit.Infrastructure.Services.IAnalyticsAiService>();
-            var cfgInfo =
-                $"云端：{ViewModel.AiBaseUrl}\n" +
-                $"模型：{ViewModel.AiModel}\n" +
-                $"Key：{(key.Length == 0 ? "（空）" : key)}\n" +
-                $"本地：{ViewModel.AiLocalBaseUrl} · {ViewModel.AiLocalModel}";
-            AiTestResult.Text = cfgInfo + "\n探测中…";
-
-            var reply = await svc.ChatFastAsync("请只回复两个字：正常", "ping");
-            AiTestResult.Text = cfgInfo + $"\n✅ 连接成功。模型回复：{reply.Trim()}";
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "AI 连接测试失败");
-            AiTestResult.Text = (AiTestResult.Text ?? "").Split('\n').FirstOrDefault()
-                                + "\n❌ 测试失败：" + ex.Message;
-        }
-    }
 
 
     private void OnSettingChanged(string propertyName, object value)
@@ -344,48 +253,6 @@ public sealed partial class SettingsPage : Page
             case "StickyNotesSyncEnabled":
                 ViewModel.StickyNotesSyncEnabled = (bool)value;
                 break;
-            case "AiInsightsEnabled":
-                ViewModel.AiInsightsEnabled = (bool)value;
-                break;
-            case "AiBaseUrl":
-                ViewModel.AiBaseUrl = value?.ToString() ?? "";
-                break;
-            case "AiApiKey":
-                ViewModel.AiApiKey = value?.ToString() ?? "";
-                break;
-            case "AiModel":
-                ViewModel.AiModel = value?.ToString() ?? "";
-                break;
-            case "AiModelFast":
-                ViewModel.AiModelFast = value?.ToString() ?? "";
-                break;
-            case "AiEndpointMode":
-                ViewModel.AiEndpointMode = value?.ToString() ?? "cloud";
-                break;
-            case "AiCloudBaseUrl":
-                ViewModel.AiCloudBaseUrl = value?.ToString() ?? "";
-                break;
-            case "AiCloudApiKey":
-                ViewModel.AiCloudApiKey = value?.ToString() ?? "";
-                break;
-            case "AiCloudModel":
-                ViewModel.AiCloudModel = value?.ToString() ?? "";
-                break;
-            case "AiLocalBaseUrl":
-                ViewModel.AiLocalBaseUrl = value?.ToString() ?? "";
-                break;
-            case "AiLocalModel":
-                ViewModel.AiLocalModel = value?.ToString() ?? "";
-                break;
-            case "AiTimeoutSeconds":
-                ViewModel.AiTimeoutSeconds = value is double d ? d : 300;
-                break;
-            case "AiStrictPrivacy":
-                ViewModel.AiStrictPrivacy = (bool)value;
-                break;
-            case "AiAutoWeeklyInsight":
-                ViewModel.AiAutoWeeklyInsight = (bool)value;
-                break;
 
         }
 
@@ -408,6 +275,7 @@ public sealed partial class SettingsPage : Page
                 await ViewModel.InitializeAsync();
                 Log.Information("SettingsPage: InitializeAsync 完成");
                 LoadSettingsToUI();
+                AiSectionControl.Reload();
             }
             finally
             {
@@ -472,23 +340,6 @@ public sealed partial class SettingsPage : Page
         StickySyncSwitch.IsOn = ViewModel.StickyNotesSyncEnabled;
         StickyLastSyncText.Text = ViewModel.StickyNotesLastSyncText;
 
-        AiInsightsEnabledSwitch.IsOn = ViewModel.AiInsightsEnabled;
-        AiBaseUrlBox.Text = ViewModel.AiBaseUrl ?? "";
-        AiApiKeyBox.Text = ViewModel.AiApiKey ?? "";
-        AiModelBox.Text = ViewModel.AiModel ?? "";
-        AiModelFastBox.Text = ViewModel.AiModelFast ?? "";
-        AiLocalBaseUrlBox.Text = ViewModel.AiLocalBaseUrl ?? "";
-        AiLocalModelBox.Text = ViewModel.AiLocalModel ?? "";
-        var mode = (ViewModel.AiEndpointMode ?? "cloud").ToLowerInvariant();
-        // 注意：这里绝不能改 _isLoading，否则外层保护会失效导致 Provider 覆盖配置
-        AiModeCloudRadio.IsChecked = mode == "cloud";
-        AiModeLocalRadio.IsChecked = mode == "local";
-        AiModeDualRadio.IsChecked = mode == "dual";
-        ApplyEndpointModeHint(mode);
-
-        AiTimeoutSecondsBox.Value = ViewModel.AiTimeoutSeconds;
-        AiStrictPrivacySwitch.IsOn = ViewModel.AiStrictPrivacy;
-        AiAutoWeeklyInsightSwitch.IsOn = ViewModel.AiAutoWeeklyInsight;
 
 
         ThemeComboBox.Items.Add(new ComboBoxItem { Content = "系统默认", Tag = "system" });
@@ -613,4 +464,5 @@ public sealed partial class SettingsPage : Page
         }
     }
 }
+
 

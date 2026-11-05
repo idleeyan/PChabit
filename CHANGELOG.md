@@ -2,6 +2,39 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.65.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D3（步骤 2a）——SettingsPage「AI」分区拆为 UserControl
+
+`SettingsPage.xaml` 802 → 646 行、`SettingsPage.xaml.cs` 617 → 468 行；
+新增 `Views/Settings/AiSettingsSection.xaml(.cs)`（165 / 211 行）。
+
+**这是首次「重构」而非纯搬运**——AI 分区原本与页面**集中式**读写耦合
+（`LoadSettingsToUI` / `OnSettingChanged` 按 `x:Name` 统一遍历）：
+- 把 `OnSettingChanged` 的 AI 分支（16 个 case）与 `LoadSettingsToUI` 的 AI 段
+  （17 行）**移入分区**，改造为分区自治的 `RaiseChanged()` / `LoadFromViewModel()`。
+- 分区持有注入的 `SettingsViewModel`（宿主构造期传入**同一实例**），
+  事件写回 ViewModel 并 `SaveSetting`——语义等价原页面集中式逻辑。
+- 分区的 `_isLoading` 保护随逻辑一起迁移（`LoadFromViewModel` 内自包裹，
+  等价原页面外层保护），继续抑制 `RadioButton.IsChecked` 赋值触发的事件（陷阱 31 类）。
+- `ApplyEndpointModeHint` / `AiCopyTestResult_Click` / `AiTestConnection_Click`
+  及 14 条事件绑定一并搬入分区（`OnSettingChanged(`→`RaiseChanged(`、
+  `ViewModel.`→`_viewModel.` 为必要的标识符改写）。
+
+**验证**（新增 `scripts/verify_365.py`，uiautomation）：
+- 设置页打开不崩溃；AI 分区可选中；内容（端点 / 模型 / 超时）加载正常。
+- **读写链路实证**：切换「每周自动 AI 解读」→ 日志 `设置变更 AiAutoWeeklyInsight = true`
+  → **`settings.json` 中该键由缺省变为 `true`**（自治保存生效）；新增 ERR/FTL=0。
+- 构建 0 错误（12 警告）；156/156 测试；发布 3.65.0.0 部署、冒烟 PASS。
+
+**过程教训（陷阱 52 重演）**：改版本号时用 PowerShell `Set-Content -NoNewline` 写
+`PChabit.App.csproj`（看似纯 ASCII、实际含中文）再次触发 GBK↔UTF-8 污染，
+`git checkout` 回滚后改用结构化编辑工具。AI_MAINTENANCE 陷阱 52 已升级结论：
+**禁止用 PowerShell 文本管道写任何项目文件，无论其看起来是否含非 ASCII**。
+
+**遗留（D3 步骤 2b–3）**：便签 / 常规 / 监控 / 界面 / 数据 五个分区，同样需按
+本条模式把集中式 Load/Save 片段迁入各自 UserControl。
+
 ## [3.64.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D3（步骤 1）——SettingsPage「关于」分区拆为 UserControl
