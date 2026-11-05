@@ -47,6 +47,12 @@ jobs:
       - name: Run unit tests
         run: dotnet test src/PChabit.Tests/PChabit.Tests.csproj -c $env:CONFIGURATION
 
+      # Stage E1 layering guard: ViewModels must not add new
+      # `using PChabit.Infrastructure.*` imports (see scripts/layering-allowlist.txt).
+      - name: Layering guard (App -> Infrastructure)
+        shell: pwsh
+        run: ./scripts/check_layering.ps1
+
   build-app:
     name: build-app
     runs-on: windows-latest

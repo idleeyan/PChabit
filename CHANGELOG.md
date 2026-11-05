@@ -2,6 +2,35 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [工程改造计划 阶段 E1] - 2026-11-06
+
+### 变更：应用层边界定义 + 分层守卫脚本（阶段 E1，无独立版本号，沿用阶段 A 先例）
+
+阶段 E1 完整落地（纯 CI/脚本/文档，未动应用代码，故沿用阶段 A 先例不递增版本号——
+当前版本仍为 3.71.0）。
+
+- **新增 `scripts/check_layering.ps1` 分层守卫**：扫描
+  `src/PChabit.App/ViewModels/**` 的 `using PChabit.Infrastructure.*`，
+  与 `scripts/layering-allowlist.txt` 基线白名单比对——**新增违规退出码 1（CI 阻断）**，
+  移除仅黄字提示收缩白名单。三态自测通过：当前码 0 → 注入违规行 1 → 还原 0。
+- **生成基线白名单（50 条）**：计划文档「62 条」为含 App 层的旧估数，实测 ViewModels
+  为 50 条，按实测生成（生成命令见 `docs/项目文档.md` 3.72.0 节）。白名单只减不增，
+  E3 每完成一个 VM 查询服务化即删除对应条目。
+- **接入 CI**（`ci.yml` test job，阻断项）：`test` → `layering guard` → 均必过。
+- **「分层边界规约」落档 `AI_MAINTENANCE.md`**：四层依赖表（Core/Application/
+  Infrastructure/App 各自允许与禁止）+ 4 条硬性规则（VM 新增 Infrastructure using
+  一律不允许、白名单只减不增等）。
+- **E2-a 阻塞记录**（AI_MAINTENANCE.md 同节）：`HardwareSampleWriter` /
+  `NetworkTrafficPersistenceService` 无法迁 Infrastructure——两者依赖
+  `PChabit.HardwareMonitor`（平台 TFM `net10.0-windows10.0.22621.0`），而
+  Infrastructure 为基础 TFM `net10.0`，基础 TFM 不能引用平台 TFM。修订建议三选一
+  （接口下沉 Core / HardwareMonitor 拆双 TFM / Infrastructure 改平台 TFM）留待
+  后续批次决策；E2-b/E2-c（DataCollectionService，仅依赖 EF/Core）不受影响。
+
+**验证**：分层守卫当前码退出码 0（50 found / 50 allowlisted / 0 violations）；
+注入 `using PChabit.Infrastructure.Data;` 后退出码 1 并红字列出违规条目；还原后 0。
+`audit_code.ps1` 基线复核正常（silent catch 6 / catch(Exception) 398 / using Infra(VM) 89）。
+
 ## [3.71.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D4（步骤 2b+3，收尾）——仪表盘查询链下沉应用层
