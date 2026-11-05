@@ -1,0 +1,75 @@
+# PChabit CI — stage A2 safety net.
+# Runs on push + pull_request.
+#
+# Rationale (from the refactor plan):
+#  - `test` job: xUnit tests target net10.0 only, no WinUI dependency, so it is a strict gate.
+#  - `build-app` job: WinUI 3 (Windows App SDK) builds are not reliably stable on GitHub
+#    Actions. For the first month it runs continue-on-error: true so the CI stays green
+#    while we measure its stability; after that month we flip it to a required gate
+#    (decide at the review checkpoint, per plan risk register).
+#  - Deployment (D:\Tool\PChabit) is intentionally NOT part of CI: the path and the
+#    self-contained artifacts only make sense on the local terminal (plan rule).
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  CONFIGURATION: Release
+
+jobs:
+  test:
+    name: test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          dotnet-quality: ga
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Run unit tests
+        run: dotnet test src/PChabit.Tests/PChabit.Tests.csproj -c $env:CONFIGURATION
+
+  build-app:
+    name: build-app
+    runs-on: windows-latest
+    # First month: report-only. Flip to `false` (strict gate) once build-app stability
+    # is confirmed at the monthly review checkpoint.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          dotnet-quality: ga
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/packages.lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Build App (WinUI 3, x64)
+        run: dotnet build src/PChabit.App/PChabit.App.csproj -c $env:CONFIGURATION -p:Platform=x64 /restore

@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    PChabit Directory.Build.props
+    阶段 A1（工程改造计划）：统一编译与分析器基线。
+    - 各项目已在 csproj 中显式 <Nullable>enable</Nullable>，此处不重复强制。
+    - LangVersion 各项目不同（App=latest，其余=preview），此处不覆盖。
+    - 分析器统一 latest，但以 warning 运行（不启用 TreatWarningsAsErrors）。
+      基线警告数 = 22（记于工程改造计划 A1，>10 处分布于 14 个文件）。
+  -->
+
+  <PropertyGroup>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- 风格规则走 IDE（.editorconfig），不在 build 时强制，保证 CI/本机构建的可复现警告数。 -->
+  </PropertyGroup>
+
+</Project>

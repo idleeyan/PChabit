@@ -1,0 +1,97 @@
+# PChabit .editorconfig
+# 阶段 A1（工程改造计划）：仅声明格式与命名约定。
+# 不启用 TreatWarningsAsErrors —— 详见 Directory.Build.props 中的说明。
+# 规则级别统一设 suggestion，避免把存量代码一次性戳红（小步可回滚）。
+
+root = true
+
+# ---------- 通用 ----------
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# ---------- 缩进 ----------
+[*.{cs,csproj,props,targets,json,yml,yaml}]
+indent_style = space
+indent_size = 4
+
+[*.{xaml,html,css,js,json}]
+indent_style = space
+indent_size = 4
+
+[*.{md,txt,ps1,yml,yaml}]
+indent_style = space
+indent_size = 2
+
+# ---------- C# 代码风格（suggestion，不强制） ----------
+[*.cs]
+# using 排序
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+
+# 命名约定
+dotnet_naming_rule.interface_should_begin_with_i.severity = suggestion
+dotnet_naming_rule.interface_should_begin_with_i.symbols = interface_symbols
+dotnet_naming_rule.interface_should_begin_with_i.style = interface_style
+dotnet_naming_symbols.interface_symbols.applicable_kinds = interface
+dotnet_naming_style.interface_style.required_prefix = I
+dotnet_naming_style.interface_style.capitalization = pascal_case
+
+dotnet_naming_rule.types_should_be_pascal_case.severity = suggestion
+dotnet_naming_rule.types_should_be_pascal_case.symbols = type_symbols
+dotnet_naming_rule.types_should_be_pascal_case.style = pascal_style
+dotnet_naming_symbols.type_symbols.applicable_kinds = class,struct,enum,delegate
+dotnet_naming_style.pascal_style.capitalization = pascal_case
+
+dotnet_naming_rule.methods_should_be_pascal_case.severity = suggestion
+dotnet_naming_rule.methods_should_be_pascal_case.symbols = method_symbols
+dotnet_naming_rule.methods_should_be_pascal_case.style = pascal_style
+dotnet_naming_symbols.method_symbols.applicable_kinds = method
+
+dotnet_naming_rule.local_functions_should_be_pascal_case.severity = suggestion
+dotnet_naming_rule.local_functions_should_be_pascal_case.symbols = local_func_symbols
+dotnet_naming_rule.local_functions_should_be_pascal_case.style = pascal_style
+dotnet_naming_symbols.local_func_symbols.applicable_kinds = local_function
+
+dotnet_naming_rule.constants_should_be_pascal_case.severity = suggestion
+dotnet_naming_rule.constants_should_be_pascal_case.symbols = const_symbols
+dotnet_naming_rule.constants_should_be_pascal_case.style = pascal_style
+dotnet_naming_symbols.const_symbols.applicable_kinds = field
+dotnet_naming_symbols.const_symbols.required_modifiers = const
+
+dotnet_naming_rule.private_fields_should_be_camel_case.severity = suggestion
+dotnet_naming_rule.private_fields_should_be_camel_case.symbols = private_field_symbols
+dotnet_naming_rule.private_fields_should_be_camel_case.style = camel_style
+dotnet_naming_symbols.private_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.private_field_symbols.required_modifiers = private
+dotnet_naming_style.camel_style.capitalization = camel_case
+
+# 花括号
+csharp_prefer_braces = when_multiline:suggestion
+
+# 代码块花括号换行
+csharp_new_line_before_open_brace = all:suggestion
+csharp_new_line_before_else = true:suggestion
+csharp_new_line_before_catch = true:suggestion
+csharp_new_line_before_finally = true:suggestion
+
+# using 指令放块外
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# 表达式/语句风格（全部 suggestion）
+csharp_prefer_var = false:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_expression_bodied_methods = false:suggestion
+csharp_style_expression_bodied_constructors = false:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = false:suggestion
+
+# 可空性
+csharp_style_throw_expression = true:suggestion
+dotnet_style_prefer_conditional_expression_over_assignment = true:suggestion
+
+# IDE0055 固定字距等（建议级）
+dotnet_diagnostic.IDE0055.severity = none

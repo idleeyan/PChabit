@@ -185,3 +185,25 @@ coverage/
 # 开发痕迹：独立实验项目与图标预览图
 plugins/
 scripts/preview/
+
+# 由 dsh-ledger-memory 追加
+# ── dsh-ledger-memory：记忆文件默认不进版本库（含用户原话 / 本机路径 / 私有项目名）──
+# ★ 要公开这些内容，请**显式删掉**下面这几行 —— 默认挡是因为泄露不可撤销。
+LEDGER.md
+DECISIONS.md
+JOURNAL.md
+GOALS.md
+LESSONS.md
+PRINCIPLES.md
+.dsh-ledger.json
+/decisions/
+/lessons/
+/goals/
+/_ledger-archive/
+/_ledger-log/
+/_stash/
+/_handoff/
+decisions
+lessons
+goals
+/PChabit-ledger-memory/
