@@ -63,8 +63,10 @@ public sealed class WeeklyAiInsightService : IWeeklyAiInsightService
             }
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            // 判定文件损坏/不可读 → 视为该跑（宁可多跑一次周报）；功能受损需可感知
+            Log.Warning(ex, "AI 周报上次运行时间读取失败，本周将重新生成");
             return true;
         }
     }

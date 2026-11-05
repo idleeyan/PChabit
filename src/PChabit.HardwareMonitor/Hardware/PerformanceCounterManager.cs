@@ -119,10 +119,12 @@ namespace PChabit.HardwareMonitor.Hardware
 
                     IsInitialized = true;
                 }
-                catch
+                catch (Exception ex)
                 {
                     // 初始化失败通常是因为系统组件损坏 (如精简版 Windows)
-                    // 这里只记录日志，IsInitialized 保持为 false，上层逻辑会自动回退到 LHM
+                    // IsInitialized 保持为 false，上层逻辑会自动回退到 LHM；
+                    // 功能整体受损需可观测，仅触发一次不刷屏
+                    Log.Warning(ex, "性能计数器初始化失败，将回退到 LHM 数据源");
                 }
             });
         }
@@ -135,12 +137,14 @@ namespace PChabit.HardwareMonitor.Hardware
             try
             {
                 if (!PerformanceCounterCategory.Exists(category)) return null;
-                return string.IsNullOrEmpty(instance) 
-                    ? new PerformanceCounter(category, counter) 
+                return string.IsNullOrEmpty(instance)
+                    ? new PerformanceCounter(category, counter)
                     : new PerformanceCounter(category, counter, instance);
             }
-            catch
+            catch (Exception ex)
             {
+                // 预期：类别/计数器不存在或无权限，返回 null 由上层回退
+                Log.Debug(ex, "创建性能计数器失败: {Category}\\{Counter}\\{Instance}", category, counter, instance);
                 return null;
             }
         }
@@ -287,9 +291,11 @@ namespace PChabit.HardwareMonitor.Hardware
                 var val = pc.NextValue();
                 return val;
             }
-            catch
+            catch (Exception ex)
             {
-                return null; 
+                // 预期：系统组件重置导致计数器失效（采样热路径，Debug 防刷屏），返回 null 由上层显示 --
+                Log.Debug(ex, "性能计数器读取失败");
+                return null;
             }
         }
 

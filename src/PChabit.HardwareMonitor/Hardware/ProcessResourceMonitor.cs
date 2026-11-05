@@ -113,9 +113,11 @@ public sealed class ProcessResourceMonitor : IDisposable
             SampleOnce();
             Updated?.Invoke();
         }
-        catch
+        catch (Exception ex)
         {
-            // 采样失败不打断主循环
+            // 预期：单拍采样失败不打断主循环；到这一层的异常极少（内部已有细粒度保护），
+            // Debug 级防高频刷屏，持续失败表现为"最大占用进程"卡片为空
+            Log.Debug(ex, "进程资源采样失败，本拍跳过");
         }
     }
 
@@ -167,8 +169,10 @@ public sealed class ProcessResourceMonitor : IDisposable
         {
             procs = Process.GetProcesses();
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：进程快照偶发失败，本拍返回空表
+            Log.Debug(ex, "Process.GetProcesses 失败，本拍跳过");
             return map;
         }
 
@@ -305,13 +309,16 @@ public sealed class ProcessResourceMonitor : IDisposable
             {
                 if (!TryParsePid(inst, out int pid)) continue;
                 float v;
-                try { v = pc.NextValue(); } catch { continue; }
+                try { v = pc.NextValue(); }
+                catch (Exception ex) { /* 预期：实例失效（采样热路径） */ Log.Debug(ex, "GPU mem NextValue failed for {Instance}", inst); continue; }
                 if (v <= 16 * 1024 * 1024f) continue; // <16MB 忽略
                 mem[pid] = Math.Max(mem.GetValueOrDefault(pid), v / (1024.0 * 1024.0));
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // GPU 采样整体失效：置不可用标志并释放计数器（只发生一次，不刷屏）
+            Log.Warning(ex, "GPU 进程采样不可用，已停用 GPU 列");
             _gpuUnavailable = true;
             DisposeGpuCounters();
         }
@@ -378,7 +385,7 @@ public sealed class ProcessResourceMonitor : IDisposable
                 {
                     _gpuUtilCounters[inst] = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, readOnly: true);
                 }
-                catch { /* 个别实例无权限/已退出 */ }
+                catch (Exception ex) { /* 预期：实例无权限/已消失（高频），跳过 */ Log.Debug(ex, "GPU util counter create failed for {Instance}", inst); }
             }
 
             // GPU Process Memory 实例名形如 pid_1234_luid_..._phys_0（不带 engtype），天然每进程一个
@@ -414,8 +421,10 @@ public sealed class ProcessResourceMonitor : IDisposable
                 catch (Exception ex) { /* 预期：计数器实例失效 */ Log.Debug(ex, "GPU mem counter warmup failed"); }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // GPU 计数器构建失败：置不可用并释放（只发生一次）
+            Log.Warning(ex, "GPU 计数器初始化失败，已停用 GPU 列");
             _gpuUnavailable = true;
             DisposeGpuCounters();
         }
@@ -462,8 +471,10 @@ public sealed class ProcessResourceMonitor : IDisposable
             using var p = Process.GetProcessById(pid);
             return string.IsNullOrEmpty(p.ProcessName) ? $"PID {pid}" : p.ProcessName;
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：进程已退出竞态（高频），降级为 PID 占位
+            Log.Debug(ex, "进程名解析失败（已退出），PID {Pid}", pid);
             return $"PID {pid}";
         }
     }

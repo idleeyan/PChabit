@@ -117,7 +117,7 @@ public sealed class HardwareSampleWriter : IDisposable
                 }
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* 取消模式豁免：服务停止时消费循环正常退出 */ }
         catch (Exception ex)
         {
             Log.Warning(ex, "HardwareSampleWriter 消费者退出");

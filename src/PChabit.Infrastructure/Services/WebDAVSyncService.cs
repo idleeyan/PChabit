@@ -169,7 +169,11 @@ public class WebDAVSyncService : IWebDAVSyncService
             {
                 await _httpClient.SendAsync(request);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：网络瞬断/目录已存在的兼容性差异；失败后正式同步步骤会再次报错
+                Log.Debug(ex, "WebDAV 建目录探测失败: {Folder}", currentPath);
+            }
         }
     }
     

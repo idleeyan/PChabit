@@ -181,8 +181,10 @@ public static class BrowserProcessResolver
             using var p = Process.GetProcessById(pid);
             return p.ProcessName; // 不含 .exe
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：连接表扫描中进程已退出（高频竞态），返回 null 由调用方降级
+            Log.Debug(ex, "进程名解析失败（已退出），PID {Pid}", pid);
             return null;
         }
     }
@@ -201,8 +203,10 @@ public static class BrowserProcessResolver
                 return sb.ToString();
             return null;
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：进程已退出/权限受限（高频竞态），返回 null 由调用方降级
+            Log.Debug(ex, "进程路径解析失败，PID {Pid}", pid);
             return null;
         }
         finally

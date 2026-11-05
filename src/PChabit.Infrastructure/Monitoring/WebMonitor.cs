@@ -257,8 +257,10 @@ public class WebMonitor : IWebMonitor, IDisposable
             var uri = new Uri(url);
             return uri.Host;
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：扩展推送非法 URL（外部输入），域名记空
+            Log.Debug(ex, "URL 解析失败，域名为空: {Url}", url);
             return "";
         }
     }

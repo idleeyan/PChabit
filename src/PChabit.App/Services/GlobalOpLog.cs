@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using Serilog;
 
 namespace PChabit.App.Services;
 
@@ -57,8 +58,12 @@ public static class GlobalOpLog
             var line = $"{item.Time:yyyy-MM-dd HH:mm:ss.fff}\t{level}\t{category}\t{message}{Environment.NewLine}";
             File.AppendAllText(file, line);
         }
-        catch { }
-        try { Logged?.Invoke(item); } catch { }
+        catch (Exception ex)
+        {
+            // 操作日志落盘失败（磁盘满/文件锁）：无法写自己的日志，记入 Serilog 主日志（Debug 级防磁盘满时刷屏）
+            Log.Debug(ex, "全局操作日志落盘失败");
+        }
+        try { Logged?.Invoke(item); } catch (Exception ex) { /* 预期：订阅方已销毁 */ Log.Debug(ex, "全局操作日志 UI 订阅回调失败"); }
     }
 
     /// <summary>当前缓冲（新→旧）。</summary>

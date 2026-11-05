@@ -84,7 +84,11 @@ public partial class NotesViewModel : ViewModelBase
         _sync = sync;
         _selectedFilter = FilterAll;
         try { _searchTimer = DispatcherQueue.GetForCurrentThread().CreateTimer(); _searchTimer.Interval = TimeSpan.FromMilliseconds(250); _searchTimer.IsRepeating = false; _searchTimer.Tick += (_, _) => _ = ReloadAsync(); }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：非 UI 线程构造（GetForCurrentThread 失败），搜索防抖降级为无定时器直查
+            Log.Debug(ex, "NotesViewModel 构造于非 UI 线程，搜索防抖定时器不可用");
+        }
     }
 
     public const string FilterAll = "全部";

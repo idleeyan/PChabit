@@ -116,9 +116,10 @@ public partial class App : Microsoft.UI.Xaml.Application
                     using var evt = EventWaitHandle.OpenExisting(@"Global\PChabit_SingleInstance_Activate");
                     evt.Set();
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 已有实例可能未启用唤起监听，忽略
+                    // 预期：已有实例可能是旧版本、未启用唤起监听，仅影响唤起不影响退出
+                    Log.Debug(ex, "唤起已有实例失败（旧实例无监听句柄）");
                 }
                 Log.Warning("检测到已有 PChabit 实例运行，本次启动退出（单实例保护）");
                 Environment.Exit(0);
@@ -170,9 +171,10 @@ public partial class App : Microsoft.UI.Xaml.Application
                         }
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 事件句柄被释放（进程退出）时静默结束监听
+                    // 预期：事件句柄被释放（进程退出）时结束监听，属正常退出路径
+                    Log.Debug(ex, "唤起监听已结束（句柄释放）");
                 }
             });
         }
@@ -856,7 +858,12 @@ public partial class App : Microsoft.UI.Xaml.Application
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             return key?.GetValue("SystemUsesLightTheme") is int i && i == 1;
         }
-        catch { return false; }
+        catch (Exception ex)
+        {
+            // 预期：注册表键偶发不可读，降级为深色主题（返回 false）
+            Log.Debug(ex, "读取系统主题设置失败，降级为深色");
+            return false;
+        }
     }
 
     /// <summary>今日活跃时长（分钟，60s 缓存，来自 AppSessions 实时查询；DailySummary 仅含昨日）。</summary>
@@ -1025,19 +1032,31 @@ public partial class App : Microsoft.UI.Xaml.Application
                 {
                     _serviceProvider?.GetService<PChabit.HardwareMonitor.Hardware.ProcessNetworkMonitor>()?.Stop();
                 }
-                catch { /* ignore */ }
+                catch (Exception ex)
+                {
+                    // 预期：关机期子服务停止失败已无恢复动作，Debug 可观测即可
+                    Log.Debug(ex, "停止进程网络监控失败（关机期）");
+                }
 
                 try
                 {
                     _serviceProvider?.GetService<PChabit.HardwareMonitor.Hardware.ProcessResourceMonitor>()?.Stop();
                 }
-                catch { /* ignore */ }
+                catch (Exception ex)
+                {
+                    // 同上，关机期无恢复动作
+                    Log.Debug(ex, "停止进程资源监控失败（关机期）");
+                }
 
                 try
                 {
                     _serviceProvider?.GetService<NetworkTrafficPersistenceService>()?.Stop();
                 }
-                catch { /* ignore */ }
+                catch (Exception ex)
+                {
+                    // 同上，关机期无恢复动作
+                    Log.Debug(ex, "停止网络流量持久化失败（关机期）");
+                }
 
                 _trayDisplayTimer?.Stop();
                 _trayDisplayTimer = null;
@@ -1137,6 +1156,8 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
         catch
         {
+            // 日志已在 Log.CloseAndFlush（先于本方法调用）后关闭，物理上无法记录；
+            // Kill 失败仅以 Exit 兜底——本处为异常处理规约登记的豁免点
             Environment.Exit(0);
         }
     }

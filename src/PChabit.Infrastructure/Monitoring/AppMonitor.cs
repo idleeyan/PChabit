@@ -2,6 +2,7 @@ using System.Diagnostics;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
 using PChabit.Infrastructure.Services;
+using Serilog;
 
 namespace PChabit.Infrastructure.Monitoring;
 
@@ -80,8 +81,10 @@ public class AppMonitor : IAppMonitor
         {
             _processingTask?.Wait(TimeSpan.FromMilliseconds(500));
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：任务已取消（关闭期），Stop 继续执行
+            Log.Debug(ex, "等待前台监控处理任务结束时出现异常");
         }
         
         if (_foregroundHook != IntPtr.Zero)

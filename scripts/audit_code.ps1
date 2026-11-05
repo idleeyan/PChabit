@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 #Requires -Version 7.0
 <#
 PChabit code baseline audit (stage A4 of the engineering refactor plan).
@@ -41,6 +41,7 @@ function Write-Metrics {
     $md += ""
     $md += "- Generated: $((Get-Date).ToString("yyyy-MM-dd HH:mm:ss"))"
     $md += "- Empty catch count: $($Data.emptyCatchCount)"
+    $md += "- Silent catch count (no Log./throw inside): $($Data.silentCatchCount)"
     $md += "- catch(Exception) count: $($Data.catchGenericCount)"
     $md += "- async void count: $($Data.asyncVoidCount)"
     $md += "- Task.Run count: $($Data.taskRunCount)"
@@ -52,6 +53,20 @@ function Write-Metrics {
     $md += "|---|---|"
     foreach ($f in $Data.emptyCatchByFile) {
         $md += "| $($f.file) | $($f.count) |"
+    }
+    $md += ""
+    $md += "## Silent catch top files (no Log./throw inside)"
+    $md += ""
+    $md += "| File | Count |"
+    $md += "|---|---|"
+    foreach ($f in $Data.silentCatchTopFiles) {
+        $md += "| $($f.file) | $($f.count) |"
+    }
+    $md += ""
+    $md += "## Silent catch locations"
+    $md += ""
+    foreach ($loc in $Data.silentCatchLocations) {
+        $md += "- $loc"
     }
     $md += ""
     $md += "## catch(Exception) top files"
@@ -78,6 +93,8 @@ $csFiles = Get-ChildItem -Path (Join-Path $ProjectRoot "src") -Recurse -File -Fi
     Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' }
 
 $emptyCatchByFile = @{}
+$silentCatchByFile = @{}   # catch blocks whose body has NO Log. / throw / Debug.WriteLine
+$silentCatchList = New-Object System.Collections.Generic.List[string]
 $catchGenericByFile = @{}
 $asyncVoidCount = 0
 $taskRunCount = 0
@@ -110,6 +127,66 @@ foreach ($f in $csFiles) {
         $taskRunCount += ([regex]::Matches($line, 'Task\.Run\b')).Count
     }
 
+    # silent catch scan: track catch blocks via brace depth; a block counts as
+    # "silent" when its body contains neither Log.*, throw, nor Debug.WriteLine.
+    # TaskCompletionSource.TrySetException forwards the exception to the awaiter
+    # (equivalent to rethrow), so it also counts as observable.
+    # NOTE: string/comment braces can skew depth tracking; tolerate small drift
+    # (this is a review guide, not a hard gate).
+    $observablePattern = 'Log\.|throw\b|Debug\.WriteLine|TrySetException'
+    $inCatch = $false
+    $catchDepth = 0
+    $catchBody = New-Object System.Text.StringBuilder
+    $catchStart = 0
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        $trimmed = $line.Trim()
+        if (-not $inCatch) {
+            if ($trimmed -match '^catch\b') {
+                $inCatch = $true
+                $catchDepth = 0
+                $catchStart = $i + 1
+                [void]$catchBody.Clear()
+                $catchDepth += ([regex]::Matches($trimmed, '\{')).Count
+                $catchDepth -= ([regex]::Matches($trimmed, '\}')).Count
+                if ($catchDepth -le 0 -and $trimmed -match '\{') {
+                    # single-line catch: catch { body }
+                    if ($trimmed -match '\{(.*)\}\s*$') {
+                        $body = $Matches[1]
+                        if ($body.Trim().Length -gt 0 -and $body -notmatch $observablePattern) {
+                            $silentCatchByFile[$rel] = ($silentCatchByFile[$rel] ?? 0) + 1
+                            $silentCatchList.Add("${rel}:$catchStart")
+                        }
+                    }
+                    $inCatch = $false
+                }
+                elseif ($catchDepth -le 0) {
+                    # catch header without opening brace yet (e.g. `catch (Exception ex)`)
+                    $catchDepth = -1  # wait for `{`
+                }
+            }
+            continue
+        }
+        # inside a catch block
+        if ($catchDepth -eq -1) {
+            if ($trimmed -match '\{') {
+                $catchDepth = ([regex]::Matches($trimmed, '\{')).Count - ([regex]::Matches($trimmed, '\}')).Count
+            }
+            continue
+        }
+        [void]$catchBody.AppendLine($trimmed)
+        $catchDepth += ([regex]::Matches($trimmed, '\{')).Count
+        $catchDepth -= ([regex]::Matches($trimmed, '\}')).Count
+        if ($catchDepth -le 0) {
+            $inCatch = $false
+            $bodyText = $catchBody.ToString()
+            if ($bodyText -notmatch $observablePattern) {
+                $silentCatchByFile[$rel] = ($silentCatchByFile[$rel] ?? 0) + 1
+                $silentCatchList.Add("${rel}:$catchStart")
+            }
+        }
+    }
+
     # usings in App + ViewModels
     $isAppOrVm = $rel -match 'PChabit\.App[\\/]' -or $rel -match 'ViewModels?[\\/]'
     if ($isAppOrVm) {
@@ -130,6 +207,13 @@ $catchGenericTop = $catchGenericByFile.GetEnumerator() |
     Select-Object -First 10 |
     ForEach-Object { [pscustomobject]@{ file = $_.Key; count = $_.Value } }
 
+$silentCatchTop = $silentCatchByFile.GetEnumerator() |
+    Sort-Object { $_.Value } -Descending |
+    Select-Object -First 10 |
+    ForEach-Object { [pscustomobject]@{ file = $_.Key; count = $_.Value } }
+
+$silentCatchTotal = ($silentCatchByFile.Values | Measure-Object -Sum).Sum
+
 $catchGenericTotal = ($catchGenericByFile.Values | Measure-Object -Sum).Sum
 
 # ---------- 5: top files by line count ----------
@@ -147,6 +231,9 @@ $topFiles = Get-ChildItem -Path (Join-Path $ProjectRoot "src") -Recurse -File -I
 $data = [pscustomobject]@{
     emptyCatchCount          = ($emptyCatchList | Measure-Object -Property count -Sum).Sum
     emptyCatchByFile         = $emptyCatchList
+    silentCatchCount         = $silentCatchTotal
+    silentCatchTopFiles      = $silentCatchTop
+    silentCatchLocations     = $silentCatchList
     catchGenericCount        = $catchGenericTotal
     catchGenericTopFiles     = $catchGenericTop
     asyncVoidCount           = $asyncVoidCount
@@ -161,6 +248,7 @@ Write-Metrics -Data $data -OutJson $outJson -OutMd $outMd
 
 Write-Host "Audit complete."
 Write-Host "  empty catch      : $($data.emptyCatchCount)"
+Write-Host "  silent catch     : $($data.silentCatchCount) (no Log./throw inside)"
 Write-Host "  catch(Exception) : $($data.catchGenericCount) (top 10 files shown)"
 Write-Host "  async void       : $($data.asyncVoidCount)"
 Write-Host "  Task.Run         : $($data.taskRunCount)"

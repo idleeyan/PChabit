@@ -145,16 +145,21 @@ public class AppInfoResolver
         {
             return process.MainModule?.FileName ?? string.Empty;
         }
-        catch (System.ComponentModel.Win32Exception)
+        catch (System.ComponentModel.Win32Exception ex)
         {
+            // 预期：权限受限进程（高频竞态），降级为空路径
+            Log.Debug(ex, "读取 MainModule 被拒绝（权限受限）");
             return string.Empty;
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            // 预期：进程已退出（高频竞态）
+            Log.Debug(ex, "读取 MainModule 失败（进程已退出）");
             return string.Empty;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Debug(ex, "读取 MainModule 失败");
             return string.Empty;
         }
     }
@@ -165,8 +170,10 @@ public class AppInfoResolver
         {
             return FileVersionInfo.GetVersionInfo(executablePath);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // 预期：文件被占用/路径失效，版本信息降级为 null
+            Log.Debug(ex, "读取版本信息失败: {Path}", executablePath);
             return null;
         }
     }

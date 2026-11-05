@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
+using Serilog;
 
 namespace PChabit.Infrastructure.Analysis;
 
@@ -217,9 +218,10 @@ public static class AnalyticsEngine
                     })
                     .ToListAsync(ct);
             }
-            catch
+            catch (Exception ex)
             {
-                // 表尚未创建/迁移时硬件融合降级为空
+                // 查询失败降级为空（表未迁移属预期，但翻译失败等真缺陷也在此被吞），Warning 可观测
+                Log.Warning(ex, "HardwareSamples 查询失败，分析页硬件数据降级为空");
                 hardwareSamples = new List<HardwareSample>();
             }
 
@@ -237,8 +239,9 @@ public static class AnalyticsEngine
                     })
                     .ToListAsync(ct);
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warning(ex, "WebSessions 查询失败，分析页网页数据降级为空");
                 webSessions = new List<Core.Entities.WebSession>();
             }
             try
@@ -255,8 +258,9 @@ public static class AnalyticsEngine
                     })
                     .ToListAsync(ct);
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warning(ex, "ProcessNetworkUsages 查询失败，分析页流量数据降级为空");
                 netUsages = new List<Core.Entities.ProcessNetworkUsage>();
             }
         }

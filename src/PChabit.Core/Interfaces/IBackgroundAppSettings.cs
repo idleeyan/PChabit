@@ -69,11 +69,14 @@ public class BackgroundAppSettings : IBackgroundAppSettings
                 File.WriteAllText(_settingsPath, json);
             }
         }
-        catch
+        catch (Exception)
         {
+            // [豁免登记] Core 层无日志设施（保持零依赖，见 E1 分层规约）。
+            // 写失败仅影响后台应用名单持久化，下次保存自动重试；
+            // 待 E2 迁移到 Infrastructure 时随层补 Log.Warning。
         }
     }
-    
+
     public void LoadSettings()
     {
         try
@@ -88,8 +91,9 @@ public class BackgroundAppSettings : IBackgroundAppSettings
                 }
             }
         }
-        catch
+        catch (Exception)
         {
+            // [豁免登记] 配置损坏时回退为空名单（默认行为），见 SaveSettings 的豁免说明
             _backgroundApps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
     }

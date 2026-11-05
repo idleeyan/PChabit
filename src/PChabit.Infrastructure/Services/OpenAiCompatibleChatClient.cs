@@ -323,8 +323,10 @@ public sealed class OpenAiCompatibleChatClient
 
             return "";
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：流式 delta 解析失败（每 chunk 调用一次，Debug 防刷屏），降级为空增量
+            Log.Debug(ex, "流式响应 chunk 解析失败");
             return "";
         }
     }
@@ -371,8 +373,10 @@ public sealed class OpenAiCompatibleChatClient
             var text = ReadString(c0, "text");
             return string.IsNullOrWhiteSpace(text) ? null : text;
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：心跳/非标准 chunk（高频），降级为 null 由调用方跳过
+            Log.Debug(ex, "流式 delta 提取失败");
             return null;
         }
     }

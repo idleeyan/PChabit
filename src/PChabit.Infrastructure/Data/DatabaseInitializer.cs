@@ -770,8 +770,10 @@ public static class DatabaseInitializer
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：表不存在（走建表分支）——迁移双路径探测的合法返回路径
+            Log.Debug(ex, "探测 {Table}.{Column} 列类型失败（表可能不存在）", tableName, columnName);
         }
         return null;
     }

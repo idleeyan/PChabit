@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OfficeOpenXml;
 using PChabit.Infrastructure.Analysis;
+using Serilog;
 
 namespace PChabit.Infrastructure.Formatters;
 
@@ -347,8 +348,10 @@ public static class AnalyticsAiResponseParser
 
             return (summary, findings, suggestions, risks, diagnosis, planItems, followUps);
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：AI 快照 JSON 为旧版格式或损坏，Excel 导出跳过该区块
+            Log.Debug(ex, "AI 快照解析失败，Excel 导出跳过解读区块");
             return null;
         }
     }

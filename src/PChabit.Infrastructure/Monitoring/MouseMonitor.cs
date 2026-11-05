@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
+using Serilog;
 
 namespace PChabit.Infrastructure.Monitoring;
 
@@ -134,9 +135,11 @@ public class MouseMonitor : IMouseMonitor
                         break;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 吞掉所有异常，防止钩子被 Windows 静默卸载
+                // 钩子回调内必须吞掉所有异常（抛出会导致 Windows 静默卸载钩子、鼠标统计全停），
+                // 属异常处理规约登记的豁免点；Debug 级防高频刷屏，排障时可开
+                Log.Debug(ex, "鼠标钩子回调内异常（已吞，保护钩子不被卸载）");
             }
         }
 

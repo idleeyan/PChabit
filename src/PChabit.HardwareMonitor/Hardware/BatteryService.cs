@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using LibreHardwareMonitor.Hardware;
+using Serilog;
 namespace PChabit.HardwareMonitor.Hardware
 {
     /// <summary>
@@ -83,7 +84,11 @@ namespace PChabit.HardwareMonitor.Hardware
                     return sps.ACLineStatus == 1; // 1 = 在线（插电）
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：无电池设备/电源 API 失败，默认视为插电避免符号逻辑异常
+                Log.Debug(ex, "电池状态查询失败，默认视为插电");
+            }
             return true; // 默认视为插电，避免符号逻辑异常
         }
 

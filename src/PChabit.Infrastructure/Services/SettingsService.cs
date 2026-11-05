@@ -1311,8 +1311,10 @@ public class SettingsService : ISettingsService
                 if (shell != null) System.Runtime.InteropServices.Marshal.ReleaseComObject(shell);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：COM 反射校验失败（Shell 繁忙/权限），返回 false 触发上游重建快捷方式
+            Log.Debug(ex, "快捷方式校验失败，将按需重建");
             return false;
         }
     }

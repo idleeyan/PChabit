@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using PChabit.Core.Interfaces;
+using Serilog;
 
 namespace PChabit.Infrastructure.Services;
 
@@ -45,8 +46,10 @@ public class EventBus : IEventBus
                 {
                     handler(@event);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    // 订阅者异常不阻断其他订阅者，但必须可观测（否则订阅方静默失效）
+                    Log.Error(ex, "事件处理器执行失败: {EventType}", typeof(TEvent).Name);
                 }
             }
         }

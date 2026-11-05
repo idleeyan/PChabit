@@ -326,6 +326,10 @@ public sealed class GlobalHotkeyService : IDisposable
             if (_threadId != 0) PostThreadMessageW(_threadId, 0x0012 /*WM_QUIT*/, IntPtr.Zero, IntPtr.Zero);
             _thread?.Join(TimeSpan.FromSeconds(2));
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：线程已退出时 Post/Join 失败，Dispose 幂等收尾
+            Log.Debug(ex, "热键线程退出等待失败（Dispose 期）");
+        }
     }
 }

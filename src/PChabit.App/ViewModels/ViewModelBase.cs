@@ -16,8 +16,10 @@ public partial class ViewModelBase : ObservableObject
         {
             _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：非 UI 线程构造时无 DispatcherQueue，降级为直接调用（RunOnUIThread 同步执行）
+            Log.Debug(ex, "ViewModelBase 构造于非 UI 线程，DispatcherQueue 不可用");
             _dispatcherQueue = null;
         }
     }

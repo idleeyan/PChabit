@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Serilog;
 using Windows.UI.Text;
 
 // Block/Inline 在 XAML 与 Markdig 两个命名空间同名，用别名消除歧义：
@@ -121,9 +122,10 @@ public static class MarkdownText
             RenderBlocks(doc, sink, depth: 0, pal);
             foreach (var b in sink) target.Blocks.Add(b);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 解析失败降级为纯文本，保证内容永远可见
+            // 解析失败降级为纯文本，保证内容永远可见；失败原因需可观测
+            Log.Warning(ex, "Markdown 渲染失败，已降级为纯文本");
             target.Blocks.Add(new Paragraph { Inlines = { new Run { Text = md } } });
         }
     }
@@ -425,7 +427,7 @@ public static class MarkdownText
             {
                 var hl = new Hyperlink();
                 try { hl.NavigateUri = new Uri(link.Url ?? "", UriKind.RelativeOrAbsolute); }
-                catch { /* 非法 URL 降级为纯文本样式 */ }
+                catch (Exception ex) { /* 非法 URL 降级为纯文本样式 */ Log.Debug(ex, "便签链接 URL 非法: {Url}", link.Url); }
                 hl.Foreground = pal.Link;
                 MapInlines(link, depth, pal, i => hl.Inlines.Add(i));
                 if (hl.Inlines.Count == 0)
@@ -438,7 +440,7 @@ public static class MarkdownText
             {
                 var hl = new Hyperlink();
                 try { hl.NavigateUri = new Uri(auto.Url, UriKind.RelativeOrAbsolute); }
-                catch { }
+                catch (Exception ex) { Log.Debug(ex, "自动链接 URL 非法: {Url}", auto.Url); }
                 hl.Foreground = pal.Link;
                 hl.Inlines.Add(new Run { Text = auto.Url });
                 sink(hl);
@@ -482,8 +484,9 @@ public static class MarkdownText
         {
             image.Source = new BitmapImage(new Uri(url, UriKind.RelativeOrAbsolute));
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Debug(ex, "图片 URL 非法，降级为占位文本: {Url}", url);
             return new Run { Text = $"🖼 {FlattenInline(img)}{url}" };
         }
 

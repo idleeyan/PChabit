@@ -210,8 +210,10 @@ public sealed partial class DashboardPage : Page
             var luminance = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255.0;
             return luminance < 0.5;
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：UISettings 偶发不可用，降级为浅色判定（false）
+            Log.Debug(ex, "读取系统背景色失败，降级为浅色主题");
             return false;
         }
     }

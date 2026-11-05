@@ -39,7 +39,11 @@ public sealed partial class ShellPage : Page
             if (_globalLogLines.Count > 120)
                 _globalLogLines.RemoveAt(_globalLogLines.Count - 1);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：页面销毁期集合不可达，仅影响侧栏日志快照展示
+            Log.Debug(ex, "全局日志快照加载失败");
+        }
     }
 
     private void OnGlobalOpLogged(GlobalOpLog.OpLogItem item)

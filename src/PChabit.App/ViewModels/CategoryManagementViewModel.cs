@@ -93,9 +93,10 @@ public partial class CategoryManagementViewModel
                         ProcessPath = process.MainModule?.FileName
                     });
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 跳过无权访问的进程
+                    // 预期：系统进程/无权进程 MainModule 访问被拒绝，跳过该进程
+                    Log.Debug(ex, "枚举运行进程被拒绝，跳过: {ProcessName}", process.ProcessName);
                 }
                 finally
                 {

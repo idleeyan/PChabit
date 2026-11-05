@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
+using Serilog;
 
 namespace PChabit.Infrastructure.Analysis;
 
@@ -111,8 +112,10 @@ public static class AppDetailEngine
                                 && k.Date < dayEnd)
                     .SumAsync(k => (long)k.TotalKeyPresses, ct);
             }
-            catch
+            catch (Exception ex)
             {
+                // 查询失败把 0 当真实值展示（3.46.0 陷阱 45 案发地），必须 Error 可观测
+                Log.Error(ex, "键鼠会话查询失败，详情页按键数将显示 0");
                 keyPresses = 0;
             }
 
@@ -138,8 +141,10 @@ public static class AppDetailEngine
                 mouseMoveDistance = mouseRows.Sum(x => x.TotalMoveDistance);
                 mouseScrolls = mouseRows.Sum(x => x.ScrollCount);
             }
-            catch
+            catch (Exception ex)
             {
+                // 查询失败把 0 当真实值展示，必须 Error 可观测
+                Log.Error(ex, "鼠标会话查询失败，详情页鼠标统计将显示 0");
                 mouseClicks = 0;
                 mouseMoveDistance = 0;
                 mouseScrolls = 0;
@@ -174,8 +179,10 @@ public static class AppDetailEngine
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                // 查询失败降级为无硬件数据，需可观测以区分"真无数据"
+                Log.Error(ex, "硬件样本查询失败，应用详情硬件数据将缺失");
                 hwSamples = new();
             }
         }

@@ -373,6 +373,7 @@ public partial class DataCollectionService : IDisposable
         }
         catch (OperationCanceledException)
         {
+            // 取消模式豁免：服务停止时定时器退出属正常路径
         }
     }
 

@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Helpers;
+using Serilog;
 
 namespace PChabit.Infrastructure.Monitoring;
 
@@ -110,9 +111,11 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
                     OnDataCollected?.Invoke(this, args);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // 吞掉所有异常，防止钩子被 Windows 静默卸载
+                // 钩子回调内必须吞掉所有异常（抛出会导致 Windows 静默卸载钩子、键数统计全停），
+                // 属异常处理规约登记的豁免点；Debug 级防高频刷屏，排障时可开
+                Log.Debug(ex, "键盘钩子回调内异常（已吞，保护钩子不被卸载）");
             }
         }
 
@@ -165,8 +168,10 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
             var fileName = Path.GetFileNameWithoutExtension(buffer.ToString(0, (int)size));
             return string.IsNullOrEmpty(fileName) ? null : fileName;
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：进程已退出/权限受限（高频竞态），降级为 null 由调用方用缓存兜底
+            Log.Debug(ex, "查询进程映像名失败，PID {Pid}", pid);
             return null;
         }
         finally

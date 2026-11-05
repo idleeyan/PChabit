@@ -104,8 +104,10 @@ public class BrowserSyncWebSocketHandler : IDisposable
             var clientId = e.ClientId;
             _ = Task.Run(() => HandleMessageAsync(type, message, clientId));
         }
-        catch (JsonException)
+        catch (JsonException jex)
         {
+            // 扩展推送非法 JSON：消息被丢弃。入库链路入口静默丢数据是 3.38 教训的变体，必须可观测
+            Log.Warning(jex, "BrowserSync 消息 JSON 解析失败，消息已丢弃: {ClientId}", e.ClientId);
         }
         catch (Exception ex)
         {

@@ -121,8 +121,10 @@ public class MonitorManager : IDisposable
             _mouseMonitor.SetCurrentProcess(currentProcess);
             _keyboardMonitor.SetCurrentProcess(currentProcess);
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：前台窗口切换瞬间的进程读取竞态（定时器热路径，Debug 防刷屏）
+            Log.Debug(ex, "前台进程同步失败，本拍跳过");
         }
     }
 

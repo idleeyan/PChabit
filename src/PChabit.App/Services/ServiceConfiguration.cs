@@ -55,7 +55,11 @@ public static class ServiceConfiguration
                     port = configured;
                 }
             }
-            catch { /* settings 可能尚未就绪，退回默认端口 */ }
+            catch (Exception ex) /* settings 可能尚未就绪，退回默认端口 */
+            {
+                // 预期：DI 解析顺序中 settings 尚未注册/初始化，退回 8765
+                Serilog.Log.Debug(ex, "读取 WebSocket 端口设置失败，使用默认端口");
+            }
 
             return new WebSocketServer(port, sp.GetRequiredService<AiCommandDispatcher>());
         });

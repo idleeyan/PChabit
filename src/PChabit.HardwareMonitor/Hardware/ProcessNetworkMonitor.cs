@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using Serilog;
 using static PChabit.HardwareMonitor.Hardware.ProcessNetworkNative;
 
 namespace PChabit.HardwareMonitor.Hardware;
@@ -114,9 +115,10 @@ public sealed class ProcessNetworkMonitor : IDisposable
             SampleOnce();
             Updated?.Invoke();
         }
-        catch
+        catch (Exception ex)
         {
-            // 采样失败不打断监控主循环
+            // 预期：单拍采样失败不打断监控主循环（Debug 防高频刷屏）
+            Log.Debug(ex, "进程网络采样失败，本拍跳过");
         }
     }
 
@@ -370,15 +372,17 @@ public sealed class ProcessNetworkMonitor : IDisposable
                     if (recv >= last.Down) down += recv - last.Down;
                     _adapterLast[id] = (sent, recv);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // 单网卡失败忽略
+                    // 预期：单网卡读取失败（拔出/禁用），跳过
+                    Log.Debug(ex, "网卡统计读取失败，跳过");
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 枚举失败时保持 0，由 getter 回退
+            // 预期：网卡枚举失败，保持 0 由 getter 回退 LHM 数据
+            Log.Debug(ex, "网卡枚举失败，本拍增量记 0");
         }
 
         // 清理消失的网卡
@@ -587,9 +591,10 @@ public sealed class ProcessNetworkMonitor : IDisposable
             using var p = Process.GetProcessById(pid);
             name = string.IsNullOrEmpty(p.ProcessName) ? name : p.ProcessName;
         }
-        catch
+        catch (Exception ex)
         {
-            // 进程已退出
+            // 预期：进程已退出（高频竞态），保留 pid 占位名并缓存
+            Log.Debug(ex, "进程名解析失败（已退出），PID {Pid}", pid);
         }
 
         if (_nameCache.Count > 512) _nameCache.Clear();

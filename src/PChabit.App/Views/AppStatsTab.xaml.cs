@@ -36,7 +36,11 @@ public sealed partial class AppStatsTab : UserControl
             {
                 PieChartWebView.Close();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：WebView2 已随页面销毁，Close 幂等失败可忽略
+                Log.Debug(ex, "关闭 PieChart WebView 失败（页面销毁期）");
+            }
         }
         ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
     }

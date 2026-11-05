@@ -136,6 +136,7 @@ public class AppIconService : IAppIconService
                 }
                 catch (OperationCanceledException)
                 {
+                    // 取消模式豁免：超时/外部取消时返回 null 图标，非异常状态
                     return (name, (SoftwareBitmapSource?)null);
                 }
                 catch (Exception ex)
@@ -254,7 +255,7 @@ public class AppIconService : IAppIconService
                     .Where(p =>
                     {
                         try { return string.Equals(p.ProcessName, processNameWithoutExt, StringComparison.OrdinalIgnoreCase); }
-                        catch { return false; }
+                        catch (Exception ex) { /* 预期：进程已退出竞态，跳过该实例 */ Log.Debug(ex, "读取进程名失败（已退出）"); return false; }
                     })
                     .ToArray();
             }
@@ -274,9 +275,10 @@ public class AppIconService : IAppIconService
                                 return path;
                             }
                         }
-                        catch
+                        catch (Exception ex)
                         {
-                            // 访问被拒绝时继续尝试下一个实例
+                            // 预期：访问被拒绝（权限受限进程），继续尝试下一个实例
+                            Log.Debug(ex, "读取进程 MainModule 被拒绝，跳过");
                         }
                     }
                 }

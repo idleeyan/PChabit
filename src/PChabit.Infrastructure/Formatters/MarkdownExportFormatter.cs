@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using PChabit.Core.Interfaces;
+using Serilog;
 
 namespace PChabit.Infrastructure.Formatters;
 
@@ -249,8 +250,10 @@ public class MarkdownExportFormatter : IExportFormatter
             var uri = new Uri(url);
             return $"{uri.Scheme}://{uri.Host}/***";
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：库内残留非法 URL（历史数据），保守全匿名不泄露
+            Log.Debug(ex, "导出脱敏：URL 解析失败，已全匿名");
             return "***";
         }
     }

@@ -1,64 +1,46 @@
 {
-  "emptyCatchCount": 13.0,
-  "emptyCatchByFile": [
+  "emptyCatchCount": null,
+  "emptyCatchByFile": null,
+  "silentCatchCount": 6.0,
+  "silentCatchTopFiles": [
+    {
+      "file": "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs",
+      "count": 2
+    },
+    {
+      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "count": 1
+    },
     {
       "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
       "count": 1
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\BatteryService.cs",
+      "file": "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs",
       "count": 1
     },
     {
-      "file": "src\\PChabit.App\\Views\\AppStatsTab.xaml.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.Infrastructure\\Platform\\GlobalHotkeyService.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\Services\\GlobalOpLog.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\App.xaml.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessResourceMonitor.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\Controls\\MarkdownText.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\ViewModels\\DataManagementViewModel.Utils.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\Views\\ShellPage.xaml.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.Infrastructure\\Services\\WebDAVSyncService.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\ViewModels\\NotesViewModel.cs",
+      "file": "src\\PChabit.App\\Services\\DataCollectionService.Persistence.cs",
       "count": 1
     }
   ],
-  "catchGenericCount": 329.0,
+  "silentCatchLocations": [
+    "src\\PChabit.App\\Services\\AppIconService.cs:137",
+    "src\\PChabit.App\\Services\\DataCollectionService.Persistence.cs:374",
+    "src\\PChabit.App\\Services\\HardwareSampleWriter.cs:120",
+    "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs:94",
+    "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:143",
+    "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:229"
+  ],
+  "catchGenericCount": 398.0,
   "catchGenericTopFiles": [
     {
       "file": "src\\PChabit.App\\App.xaml.cs",
-      "count": 31
+      "count": 37
+    },
+    {
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessResourceMonitor.cs",
+      "count": 16
     },
     {
       "file": "src\\PChabit.App\\Services\\DataCollectionService.cs",
@@ -66,34 +48,30 @@
     },
     {
       "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
-      "count": 11
+      "count": 12
     },
     {
       "file": "src\\PChabit.App\\Services\\AppIconService.cs",
-      "count": 10
+      "count": 12
     },
     {
       "file": "src\\PChabit.App\\Views\\SettingsPage.xaml.cs",
-      "count": 10
-    },
-    {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareMonitor.cs",
-      "count": 9
+      "count": 12
     },
     {
       "file": "src\\PChabit.Infrastructure\\Services\\SettingsService.cs",
-      "count": 9
+      "count": 10
     },
     {
       "file": "src\\PChabit.App\\App.StickyNotes.cs",
       "count": 9
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessResourceMonitor.cs",
+      "file": "src\\PChabit.App\\ViewModels\\DashboardViewModel.cs",
       "count": 9
     },
     {
-      "file": "src\\PChabit.App\\ViewModels\\DashboardViewModel.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareMonitor.cs",
       "count": 9
     }
   ],
@@ -103,15 +81,15 @@
   "topFilesByLines": [
     {
       "file": "src\\PChabit.Infrastructure\\Services\\SettingsService.cs",
-      "lines": 1468
+      "lines": 1470
+    },
+    {
+      "file": "src\\PChabit.App\\App.xaml.cs",
+      "lines": 1171
     },
     {
       "file": "src\\PChabit.App\\ViewModels\\DashboardViewModel.cs",
       "lines": 1162
-    },
-    {
-      "file": "src\\PChabit.App\\App.xaml.cs",
-      "lines": 1150
     },
     {
       "file": "src\\PChabit.App\\Views\\SettingsPage.xaml",
@@ -119,19 +97,19 @@
     },
     {
       "file": "src\\PChabit.App\\Views\\SettingsPage.xaml.cs",
-      "lines": 912
+      "lines": 918
     },
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessNetworkMonitor.cs",
-      "lines": 911
+      "lines": 916
     },
     {
       "file": "src\\PChabit.Infrastructure\\Data\\DatabaseInitializer.cs",
-      "lines": 822
+      "lines": 824
     },
     {
       "file": "src\\PChabit.Infrastructure\\Analysis\\AnalyticsEngine.cs",
-      "lines": 815
+      "lines": 819
     },
     {
       "file": "src\\PChabit.App\\Services\\TaskbarWidget.cs",

@@ -58,7 +58,11 @@ public partial class DataManagementViewModel : ViewModelBase
             else if (level == "ok") PChabit.App.Services.GlobalOpLog.Success("数据管理", message);
             else PChabit.App.Services.GlobalOpLog.Action("数据管理", message);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // GlobalOpLog 内部已有自记录；此层防线兜住意外异常
+            Log.Debug(ex, "操作日志写入失败");
+        }
     }
     private static string FormatSize(long bytes)
     {

@@ -2,6 +2,40 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.61.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 C——异常收口第二批 + 日志规范
+
+承接 3.60.0（阶段 B）。本批仍为**可观测性补丁**：所有 catch 控制流零变化。
+
+- **新增「无日志 catch」审计维度**：`audit_code.ps1` 升级——新增 silent catch
+  扫描（括号深度追踪 catch 块体，判定 `Log.` / `throw` / `Debug.WriteLine` /
+  `TrySetException`），输出位置清单。基线扫描：**74 处无日志 catch**。
+- **无日志 catch 74 → 5**：剩余 5 处全部为登记豁免（取消模式 ×4、
+  Core 零依赖豁免 ×1）。重点处理：
+  - **查询类吞错升 `Log.Error`**（"吞错导致错误数据"模式，3.46.0 陷阱 45 案发地）：
+    `AppDetailEngine` 键鼠/鼠标/硬件样本 3 处——查询失败时 UI 显示 0 属真实缺陷
+    伪装，必须可观测；`AnalyticsEngine` 3 处查询降级升 `Warning`
+  - **数据入库链路**：`BrowserSyncWebSocketHandler` 非法 JSON 静默丢弃升
+    `Warning`（3.38 静默停更教训的入口变体）；`NetworkTrafficPersistenceService`
+    日摘要落库失败升 `Warning`
+  - **功能停用决策升 `Warning`**：`ProcessResourceMonitor` GPU 采样停用 ×2、
+    `PerformanceCounterManager` 初始化失败（回退 LHM）
+  - **钩子防线**（键盘/鼠标钩子回调内异常必须吞，否则 Windows 静默卸载钩子）：
+    保持吞但补 `Log.Debug`，登记为规约豁免点
+  - 其余 50+ 处探测/竞态/关闭期降级按 C2 规范补 `Log.Debug` + 注释
+- **empty catch 13 → 10**（达标 ≤10），每处均有注释说明
+- **C2 日志级别规范**写入 `AI_MAINTENANCE.md`：Debug（可自愈降级/热路径防刷屏）、
+  Warning（功能受损主流程继续）、Error（数据可能不正确）、Fatal（启动不可继续），
+  含热路径"一次性停用决策必须 Warning"等约束
+- **新增陷阱 52**：PowerShell 5.1 `Get-Content`/`Set-Content` 批量改码触发
+  GBK↔UTF-8 双重编码污染（本批真实踩坑，11 文件 `git checkout` 回滚后用
+  结构化编辑工具重做；全程源码零遗留损坏）
+
+验证：Release 构建 0 错误（24 警告=基线）；单测 156/156；publish 自包含部署
+`D:\Tool\PChabit` 3.61.0.0；冒烟 PASS（版本匹配/存活 30s/主窗口正常/
+0 ERR/FTL）；部署前用户运行实例按 SOP 关闭、部署后已恢复。
+
 ## [3.60.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 B——异常收口第一批

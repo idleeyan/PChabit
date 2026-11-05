@@ -139,15 +139,17 @@ public sealed partial class SettingsPage : Page
     {
         try
         {
-            var asm = AppDomain.CurrentDomain.GetAssemblies()
+                var asm = AppDomain.CurrentDomain.GetAssemblies()
                 .FirstOrDefault(a =>
                 {
                     try
                     {
                         return string.Equals(a.GetName().Name, assemblyName, StringComparison.OrdinalIgnoreCase);
                     }
-                    catch
+                    catch (Exception ex)
                     {
+                        // 预期：个别动态程序集名不可读，跳过
+                        Log.Debug(ex, "读取程序集名失败，跳过");
                         return false;
                     }
                 });
@@ -173,8 +175,10 @@ public sealed partial class SettingsPage : Page
             var fvi = FileVersionInfo.GetVersionInfo(asm.Location);
             return NormalizeVersion(fvi.FileVersion ?? asm.GetName().Version?.ToString());
         }
-        catch
+        catch (Exception ex)
         {
+            // 预期：依赖程序集未加载且 DLL 探测失败，「关于」页显示"未知"
+            Log.Debug(ex, "解析 {Assembly} 版本失败", assemblyName);
             return null;
         }
     }
@@ -368,6 +372,7 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
+            Log.Warning(ex, "AI 测试结果复制到剪贴板失败");
             AiTestResult.Text = $"复制失败：{ex.Message}";
         }
     }
@@ -406,6 +411,7 @@ public sealed partial class SettingsPage : Page
         }
         catch (Exception ex)
         {
+            Log.Warning(ex, "AI 连接测试失败");
             AiTestResult.Text = (AiTestResult.Text ?? "").Split('\n').FirstOrDefault()
                                 + "\n❌ 测试失败：" + ex.Message;
         }

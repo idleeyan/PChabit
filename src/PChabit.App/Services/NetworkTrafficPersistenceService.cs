@@ -352,9 +352,10 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
 
             db.SaveChanges();
         }
-        catch
+        catch (Exception ex)
         {
-            // DailySummary 为附属信息，失败不影响主落库
+            // DailySummary 为附属摘要信息，失败不影响主落库；但落库失败需可观测
+            Log.Warning(ex, "网络流量日摘要落库失败（主样本数据不受影响）");
         }
     }
 

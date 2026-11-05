@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using Serilog;
 
 namespace PChabit.Infrastructure.Monitoring;
 
@@ -73,9 +74,10 @@ public sealed class InputHookThread : IDisposable
                     {
                         action();
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // 钩子动作异常不应结束消息循环
+                        // 钩子动作异常不应结束消息循环；Warning 让"某统计动作持续失败"可被发现
+                        Log.Warning(ex, "钩子调度动作执行失败（消息循环继续）");
                     }
                 }
                 continue;

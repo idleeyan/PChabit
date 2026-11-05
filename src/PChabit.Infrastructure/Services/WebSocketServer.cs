@@ -96,7 +96,11 @@ public class WebSocketServer : IDisposable
                 {
                     client.CloseAsync(WebSocketCloseStatus.NormalClosure, "Server shutting down", CancellationToken.None).Wait();
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // 预期：关闭期客户端连接已断开，CloseAsync 失败不阻断关闭流程
+                    Log.Debug(ex, "关闭客户端 WebSocket 失败（服务停止期）");
+                }
             }
             _clients.Clear();
             _clientBrowserNames.Clear();
@@ -138,6 +142,7 @@ public class WebSocketServer : IDisposable
             }
             catch (HttpListenerException) when (cancellationToken.IsCancellationRequested)
             {
+                // 取消模式豁免：仅取消时吞掉监听器中断异常，正常退出监听循环
                 break;
             }
             catch (Exception ex)
@@ -223,6 +228,7 @@ public class WebSocketServer : IDisposable
         }
         catch (OperationCanceledException)
         {
+            // 取消模式豁免：关闭期连接中止属正常路径
         }
         catch (Exception ex)
         {
