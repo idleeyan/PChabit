@@ -68,7 +68,7 @@
                 SelectionMode="None">
                 <GridView.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <ItemsWrapGrid ItemWidth="248" Orientation="Horizontal" />
+                        <ItemsWrapGrid ItemWidth="248" ItemHeight="248" Orientation="Horizontal" />
                     </ItemsPanelTemplate>
                 </GridView.ItemsPanel>
                 <GridView.ItemContainerStyle>

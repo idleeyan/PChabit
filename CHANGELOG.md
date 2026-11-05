@@ -2,6 +2,21 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.56.0] - 2026-11-05
+
+### 修复：便签超过 4 张后卡片被压缩
+
+- `NotesPage.xaml` 的 `ItemsWrapGrid` 原先只设 `ItemWidth="248"`、未设
+  `ItemHeight`。在 `Orientation="Horizontal"` 且 `ItemHeight` 为 NaN 时，
+  `ItemsWrapGrid` 会把可用高度按行数重新分配：窗口宽度约容纳 4 列，第 5 张便签
+  换行后行数由 1 变 2，每张卡片的高度随之变矮；行数越多压缩越明显，内容区
+  被 `Grid` 的 `*` 行挤到 `MaxHeight="168"` 以下，可读行数明显减少
+- 现补 `ItemHeight="248"`，卡片尺寸恒定（248×248），不再随便签数量变化；
+  超出一屏由 `GridView` 自带滚动条纵向浏览。项目内
+  `KeyboardDetailsTab.xaml` 的同类布局本就同时指定了两个尺寸，此次对齐
+- 卡片内部 `Grid RowDefinitions="Auto,*,Auto"` 与 `RichTextBlock
+  MaxHeight="168"` 保持不变，短便签留白、长便签截断的既有表现不受影响
+
 ## [3.55.0] - 2026-11-03
 
 ### 变更：便签支持 Markdown 样式显示
