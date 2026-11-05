@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<UserControl
+    x:Class="PChabit.App.Views.Settings.DataSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+            <Border x:Name="DataSection" Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border
+                                Width="32"
+                                Height="32"
+                                Background="{StaticResource PrimarySoftBrush}"
+                                CornerRadius="6">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Foreground="{StaticResource PrimaryBrush}"
+                                    Glyph="&#xE74D;" />
+                            </Border>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="数据管理" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="44,0,0,0"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="配置数据保留和自动清理策略，DailySummary 预聚合数据不会被清理"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Margin="44,0,0,0" Spacing="16">
+                        <!-- 自动清理开关 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    FontSize="14"
+                                    FontWeight="Medium"
+                                    Text="自动清理旧数据" />
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="启用后自动删除超过保留天数的原始事件数据" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                x:Name="AutoCleanupSwitch"
+                                Grid.Column="1"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- 保留天数 -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    FontSize="14"
+                                    FontWeight="Medium"
+                                    Text="数据保留天数" />
+                                <TextBlock
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="超过此天数的原始事件数据将被清理（30-365 天）" />
+                            </StackPanel>
+                            <NumberBox
+                                x:Name="DataRetentionBox"
+                                Grid.Column="1"
+                                Width="120"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Maximum="365"
+                                Minimum="30"
+                                SpinButtonPlacementMode="Inline" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+</UserControl>

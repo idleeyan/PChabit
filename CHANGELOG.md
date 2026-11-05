@@ -2,6 +2,43 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.68.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D3 完成——SettingsPage 全部分区拆为 UserControl
+
+**`SettingsPage` 由 1921 行（1058 XAML + 919 cs）降至 200 行（97 + 103）**，
+9 个分区卡片全部拆为 `Views/Settings/*Section` 自治 UserControl：
+
+| 分区（UserControl） | 版本 | 备注 |
+|---|---|---|
+| AboutSettingsSection | 3.64.0 | 纯搬运 |
+| AiSettingsSection | 3.65.0 | 首次重构 |
+| StickyNotesSection | 3.66.0 | 热键校验 + WebDAV 同步 |
+| GeneralSettingsSection / MonitorSettingsSection | 3.67.0 | — |
+| TaskbarSettingsSection / DesktopWidgetSettingsSection / AppearanceSettingsSection | 3.68.0 | — |
+| DataSettingsSection | 3.68.0 | **x:Bind → 自治模式**（见下） |
+
+- **DataSettingsSection 顺带修正一处隐患**：原「数据」卡片用
+  `{x:Bind ViewModel.X, Mode=TwoWay}` 直接绑页面 ViewModel，改动只写 ViewModel、
+  **不调用 `SaveSetting`**（不落盘）。拆分时统一为与其它分区一致的
+  `RaiseChanged` + `SaveSetting`，使设置项改动真正持久化。
+- **页面收尾清理**：所有分区迁出后，`AddEventHandlers` / `OnSettingChanged` /
+  `LoadSettingsToUI` 成为空壳（含 `_isLoading`），一并删除；页面只保留分区导航
+  与「注入 `Initialize(vm)` / 刷新 `Reload()`」编排。警告维持基线 24。
+- 页面 using 精简为 5 条（UI / Navigation / Serilog / ViewModels）。
+
+**验证**（新增 `scripts/verify_368.py`）：
+- **7 个导航分区逐个切换全部成功**，右侧内容正确（陷阱 31 回归无异常）。
+- **数据分区读写实证**：`DataRetentionBox` 120 → 110 → 日志
+  `设置变更 DataRetentionDays = 110` → `SaveSetting` → `settings.json` 落盘。
+- 构造函数完成；新增 ERR/FTL=0；构建 0 错误（24 警告=基线）；156/156 测试。
+- 发布 3.68.0.0 部署 `D:\Tool\PChabit`。
+- *冒烟说明*：`smoke_test.ps1` 报 FAIL 系**单实例保护**（用户实例正在运行，
+  新实例按设计 `Exit(0)`，异步日志未及 flush）——非代码缺陷；等效验证由
+  `verify_368.py`（先清理进程再启动）完成并通过。
+
+**D3 收官**：9/9 分区拆分完成，SettingsPage 宿主化（200 行）。
+
 ## [3.67.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D3（步骤 3a）——「常规」「监控」分区拆为 UserControl

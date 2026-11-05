@@ -64,316 +64,23 @@
             <!-- ======================================== -->
             <!-- 任务栏与托盘                                    -->
             <!-- ======================================== -->
-            <Border x:Name="TaskbarSection" Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="20">
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Border
-                                Width="32"
-                                Height="32"
-                                Background="{StaticResource WarningSoftBrush}"
-                                CornerRadius="6">
-                                <FontIcon
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    Foreground="{StaticResource WarningBrush}"
-                                    Glyph="&#xE792;" />
-                            </Border>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="任务栏与托盘" />
-                        </StackPanel>
-                        <TextBlock
-                            Margin="44,0,0,0"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="在任务栏上显示实时硬件信息"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <StackPanel Margin="44,0,0,0" Spacing="4">
-                        <TextBlock FontWeight="Medium" Text="任务栏显示" />
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            CornerRadius="8"
-                            Margin="0,8,0,0"
-                            Padding="16,4">
-                            <StackPanel>
-                                <ToggleSwitch
-                                    x:Name="TaskbarEnabledSwitch"
-                                    Header="在任务栏左侧显示两行实时信息"
-                                    OffContent="关闭"
-                                    OnContent="开启" />
-                                <TextBlock
-                                    Margin="0,4,0,0"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="信息显示在任务栏最左侧（与左边缘对齐），勾选下方项目选择显示内容"
-                                    TextWrapping="Wrap" />
-                                <Grid Margin="0,12,0,0" ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <ToggleSwitch x:Name="TaskbarCpuSwitch" Header="CPU 占用" />
-                                        <ToggleSwitch x:Name="TaskbarMemorySwitch" Header="内存占用" />
-                                        <ToggleSwitch x:Name="TaskbarGpuSwitch" Header="GPU 占用" />
-                                        <ToggleSwitch x:Name="TaskbarNetSwitch" Header="网速" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1">
-                                        <ToggleSwitch x:Name="TaskbarDiskSwitch" Header="磁盘活动" />
-                                        <ToggleSwitch x:Name="TaskbarTempSwitch" Header="温度" />
-                                        <ToggleSwitch x:Name="TaskbarUsageSwitch" Header="今日使用统计" />
-                                    </StackPanel>
-                                </Grid>
-                                <TextBlock
-                                    Margin="0,8,0,0"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                    Text="显示项目：CPU/内存/GPU（含显存）第一行，网速/磁盘/温度/今日第二行"
-                                    TextWrapping="Wrap" />
-                                <StackPanel Margin="0,12,0,0" Spacing="8">
-                                    <TextBlock Text="每日目标 (小时)" />
-                                    <NumberBox
-                                        x:Name="DailyUsageGoalHoursBox"
-                                        Minimum="0.5"
-                                        Maximum="24"
-                                        SmallChange="0.5"
-                                        SpinButtonPlacementMode="Compact" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <settings:TaskbarSettingsSection x:Name="TaskbarControl" />
 
             <!-- ======================================== -->
             <!-- 桌面悬浮插件（3.23.0）                          -->
             <!-- ======================================== -->
-            <Border x:Name="DesktopWidgetSection" Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="20">
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Border
-                                Width="32"
-                                Height="32"
-                                Background="{StaticResource PrimarySoftBrush}"
-                                CornerRadius="6">
-                                <FontIcon
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    Foreground="{StaticResource PrimaryBrush}"
-                                    Glyph="&#xE95B;" />
-                            </Border>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="桌面悬浮插件" />
-                        </StackPanel>
-                        <TextBlock
-                            Margin="44,0,0,0"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="桌面独立悬浮窗实时显示硬件信息，可拖动、可置顶，双击打开硬件监控页"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <StackPanel Margin="44,0,0,0" Spacing="4">
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            CornerRadius="8"
-                            Padding="16,4">
-                            <StackPanel>
-                                <ToggleSwitch
-                                    x:Name="DesktopWidgetEnabledSwitch"
-                                    Header="在桌面显示硬件信息悬浮窗"
-                                    OffContent="关闭"
-                                    OnContent="开启" />
-                                <TextBlock
-                                    Margin="0,4,0,0"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="每秒刷新；拖动可改变位置，位置与所在屏幕自动记忆；最小化到托盘时悬浮窗仍然显示"
-                                    TextWrapping="Wrap" />
-                                <Grid Margin="0,12,0,0" ColumnSpacing="16">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <ToggleSwitch x:Name="DesktopCpuSwitch" Header="CPU（含温度）" />
-                                        <ToggleSwitch x:Name="DesktopMemorySwitch" Header="内存占用" />
-                                        <ToggleSwitch x:Name="DesktopGpuSwitch" Header="GPU（含温度）" />
-                                        <ToggleSwitch x:Name="DesktopVramSwitch" Header="显存占用" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1">
-                                        <ToggleSwitch x:Name="DesktopNetSwitch" Header="网速" />
-                                        <ToggleSwitch x:Name="DesktopDiskSwitch" Header="磁盘活动" />
-                                        <ToggleSwitch x:Name="DesktopUsageSwitch" Header="今日使用统计" />
-                                        <ToggleSwitch x:Name="DesktopCurrentAppSwitch" Header="当前活动" />
-                                    </StackPanel>
-                                </Grid>
-                                <ToggleSwitch
-                                    x:Name="DesktopTopmostSwitch"
-                                    Header="窗口始终置顶"
-                                    Margin="0,12,0,0" />
-                                <ToggleSwitch
-                                    x:Name="DesktopClickThroughSwitch"
-                                    Header="鼠标点击穿透"
-                                    Margin="0,4,0,0" />
-                                <TextBlock
-                                    Margin="0,0,0,0"
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                    Text="开启穿透后鼠标事件将直接穿过悬浮窗，将无法拖动或双击，请先把窗口拖到目标位置"
-                                    TextWrapping="Wrap" />
-                                <ToggleSwitch
-                                    x:Name="DesktopClampSwitch"
-                                    Header="限制窗口完全拖出屏幕"
-                                    Margin="0,4,0,0" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <settings:DesktopWidgetSettingsSection x:Name="DesktopWidgetControl" />
 
             <settings:StickyNotesSection x:Name="StickyNotesControl" />
 
             <!-- 外观设置                                    -->
             <!-- ======================================== -->
-            <Border x:Name="AppearanceSection" Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="20">
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Border
-                            Width="32"
-                            Height="32"
-                            Background="{StaticResource InsightSoftBrush}"
-                            CornerRadius="6">
-                            <FontIcon
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                FontSize="14"
-                                Foreground="{StaticResource InsightBrush}"
-                                Glyph="&#xE790;" />
-                        </Border>
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="16"
-                            FontWeight="SemiBold"
-                            Text="外观" />
-                    </StackPanel>
-
-                    <Grid Margin="44,0,0,0" ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0" Spacing="8">
-                            <TextBlock Text="主题" />
-                            <ComboBox x:Name="ThemeComboBox" HorizontalAlignment="Stretch" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" Spacing="8">
-                            <TextBlock Text="语言" />
-                            <ComboBox x:Name="LanguageComboBox" HorizontalAlignment="Stretch" />
-                        </StackPanel>
-                    </Grid>
-                </StackPanel>
-            </Border>
+            <settings:AppearanceSettingsSection x:Name="AppearanceControl" />
 
             <!-- ======================================== -->
             <!-- 数据管理                                    -->
             <!-- ======================================== -->
-            <Border x:Name="DataSection" Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="20">
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Border
-                                Width="32"
-                                Height="32"
-                                Background="{StaticResource PrimarySoftBrush}"
-                                CornerRadius="6">
-                                <FontIcon
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    Foreground="{StaticResource PrimaryBrush}"
-                                    Glyph="&#xE74D;" />
-                            </Border>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="数据管理" />
-                        </StackPanel>
-                        <TextBlock
-                            Margin="44,0,0,0"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="配置数据保留和自动清理策略，DailySummary 预聚合数据不会被清理"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <StackPanel Margin="44,0,0,0" Spacing="16">
-                        <!-- 自动清理开关 -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="2">
-                                <TextBlock
-                                    FontSize="14"
-                                    FontWeight="Medium"
-                                    Text="自动清理旧数据" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="启用后自动删除超过保留天数的原始事件数据" />
-                            </StackPanel>
-                            <ToggleSwitch
-                                Grid.Column="1"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                IsOn="{x:Bind ViewModel.AutoCleanupEnabled, Mode=TwoWay}" />
-                        </Grid>
-
-                        <!-- 保留天数 -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="2">
-                                <TextBlock
-                                    FontSize="14"
-                                    FontWeight="Medium"
-                                    Text="数据保留天数" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="超过此天数的原始事件数据将被清理（30-365 天）" />
-                            </StackPanel>
-                            <NumberBox
-                                Grid.Column="1"
-                                Width="120"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                Maximum="365"
-                                Minimum="30"
-                                SpinButtonPlacementMode="Inline"
-                                Value="{x:Bind ViewModel.DataRetentionDays, Mode=TwoWay}" />
-                        </Grid>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <settings:DataSettingsSection x:Name="DataControl" />
 
             <settings:AiSettingsSection x:Name="AiSectionControl" />
 
@@ -382,6 +89,8 @@
             </ScrollViewer>
     </Grid>
 </Page>
+
+
 
 
 

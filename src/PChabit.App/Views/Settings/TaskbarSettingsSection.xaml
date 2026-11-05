@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<UserControl
+    x:Class="PChabit.App.Views.Settings.TaskbarSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+            <Border x:Name="TaskbarSection" Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border
+                                Width="32"
+                                Height="32"
+                                Background="{StaticResource WarningSoftBrush}"
+                                CornerRadius="6">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Foreground="{StaticResource WarningBrush}"
+                                    Glyph="&#xE792;" />
+                            </Border>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="任务栏与托盘" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="44,0,0,0"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="在任务栏上显示实时硬件信息"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Margin="44,0,0,0" Spacing="4">
+                        <TextBlock FontWeight="Medium" Text="任务栏显示" />
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            CornerRadius="8"
+                            Margin="0,8,0,0"
+                            Padding="16,4">
+                            <StackPanel>
+                                <ToggleSwitch
+                                    x:Name="TaskbarEnabledSwitch"
+                                    Header="在任务栏左侧显示两行实时信息"
+                                    OffContent="关闭"
+                                    OnContent="开启" />
+                                <TextBlock
+                                    Margin="0,4,0,0"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="信息显示在任务栏最左侧（与左边缘对齐），勾选下方项目选择显示内容"
+                                    TextWrapping="Wrap" />
+                                <Grid Margin="0,12,0,0" ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <ToggleSwitch x:Name="TaskbarCpuSwitch" Header="CPU 占用" />
+                                        <ToggleSwitch x:Name="TaskbarMemorySwitch" Header="内存占用" />
+                                        <ToggleSwitch x:Name="TaskbarGpuSwitch" Header="GPU 占用" />
+                                        <ToggleSwitch x:Name="TaskbarNetSwitch" Header="网速" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <ToggleSwitch x:Name="TaskbarDiskSwitch" Header="磁盘活动" />
+                                        <ToggleSwitch x:Name="TaskbarTempSwitch" Header="温度" />
+                                        <ToggleSwitch x:Name="TaskbarUsageSwitch" Header="今日使用统计" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock
+                                    Margin="0,8,0,0"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="显示项目：CPU/内存/GPU（含显存）第一行，网速/磁盘/温度/今日第二行"
+                                    TextWrapping="Wrap" />
+                                <StackPanel Margin="0,12,0,0" Spacing="8">
+                                    <TextBlock Text="每日目标 (小时)" />
+                                    <NumberBox
+                                        x:Name="DailyUsageGoalHoursBox"
+                                        Minimum="0.5"
+                                        Maximum="24"
+                                        SmallChange="0.5"
+                                        SpinButtonPlacementMode="Compact" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+</UserControl>

@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<UserControl
+    x:Class="PChabit.App.Views.Settings.DesktopWidgetSettingsSection"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+            <Border x:Name="DesktopWidgetSection" Style="{StaticResource CardStyle}">
+                <StackPanel Spacing="20">
+                    <StackPanel Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <Border
+                                Width="32"
+                                Height="32"
+                                Background="{StaticResource PrimarySoftBrush}"
+                                CornerRadius="6">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Foreground="{StaticResource PrimaryBrush}"
+                                    Glyph="&#xE95B;" />
+                            </Border>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontSize="16"
+                                FontWeight="SemiBold"
+                                Text="桌面悬浮插件" />
+                        </StackPanel>
+                        <TextBlock
+                            Margin="44,0,0,0"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="桌面独立悬浮窗实时显示硬件信息，可拖动、可置顶，双击打开硬件监控页"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Margin="44,0,0,0" Spacing="4">
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            CornerRadius="8"
+                            Padding="16,4">
+                            <StackPanel>
+                                <ToggleSwitch
+                                    x:Name="DesktopWidgetEnabledSwitch"
+                                    Header="在桌面显示硬件信息悬浮窗"
+                                    OffContent="关闭"
+                                    OnContent="开启" />
+                                <TextBlock
+                                    Margin="0,4,0,0"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="每秒刷新；拖动可改变位置，位置与所在屏幕自动记忆；最小化到托盘时悬浮窗仍然显示"
+                                    TextWrapping="Wrap" />
+                                <Grid Margin="0,12,0,0" ColumnSpacing="16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <ToggleSwitch x:Name="DesktopCpuSwitch" Header="CPU（含温度）" />
+                                        <ToggleSwitch x:Name="DesktopMemorySwitch" Header="内存占用" />
+                                        <ToggleSwitch x:Name="DesktopGpuSwitch" Header="GPU（含温度）" />
+                                        <ToggleSwitch x:Name="DesktopVramSwitch" Header="显存占用" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <ToggleSwitch x:Name="DesktopNetSwitch" Header="网速" />
+                                        <ToggleSwitch x:Name="DesktopDiskSwitch" Header="磁盘活动" />
+                                        <ToggleSwitch x:Name="DesktopUsageSwitch" Header="今日使用统计" />
+                                        <ToggleSwitch x:Name="DesktopCurrentAppSwitch" Header="当前活动" />
+                                    </StackPanel>
+                                </Grid>
+                                <ToggleSwitch
+                                    x:Name="DesktopTopmostSwitch"
+                                    Header="窗口始终置顶"
+                                    Margin="0,12,0,0" />
+                                <ToggleSwitch
+                                    x:Name="DesktopClickThroughSwitch"
+                                    Header="鼠标点击穿透"
+                                    Margin="0,4,0,0" />
+                                <TextBlock
+                                    Margin="0,0,0,0"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="开启穿透后鼠标事件将直接穿过悬浮窗，将无法拖动或双击，请先把窗口拖到目标位置"
+                                    TextWrapping="Wrap" />
+                                <ToggleSwitch
+                                    x:Name="DesktopClampSwitch"
+                                    Header="限制窗口完全拖出屏幕"
+                                    Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+</UserControl>
