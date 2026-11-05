@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using Serilog;
 
 namespace PChabit.HardwareMonitor.Hardware
 {
@@ -159,9 +160,13 @@ namespace PChabit.HardwareMonitor.Hardware
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：注册表键读取失败，走下方 2.5GHz 兜底
+                Log.Debug(ex, "CPU base freq registry read failed");
+            }
             // 兜底策略：如果读不到，设为 2.5GHz，防止除零错误
-            if (_cpuBaseFreq <= 0) _cpuBaseFreq = 2500; 
+            if (_cpuBaseFreq <= 0) _cpuBaseFreq = 2500;
 
             // B. 获取物理内存总量 (调用 Win32 API GlobalMemoryStatusEx)
             try
@@ -172,7 +177,11 @@ namespace PChabit.HardwareMonitor.Hardware
                     _totalMemoryMB = memStatus.ullTotalPhys / 1024f / 1024f;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：GlobalMemoryStatusEx 调用失败，走下方 16GB 兜底
+                Log.Debug(ex, "GlobalMemoryStatusEx failed");
+            }
             // 兜底策略：默认 16GB
             if (_totalMemoryMB <= 0) _totalMemoryMB = 16 * 1024;
         }

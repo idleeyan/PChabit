@@ -341,7 +341,11 @@ public class AppIconService : IAppIconService
                     if (File.Exists(p)) return p;
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：个别根目录子项可能无权限或路径非法，跳过该候选继续探测
+                Log.Debug(ex, "Icon path probe failed for root {Root}", root);
+            }
 
             // 深度 2 的有限扫描（避免全盘）
             try
@@ -359,10 +363,18 @@ public class AppIconService : IAppIconService
                             if (File.Exists(candidate)) return candidate;
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        // 预期：单个子目录枚举失败（无权限），跳过继续
+                        Log.Debug(ex, "Icon subdirectory probe failed for {Dir}", dir);
+                    }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：整个根目录枚举失败（无权限/不存在），跳过该根继续
+                Log.Debug(ex, "Icon root enumeration failed for {Root}", root);
+            }
         }
 
         return null;
@@ -413,10 +425,18 @@ public class AppIconService : IAppIconService
                             if (File.Exists(candidate)) return candidate;
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        // 预期：个别卸载注册表键损坏或无权限，跳过该键继续
+                        Log.Debug(ex, "Uninstall key probe failed for {SubKey}", subName);
+                    }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：Uninstall 根键整体读取失败（权限受限），放弃该 hive
+                Log.Debug(ex, "Uninstall hive enumeration failed");
+            }
             finally
             {
                 hive.Dispose();
@@ -438,8 +458,12 @@ public class AppIconService : IAppIconService
                 paths.Add(path);
             }
         }
-        catch { }
-        
+        catch (Exception ex)
+        {
+            // 预期：HKLM App Paths 键可能不存在或无权限，降级为继续查 HKCU
+            Log.Debug(ex, "App Paths lookup failed (HKLM) for {Process}", processName);
+        }
+
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey($@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{processName}.exe");
@@ -448,7 +472,11 @@ public class AppIconService : IAppIconService
                 paths.Add(path);
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：HKCU App Paths 键可能不存在，返回空列表即降级为默认图标
+            Log.Debug(ex, "App Paths lookup failed (HKCU) for {Process}", processName);
+        }
         
         return paths;
     }

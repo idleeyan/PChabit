@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using LibreHardwareMonitor.Hardware;
+using Serilog;
 using Debug = System.Diagnostics.Debug;
 
 namespace PChabit.HardwareMonitor.Hardware
@@ -97,9 +98,10 @@ namespace PChabit.HardwareMonitor.Hardware
                     }
                     _shouldResetAdapters = false;
                 }
-                catch 
-                { 
-                    // 忽略并发修改异常，保留标志位下次重试
+                catch (Exception ex)
+                {
+                    // 预期：并发修改异常，保留标志位下次重试
+                    Log.Debug(ex, "Network adapter state reset skipped (concurrent modification), will retry");
                 }
             }
 
@@ -142,7 +144,11 @@ namespace PChabit.HardwareMonitor.Hardware
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：适配器状态读取偶发失败（网卡拔出/状态变化），降级走策略 B 兜底
+                Log.Debug(ex, "GetLocalIP: failed reading locked adapters");
+            }
 
             // 3. 策略B (兜底)：如果上面没拿到，才主动遍历系统网卡 (只跑一次)
             if (string.IsNullOrEmpty(foundIP))
@@ -160,7 +166,11 @@ namespace PChabit.HardwareMonitor.Hardware
                         if (!string.IsNullOrEmpty(foundIP)) break;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // 预期：系统网卡枚举偶发失败（网络栈繁忙），返回缓存值即可
+                    Log.Debug(ex, "GetLocalIP: fallback NIC enumeration failed");
+                }
             }
 
             if (!string.IsNullOrEmpty(foundIP))
@@ -205,7 +215,11 @@ namespace PChabit.HardwareMonitor.Hardware
                 }
                 return bestIP;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：单个适配器 IP 属性读取失败（适配器已禁用/拔出），返回 null 由调用方跳过
+                Log.Debug(ex, "GetIPv4FromAdapter failed for {Adapter}", nic.Name);
+            }
             return null;
         }
 
@@ -366,7 +380,12 @@ namespace PChabit.HardwareMonitor.Hardware
                     state.LastNativeDownload = currDown;
                     nativeValid = true;
                 }
-                catch { state.NativeAdapter = null; }
+                catch (Exception ex)
+                {
+                    // 预期：适配器在读取瞬间失效（拔出/禁用），重置匹配状态走 LHM 数据兜底
+                    Log.Debug(ex, "Native adapter stats read failed, resetting match");
+                    state.NativeAdapter = null;
+                }
             }
 
             // C. 决策时刻
@@ -464,13 +483,18 @@ namespace PChabit.HardwareMonitor.Hardware
                         
                         if (matchCount > 2 && (double)matchCount / lhmTokens.Count > 0.6)
                         {
-                            SetNativeAdapter(nic, state); 
+                            SetNativeAdapter(nic, state);
                             return;
                         }
                     }
                 }
             }
-            catch { state.NativeAdapter = null; }
+            catch (Exception ex)
+            {
+                // 预期：网卡枚举/属性读取偶发失败，重置匹配状态等下一轮重试
+                Log.Debug(ex, "Native adapter matching failed, state reset");
+                state.NativeAdapter = null;
+            }
         }
         private static readonly char[] _tokenSeparators = { ' ', '(', ')', '[', ']', '-', '_', '#' };
         // 优化的SplitTokens方法，使用预分配的列表减少内存分配
@@ -516,7 +540,12 @@ namespace PChabit.HardwareMonitor.Hardware
                 state.LastNativeUpload = stats.BytesSent;
                 state.LastNativeDownload = stats.BytesReceived;
             }
-            catch { state.NativeAdapter = null; }
+            catch (Exception ex)
+            {
+                // 预期：适配器统计在锁定瞬间失效，放弃本轮锁定
+                Log.Debug(ex, "Initial adapter stats read failed, lock abandoned");
+                state.NativeAdapter = null;
+            }
         }
 
         private bool IsVirtualNetwork(string name)

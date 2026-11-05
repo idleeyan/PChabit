@@ -101,7 +101,12 @@ public sealed class QuickNoteWindow
         var hwnd = WindowNative.GetWindowHandle(_window);
         var id = Win32Interop.GetWindowIdFromWindow(hwnd);
         _appWindow = AppWindow.GetFromWindowId(id);
-        try { _appWindow.Title = "新建便签"; } catch { }
+        try { _appWindow.Title = "新建便签"; }
+        catch (Exception ex)
+        {
+            // 预期：个别系统环境下 AppWindow 标题设置失败，仅影响标题栏文字
+            Log.Debug(ex, "[QuickNote] 窗口标题设置失败");
+        }
 
         var presenter = OverlappedPresenter.Create();
         presenter.IsAlwaysOnTop = true;
@@ -203,14 +208,24 @@ public sealed class QuickNoteWindow
             if (foreThread != 0 && foreThread != currentThread)
                 AttachThreadInput(currentThread, foreThread, false);
         }
-        catch { /* 焦点争取失败时窗口仍置顶可见，可点击后输入 */ }
+        catch (Exception ex)
+        {
+            /* 预期：焦点争取失败（AttachThreadInput/SetForegroundWindow 被系统拒绝），
+               窗口仍置顶可见，用户点击后即可输入 */
+            Log.Debug(ex, "[QuickNote] 抢占前台焦点失败");
+        }
     }
 
     public void Hide()
     {
         _focusTimer.Stop();
         _focusRetryTimer.Stop();
-        try { PersistDraft(); } catch { }
+        try { PersistDraft(); }
+        catch (Exception ex)
+        {
+            // PersistDraft 内部已有降级日志；此处防线兜住意外异常，草稿丢失属可接受降级
+            Log.Debug(ex, "[QuickNote] 失焦保存草稿时出现意外异常");
+        }
         _appWindow.Hide();
     }
 
@@ -257,7 +272,12 @@ public sealed class QuickNoteWindow
         try
         {
             await _notes.CreateAsync(content, _color);
-            try { if (File.Exists(_draftPath)) File.Delete(_draftPath); } catch { }
+            try { if (File.Exists(_draftPath)) File.Delete(_draftPath); }
+            catch (Exception ex)
+            {
+                // 预期：草稿文件被占用导致删除失败，残留草稿会在下次保存时覆盖
+                Log.Debug(ex, "[QuickNote] 已保存但草稿文件删除失败");
+            }
             _view.SetStatus("✓ 已保存");
             _statusTimer.Start();
             NoteSaved?.Invoke();
@@ -319,7 +339,11 @@ public sealed class QuickNoteWindow
                 return;
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 草稿损坏（JSON 损坏/编码问题）会导致"恢复草稿"静默失效——用户输入疑似丢失，需可观测
+            Log.Warning(ex, "[QuickNote] 草稿加载失败，已回退为空白便签");
+        }
         _view.Content = "";
         _color = "yellow";
         _view.ApplyColor("yellow");

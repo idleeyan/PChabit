@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Serilog;
 using static PChabit.HardwareMonitor.Hardware.ProcessNetworkNative;
 
 namespace PChabit.HardwareMonitor.Hardware;
@@ -182,10 +183,12 @@ public sealed class ProcessResourceMonitor : IDisposable
                 if (string.IsNullOrEmpty(name) || IgnoredNames.Contains(name)) continue;
 
                 double cpuTimeMs = 0;
-                try { cpuTimeMs = p.TotalProcessorTime.TotalMilliseconds; } catch { /* 退出中 */ }
+                try { cpuTimeMs = p.TotalProcessorTime.TotalMilliseconds; }
+                catch (Exception ex) { /* 预期：进程正在退出，本拍 CPU 记 0 */ Log.Debug(ex, "TotalProcessorTime unavailable for PID {Pid}", pid); }
 
                 double memMb = 0;
-                try { memMb = p.WorkingSet64 / (1024.0 * 1024.0); } catch { }
+                try { memMb = p.WorkingSet64 / (1024.0 * 1024.0); }
+                catch (Exception ex) { /* 预期：进程正在退出，本拍内存记 0 */ Log.Debug(ex, "WorkingSet64 unavailable for PID {Pid}", pid); }
 
                 double diskBps = SampleDiskRate(pid, dt);
 
@@ -198,13 +201,15 @@ public sealed class ProcessResourceMonitor : IDisposable
                     DiskBytesPerSec = diskBps
                 };
             }
-            catch
+            catch (Exception ex)
             {
-                // 单进程失败跳过
+                // 预期：单进程信息读取失败（已退出/无权限），跳过该进程
+                Log.Debug(ex, "Process sample skipped");
             }
             finally
             {
-                try { p.Dispose(); } catch { }
+                try { p.Dispose(); }
+                catch (Exception ex) { /* 预期：句柄可能已失效 */ Log.Debug(ex, "Process handle dispose failed"); }
             }
         }
 
@@ -389,18 +394,24 @@ public sealed class ProcessResourceMonitor : IDisposable
                     {
                         _gpuMemCounters[inst] = new PerformanceCounter("GPU Process Memory", "Dedicated Usage", inst, readOnly: true);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        // 预期：GPU 实例在创建计数器瞬间消失（进程退出），跳过
+                        Log.Debug(ex, "GPU memory counter create failed for {Instance}", inst);
+                    }
                 }
             }
 
             // 预热一拍（NextValue 需两次才有速率/有效值）
             foreach (var pc in _gpuUtilCounters.Values)
             {
-                try { pc.NextValue(); } catch { }
+                try { pc.NextValue(); }
+                catch (Exception ex) { /* 预期：计数器实例失效 */ Log.Debug(ex, "GPU util counter warmup failed"); }
             }
             foreach (var pc in _gpuMemCounters.Values)
             {
-                try { pc.NextValue(); } catch { }
+                try { pc.NextValue(); }
+                catch (Exception ex) { /* 预期：计数器实例失效 */ Log.Debug(ex, "GPU mem counter warmup failed"); }
             }
         }
         catch
@@ -419,11 +430,13 @@ public sealed class ProcessResourceMonitor : IDisposable
     {
         foreach (var pc in _gpuUtilCounters.Values)
         {
-            try { pc.Dispose(); } catch { }
+            try { pc.Dispose(); }
+            catch (Exception ex) { /* 预期：计数器可能已被系统释放 */ Log.Debug(ex, "GPU util counter dispose failed"); }
         }
         foreach (var pc in _gpuMemCounters.Values)
         {
-            try { pc.Dispose(); } catch { }
+            try { pc.Dispose(); }
+            catch (Exception ex) { /* 预期：计数器可能已被系统释放 */ Log.Debug(ex, "GPU mem counter dispose failed"); }
         }
         _gpuUtilCounters.Clear();
         _gpuMemCounters.Clear();

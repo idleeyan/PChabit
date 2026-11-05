@@ -6,6 +6,7 @@ using System.Reflection; // ★★★ 新增：用于反射关闭历史记录
 using LibreHardwareMonitor.Hardware;
 using System.Linq;
 using System.Threading;
+using Serilog;
 
 namespace PChabit.HardwareMonitor.Hardware
 {
@@ -233,7 +234,12 @@ namespace PChabit.HardwareMonitor.Hardware
                 
                 OnValuesUpdated?.Invoke();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：单个传感器/硬件读取失败（驱动抖动、设备拔出）。主循环须继续，
+                // 但不能静默（3.38 教训）：持续刷 Warning 才能暴露"监控数据整体停更"
+                Log.Warning(ex, "HardwareMonitor.UpdateAll iteration failed");
+            }
 
             // [Fix #290] 硬件故障自动恢复
             // 如果检测到 GPU 丢失或驱动崩溃，触发安全重载以刷新硬件列表
@@ -357,7 +363,11 @@ namespace PChabit.HardwareMonitor.Hardware
                 if (IsMotherboardSensorHardware(hw))
                 {
                     try { UpdateWithSubHardware(hw); }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        // 预期：个别主板/SuperIO 预热失败（驱动不支持），仅影响该传感器首帧
+                        Log.Debug(ex, "WarmUp motherboard sensor failed: {Hardware}", hw.Name);
+                    }
                 }
             }
         }
@@ -371,7 +381,11 @@ namespace PChabit.HardwareMonitor.Hardware
                 if (hw.HardwareType == HardwareType.Battery)
                 {
                     try { hw.Update(); }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        // 预期：无电池设备或电池驱动异常，仅影响电池传感器
+                        Log.Debug(ex, "WarmUp battery sensor failed: {Hardware}", hw.Name);
+                    }
                 }
             }
         }
@@ -483,7 +497,12 @@ namespace PChabit.HardwareMonitor.Hardware
                 // 4. 优化 T1：重置后再次修剪内存
                 GC.Collect();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：LHM 重载在硬件切换瞬间可能失败。失败意味着硬件列表可能不完整，
+                // 不能静默——记 Warning 便于排查"重载后监控数据缺失"
+                Log.Warning(ex, "ReloadComputerSafe failed");
+            }
         }
 
         // =========================================================
@@ -580,7 +599,11 @@ namespace PChabit.HardwareMonitor.Hardware
                     var prop = sensor.GetType().GetProperty("ValuesTimeWindow");
                     if (prop != null && prop.CanWrite) prop.SetValue(sensor, TimeSpan.Zero);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    // 预期：LHM 版本差异导致属性不存在或不可写，仅影响内存优化，不影响数据
+                    Log.Debug(ex, "DisableSensorHistory: ValuesTimeWindow not writable on {Sensor}", sensor.Name);
+                }
             }
             public void VisitParameter(IParameter parameter) { }
         }

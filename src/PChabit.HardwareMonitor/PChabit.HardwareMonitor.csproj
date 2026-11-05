@@ -23,6 +23,8 @@
   <ItemGroup>
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.6" />
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="9.0.0" />
+    <!-- 工程改造计划阶段 B：采集模块补日志能力（Serilog 静态 API，随宿主进程全局 Logger 输出） -->
+    <PackageReference Include="Serilog" Version="4.*" />
   </ItemGroup>
 
   <ItemGroup>

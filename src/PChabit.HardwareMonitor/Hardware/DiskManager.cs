@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LibreHardwareMonitor.Hardware;
+using Serilog;
 namespace PChabit.HardwareMonitor.Hardware
 {
     public class DiskManager
@@ -112,22 +113,32 @@ namespace PChabit.HardwareMonitor.Hardware
                 // ★★★ 优先查缓存 ★★★
                 if (!_driveInfoCache.TryGetValue(root, out di))
                 {
-                    try 
-                    { 
-                        di = new DriveInfo(root); 
+                    try
+                    {
+                        di = new DriveInfo(root);
                         _driveInfoCache[root] = di; // 存入缓存
-                    } 
-                    catch { return null; }
+                    }
+                    catch (Exception ex)
+                    {
+                        // 预期：盘符不存在（U盘/映射盘拔出），返回 null 表示无数据
+                        Log.Debug(ex, "DriveInfo create failed for {Root}", root);
+                        return null;
+                    }
                 }
 
-                if (type == "Used") 
+                if (type == "Used")
                 {
-                    try 
-                    { 
+                    try
+                    {
                         // IsReady 不会产生 Volume 字符串垃圾
                         if (di.IsReady) return (100f - (float)((double)di.TotalFreeSpace / di.TotalSize * 100.0));
-                    } 
-                    catch { return 0f; }
+                    }
+                    catch (Exception ex)
+                    {
+                        // 预期：磁盘信息读取失败（磁盘休眠/拔出），返回 0 由上层显示兜底
+                        Log.Debug(ex, "Disk usage read failed for {Root}", root);
+                        return 0f;
+                    }
                 }
             }
             // ★★★ [新增] B. 尝试启动时缓存 (HardwareMonitorOptions 记忆) ★★★
@@ -144,7 +155,12 @@ namespace PChabit.HardwareMonitor.Hardware
 
             // C. 全盘扫描
             string sysPrefix = "";
-            try { sysPrefix = Path.GetPathRoot(Environment.SystemDirectory)?.Substring(0, 2) ?? ""; } catch { }
+            try { sysPrefix = Path.GetPathRoot(Environment.SystemDirectory)?.Substring(0, 2) ?? ""; }
+            catch (Exception ex)
+            {
+                // 预期：SystemDirectory 异常极罕见；失败仅影响"系统盘优先"评分，不影响数据
+                Log.Debug(ex, "System drive prefix probe failed");
+            }
 
             IHardware? bestHw = null;
             double bestScore = double.MinValue;

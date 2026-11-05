@@ -105,7 +105,11 @@ public partial class DataCollectionService : IDisposable
             _cts.Cancel();
             _dataChannel.Writer.Complete();
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：重复关闭或通道已完成时抛出，不影响关闭流程
+            Log.Debug(ex, "取消采集任务/完成通道时出现异常（可重复关闭）");
+        }
 
         try
         {
@@ -114,7 +118,11 @@ public partial class DataCollectionService : IDisposable
                 Log.Warning("数据处理任务等待超时，强制继续关闭");
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：任务已被取消（TaskCanceledException）或内部异常包装，任务内部已有日志
+            Log.Debug(ex, "等待数据处理任务结束时出现异常，强制继续关闭");
+        }
 
         try
         {
@@ -123,7 +131,11 @@ public partial class DataCollectionService : IDisposable
                 Log.Warning("后台定时器任务等待超时，强制继续关闭");
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：任务已被取消，同上
+            Log.Debug(ex, "等待后台定时器任务结束时出现异常，强制继续关闭");
+        }
 
         try
         {

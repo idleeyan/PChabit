@@ -142,6 +142,20 @@ while ((Get-Date) -lt $deadline) {
 # $logFile and $baselineCount come from step 3.5. Only lines appended after the
 # smoke run launched are evaluated, so historical ERR/FTL in today's rolled file
 # (e.g. a crash already fixed in an earlier version) cannot fail this run.
+# If no log existed before launch (first run of the day), the app creates
+# app-<today>.log itself — retry the lookup now; every line of a newly created
+# file belongs to this run, so baseline 0 is correct.
+if (-not ($logFile -and (Test-Path $logFile))) {
+    foreach ($loc in $logDirCandidates) {
+        if (Test-Path $loc) {
+            $f = Get-ChildItem -Path $loc -File -Recurse |
+                Where-Object { $_.Name -match $today -or $_.LastWriteTime -ge (Get-Date).AddMinutes(-10) } |
+                Sort-Object @{ Expression = { if ($_.Name -like "app-*") { 0 } else { 1 } } }, @{ Expression = "LastWriteTime"; Descending = $true } |
+                Select-Object -First 1
+            if ($f) { $logFile = $f.FullName; $baselineCount = 0; break }
+        }
+    }
+}
 $allowlist = @("OpenRouter", "404", "HttpClient timeout", "Task either canceled or faulted")
 $errFtlLines = @()
 if ($logFile -and (Test-Path $logFile)) {
@@ -163,7 +177,7 @@ if ($logFile -and (Test-Path $logFile)) {
     }
 }
 else {
-    Write-Host "WARN: no log file matched today's date under deployment dir" -ForegroundColor DarkYellow
+    Write-Host "WARN: no log file matched (deployment dir or %LOCALAPPDATA%\PChabit\logs)" -ForegroundColor DarkYellow
 }
 
 # ---------- 6. alive + main window ----------

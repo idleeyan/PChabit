@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using PChabit.Infrastructure.Helpers;
+using Serilog;
 
 namespace PChabit.Infrastructure.Services;
 
@@ -78,15 +79,27 @@ public class AppInfoResolver
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 预期：路径/版本信息读取失败（权限受限），降级为仅用进程名
+                Log.Debug(ex, "Executable path/version info read failed for PID {Pid}", processId);
+            }
         }
-        catch (ArgumentException)
+        catch (ArgumentException ex)
         {
+            // 预期：前台切换瞬间目标进程已退出（竞态，高频），缓存淘汰后下轮自动修正
+            Log.Debug(ex, "Process exited during resolve (ArgumentException), PID {Pid}", processId);
         }
-        catch (InvalidOperationException)
+        catch (InvalidOperationException ex)
         {
+            // 预期：同上，进程已退出
+            Log.Debug(ex, "Process exited during resolve (InvalidOperationException), PID {Pid}", processId);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 兜底：任何解析失败都降级为 "Unknown"，不阻塞采集主流程
+            Log.Debug(ex, "App info resolve failed, PID {Pid}", processId);
+        }
 
         var result = new AppInfo
         {

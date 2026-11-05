@@ -2,6 +2,38 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.60.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 B——异常收口第一批
+
+承接 `docs/工程改造计划.md`（阶段 A 安全网已于 4c6529d 落地）。本批为
+**纯可观测性补丁**：所有 catch 块的控制流零变化（原来吞掉的现在记日志后
+同样降级），仅消灭「无日志、无说明的静默吞错」。
+
+- **新增「异常处理规约」**（`AI_MAINTENANCE.md`）：四类边界
+  （UI 边界 / 可选外部 IO / 数据完整性 / 启动编排）+ 五条硬性规则
+  （catch 必须有日志和注释、`catch(Exception)` 限类别 1/2/4、禁空 catch、
+  禁用 Debug 记录「功能已停」、默认值不得冒充真实值）。
+- **空 catch 清理 36 处**（基线 52 → 16，达成 ≤25 目标）：
+  `AppIconService` 7、`ProcessResourceMonitor` 9、`HardwareMonitor` 5、
+  `QuickNoteWindow` 5、`NetworkManager` 4、`AppInfoResolver` 4、
+  `DataCollectionService` 3、`PerformanceCounterManager` 2、
+  `DataManagementViewModel` 2、`DiskManager` 1。每处按规约标注
+  「预期会发生什么异常 + 降级路径」，采集热路径用 Debug、
+  整体失效风险用 Warning（如 `HardwareMonitor.UpdateAll` 主循环）。
+- **`PChabit.HardwareMonitor` 补 Serilog 引用**：该采集模块此前无任何
+  日志依赖（LiteMonitor 移植残留），异常完全不可观测。
+- **`scripts/smoke_test.ps1` 日志盲区修复**：当日首启时今天的日志文件
+  尚不存在，原实现基线阶段找不到即跳过整个 ERR/FTL 扫描——安全网
+  形同虚设。现启动后重找一次（新文件基线为 0，语义不变）。
+- 版本号说明：原计划阶段 B 为 3.58.0，因 3.57–3.59 已被「分析页精简」
+  功能发布占用，按版本只增不减原则顺延为 **3.60.0**。
+
+验证：Release 构建 0 错误（24 警告 = 既有基线）；单测 156/156；
+publish 自包含部署 `D:\Tool\PChabit` 3.60.0.0；冒烟 PASS
+（版本匹配 / 进程存活 30s / 主窗口正常 / **日志实测 0 ERR/FTL** /
+正常关闭触发 Stop() 改动路径无异常）。
+
 ## [3.59.0] - 2026-11-06
 
 ### 修复:点击「应用使用」崩溃(3.58.0 回归)

@@ -61,7 +61,11 @@ public partial class DataManagementViewModel : ViewModelBase
                 OnPropertyChanged(nameof(HasGlobalLogs));
             });
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 预期：页面已销毁/线程不可达，仅影响本页日志列表刷新，属可自愈降级
+            Log.Debug(ex, "全局操作日志入列失败");
+        }
     }
 }
 public class OperationLogItem
@@ -94,7 +98,11 @@ public partial class DataManagementViewModel
                 GlobalLogs.Insert(0, i.Display);
             PChabit.App.Services.GlobalOpLog.Logged += OnGlobalOpLogged;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // 启动期订阅失败：数据管理页将看不到操作日志（功能受损但应用可继续），需可观测
+            Log.Warning(ex, "全局操作日志订阅失败");
+        }
 
         _backupPath = string.IsNullOrEmpty(settingsService.BackupPath)
             ? Path.Combine(
