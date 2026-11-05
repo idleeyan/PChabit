@@ -8,6 +8,10 @@ Verifies a deployed build in-place:
   2. PChabit.runtimeconfig.json carries includedFrameworks
   3. PChabit.exe file version matches the csproj <Version>
   4. launches the process and waits for it to settle
+   NOTE: the app is single-instance (trap 22, Global\ Mutex): if an instance is
+   already running, the smoke-launched process wakes the existing one and exits
+   with code 0, which this script reports as FAIL ("process exited during smoke").
+   Kill any running instance before running the smoke test.
   5. scans today's Serilog log, requiring zero ERR / FTL (allowlisted keywords exempted)
   6. process alive and main window present
   7. closes the process, returns exit code (0 = pass, non-zero = fail)
