@@ -326,7 +326,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
                 .ToListAsync();
             if (yApp.Count == 0) return;
 
-            var yMinutes = yApp.Sum(s => SessionActiveMinutes(s, cutoff));
+            var yMinutes = yApp.Sum(s => DashboardMetricsCalculator.SessionActiveMinutes(s, cutoff));
 
             var yKeys = await dbContext.KeyboardSessions
                 .AsNoTracking()
@@ -341,10 +341,10 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
                 .CountAsync(s => s.StartTime >= yesterday && s.StartTime < cutoff && !s.IsLegacy);
 
             var tMinutes = stats.TopAppsRaw.Sum(x => x.Duration);
-            stats.ActiveComparePct = ComparePct(yMinutes, tMinutes);
-            stats.KeysComparePct = ComparePct(yKeys, ParseNumber(stats.TodayKeyPresses));
-            stats.ClicksComparePct = ComparePct(yClicks, ParseNumber(stats.TodayMouseClicks));
-            stats.WebComparePct = ComparePct(yWeb, ParseNumber(stats.TodayWebPages));
+            stats.ActiveComparePct = DashboardMetricsCalculator.ComparePct(yMinutes, tMinutes);
+            stats.KeysComparePct = DashboardMetricsCalculator.ComparePct(yKeys, DashboardMetricsCalculator.ParseNumber(stats.TodayKeyPresses));
+            stats.ClicksComparePct = DashboardMetricsCalculator.ComparePct(yClicks, DashboardMetricsCalculator.ParseNumber(stats.TodayMouseClicks));
+            stats.WebComparePct = DashboardMetricsCalculator.ComparePct(yWeb, DashboardMetricsCalculator.ParseNumber(stats.TodayWebPages));
         }
         catch (Exception ex)
         {
@@ -353,19 +353,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         }
     }
 
-    /// <summary>环比百分比。基数为 0 时返回 null（不显示箭头，避免 +∞% 的误导）。</summary>
-    private static double? ComparePct(double yesterday, double today)
-    {
-        if (yesterday <= 0) return null;
-        return Math.Round((today - yesterday) / yesterday * 100, 1);
-    }
 
-    /// <summary>"1,234" → 1234。统计文本带千分位与中文单位，此处只取纯数字部分。</summary>
-    private static double ParseNumber(string formatted)
-    {
-        var digits = new string(formatted.Where(char.IsDigit).ToArray());
-        return double.TryParse(digits, out var v) ? v : 0;
-    }
 
     /// <summary>效率评分失败不应让整页空白（缓存查询统一 try-catch，陷阱 #12 同理）。</summary>
     private async Task<double> SafeScoreAsync(DateTime date)
@@ -449,7 +437,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             mouseSessions.Count, mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount),
             webSessions.Count, summary?.MetricsVersion);
 
-        double SessionMinutes(AppSession s) => SessionActiveMinutes(s, isToday ? now : today);
+        double SessionMinutes(AppSession s) => DashboardMetricsCalculator.SessionActiveMinutes(s, isToday ? now : today);
 
         var totalMinutes = appSessions.Sum(SessionMinutes);
 
@@ -478,7 +466,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             if (string.IsNullOrEmpty(firstActive))
                 firstActive = appSessions.Min(s => s.StartTime).ToString("HH:mm");
             if (string.IsNullOrEmpty(lastActive))
-                lastActive = appSessions.Max(s => SessionEnd(s, isToday ? now : today)).ToString("HH:mm");
+                lastActive = appSessions.Max(s => DashboardMetricsCalculator.SessionEnd(s, isToday ? now : today)).ToString("HH:mm");
         }
 
         var totalKeyPresses = keyboardSessions.Sum(s => s.TotalKeyPresses);
@@ -552,7 +540,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
             var hourMinutes = appSessions.Sum(s =>
             {
                 var start = s.StartTime < hourStart ? hourStart : s.StartTime;
-                var end = SessionEnd(s, isToday ? now : today);
+                var end = DashboardMetricsCalculator.SessionEnd(s, isToday ? now : today);
                 if (end > clipEnd) end = clipEnd;
                 return Math.Max(0, (end - start).TotalMinutes);
             });
@@ -640,22 +628,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         return AppStatsEngine.BuildCategoryMap(categories);
     }
 
-    /// <summary>会话有效时长（分钟）：优先 ActiveDuration；未结束会话仅今日按 clock 截断计入。</summary>
-    private static double SessionActiveMinutes(AppSession s, DateTime clock)
-    {
-        if (s.ActiveDuration > TimeSpan.Zero)
-            return Math.Max(0, s.ActiveDuration.TotalMinutes);
-        return Math.Max(0, (SessionEnd(s, clock) - s.StartTime).TotalMinutes);
-    }
 
-    private static DateTime SessionEnd(AppSession s, DateTime clock)
-    {
-        if (s.EndTime.HasValue) return s.EndTime.Value;
-        // 未结束：仅今日累计到当前时刻；历史日视为未闭合，不计
-        if (clock > s.StartTime && s.StartTime.Date == DateTime.Today)
-            return clock;
-        return s.StartTime;
-    }
 
     protected override async Task ApplyStatsOnUIAsync(DashboardStats stats)
     {
@@ -706,7 +679,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
                 {
                     Domain = site.Domain,
                     Visits = site.Visits,
-                    Duration = FormatDuration(TimeSpan.FromTicks(site.TotalDurationTicks)),
+                    Duration = DashboardMetricsCalculator.FormatDuration(TimeSpan.FromTicks(site.TotalDurationTicks)),
                     FaviconUrl = $"https://www.google.com/s2/favicons?domain={site.Domain}&sz=32"
                 });
             }
@@ -1011,19 +984,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardViewModel.Das
         }
     }
     
-    private static string FormatDuration(TimeSpan? duration)
-    {
-        if (!duration.HasValue) return "0m";
-
-        var totalMinutes = (int)duration.Value.TotalMinutes;
-        if (totalMinutes < 60)
-        {
-            return $"{totalMinutes}m";
-        }
-        var hours = totalMinutes / 60;
-        var minutes = totalMinutes % 60;
-        return $"{hours}h {minutes}m";
-    }
 
     private static SolidColorBrush CreateBrush(string hexColor)
     {

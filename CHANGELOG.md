@@ -2,6 +2,35 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.69.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D4（步骤 1）——提取仪表盘纯计算 + 单测
+
+按计划分步推进（步骤 1 = 先搬纯计算并补单测，风险最低）：
+`DashboardViewModel` 1163 → 1123 行；新增
+`PChabit.Infrastructure/Analysis/DashboardMetricsCalculator.cs`（静态纯函数，零行为变化）。
+
+- 提取 5 个纯计算（逐字搬运，仅可见性 `private`→`public`）：
+  `ComparePct`（环比，基数为 0 返回 null）、`ParseNumber`（千分位文本取数字）、
+  `SessionActiveMinutes`（会话有效时长）、`SessionEnd`（会话结束时刻）、
+  `FormatDuration`（时长格式化）。
+- 6 处调用点改为 `DashboardMetricsCalculator.X(...)`（`FillCompareAsync` /
+  `BuildStatsFromRawDataAsync` / 网站时长映射）。
+
+**验证**：
+- **新增 18 个单测**（`DashboardMetricsCalculatorTests`，计划要求 ≥6），覆盖
+  环比基数为 0/负数/正负增减与四舍五入、文本解析（千分位 / 中文单位 / 空）、
+  会话时长三情形（有 `ActiveDuration` / 已结束回退差值 / 历史未闭合计 0）、
+  会话结束三情形、时长格式化边界（null / <1h / ≥1h）。
+- 测试 **174/174 全过**（156 → 174）；构建 0 错误（13 警告）。
+- 运行期（`scripts/verify_369.py`）：仪表盘卡片正常加载、关键指标文本存在、
+  新增 ERR/FTL=0、WRN=0；发布 3.69.0.0 部署。
+
+**遗留（D4 步骤 2–3）**：`BuildStatsFromRawDataAsync`（229 行，含查库）拆出
+`DashboardQueryService`（返回 `DashboardSnapshot` DTO），VM 只保留「快照 →
+绑定属性」映射；保持「今日数据实时合并、不写库」约束（陷阱 27 的 `Interlocked`
+刷新保护不动）。
+
 ## [3.68.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D3 完成——SettingsPage 全部分区拆为 UserControl
