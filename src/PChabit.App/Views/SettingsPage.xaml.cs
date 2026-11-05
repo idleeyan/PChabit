@@ -35,6 +35,8 @@ public sealed partial class SettingsPage : Page
             AboutSectionControl.Refresh();
             AiSectionControl.Initialize(ViewModel);
             StickyNotesControl.Initialize(ViewModel);
+            GeneralControl.Initialize(ViewModel);
+            MonitorControl.Initialize(ViewModel);
 
             // 选中项必须等 InitializeComponent 之后再设：解析期触发 SelectionChanged
             // 时右侧分区控件还不存在，会空引用崩溃
@@ -66,9 +68,9 @@ public sealed partial class SettingsPage : Page
             element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        Show(GeneralSection, tag == "general");
+        Show(GeneralControl, tag == "general");
         Show(AppearanceSection, tag == "general");
-        Show(MonitorSection, tag == "monitor");
+        Show(MonitorControl, tag == "monitor");
         Show(TaskbarSection, tag == "interface");
         Show(DesktopWidgetSection, tag == "interface");
         Show(StickyNotesControl, tag == "notes");
@@ -81,17 +83,6 @@ public sealed partial class SettingsPage : Page
 
     private void AddEventHandlers()
     {
-        StartWithWindowsSwitch.Toggled += (s, e) => OnSettingChanged("StartWithWindows", StartWithWindowsSwitch.IsOn);
-        MinimizeToTraySwitch.Toggled += (s, e) => OnSettingChanged("MinimizeToTray", MinimizeToTraySwitch.IsOn);
-        ShowNotificationsSwitch.Toggled += (s, e) => OnSettingChanged("ShowNotifications", ShowNotificationsSwitch.IsOn);
-        AutoStartMonitoringSwitch.Toggled += (s, e) => OnSettingChanged("AutoStartMonitoring", AutoStartMonitoringSwitch.IsOn);
-
-        MonitoringIntervalBox.ValueChanged += (s, e) => OnSettingChanged("MonitoringInterval", (int)e.NewValue);
-        IdleThresholdBox.ValueChanged += (s, e) => OnSettingChanged("IdleThreshold", (int)e.NewValue);
-
-        TrackKeyboardSwitch.Toggled += (s, e) => OnSettingChanged("TrackKeyboard", TrackKeyboardSwitch.IsOn);
-        TrackMouseSwitch.Toggled += (s, e) => OnSettingChanged("TrackMouse", TrackMouseSwitch.IsOn);
-        TrackWebBrowsingSwitch.Toggled += (s, e) => OnSettingChanged("TrackWebBrowsing", TrackWebBrowsingSwitch.IsOn);
 
         ThemeComboBox.SelectionChanged += (s, e) =>
         {
@@ -144,33 +135,6 @@ public sealed partial class SettingsPage : Page
 
         switch (propertyName)
         {
-            case "StartWithWindows":
-                ViewModel.StartWithWindows = (bool)value;
-                break;
-            case "MinimizeToTray":
-                ViewModel.MinimizeToTray = (bool)value;
-                break;
-            case "ShowNotifications":
-                ViewModel.ShowNotifications = (bool)value;
-                break;
-            case "AutoStartMonitoring":
-                ViewModel.AutoStartMonitoring = (bool)value;
-                break;
-            case "MonitoringInterval":
-                ViewModel.MonitoringInterval = (int)value;
-                break;
-            case "IdleThreshold":
-                ViewModel.IdleThreshold = (int)value;
-                break;
-            case "TrackKeyboard":
-                ViewModel.TrackKeyboard = (bool)value;
-                break;
-            case "TrackMouse":
-                ViewModel.TrackMouse = (bool)value;
-                break;
-            case "TrackWebBrowsing":
-                ViewModel.TrackWebBrowsing = (bool)value;
-                break;
             case "SelectedThemeKey":
                 ViewModel.SelectedThemeKey = (string)value;
                 break;
@@ -261,6 +225,8 @@ public sealed partial class SettingsPage : Page
                 LoadSettingsToUI();
                 AiSectionControl.Reload();
                 StickyNotesControl.Reload();
+                GeneralControl.Reload();
+                MonitorControl.Reload();
             }
             finally
             {
@@ -277,17 +243,6 @@ public sealed partial class SettingsPage : Page
     {
         Log.Information("SettingsPage: 加载设置到 UI");
 
-        StartWithWindowsSwitch.IsOn = ViewModel.StartWithWindows;
-        MinimizeToTraySwitch.IsOn = ViewModel.MinimizeToTray;
-        ShowNotificationsSwitch.IsOn = ViewModel.ShowNotifications;
-        AutoStartMonitoringSwitch.IsOn = ViewModel.AutoStartMonitoring;
-
-        MonitoringIntervalBox.Value = ViewModel.MonitoringInterval;
-        IdleThresholdBox.Value = ViewModel.IdleThreshold;
-
-        TrackKeyboardSwitch.IsOn = ViewModel.TrackKeyboard;
-        TrackMouseSwitch.IsOn = ViewModel.TrackMouse;
-        TrackWebBrowsingSwitch.IsOn = ViewModel.TrackWebBrowsing;
 
         ThemeComboBox.Items.Clear();
         TaskbarEnabledSwitch.IsOn = ViewModel.TaskbarEnabled;
@@ -338,6 +293,7 @@ public sealed partial class SettingsPage : Page
     }
 
 }
+
 
 
 

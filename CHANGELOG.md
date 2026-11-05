@@ -2,6 +2,31 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.67.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 D3（步骤 3a）——「常规」「监控」分区拆为 UserControl
+
+`SettingsPage.xaml` 509 → 388 行、`SettingsPage.xaml.cs` 344 → 296 行；新增
+`Views/Settings/GeneralSettingsSection.xaml(.cs)`（64 / 80 行）与
+`MonitorSettingsSection.xaml(.cs)`（79 / 87 行）——**至此页面从 1921 行降至 684 行**。
+
+- 两个分区按既有自治模式拆分（注入同一 `SettingsViewModel`；
+  `RaiseChanged` / `LoadFromViewModel`）。
+- 常规：4 个开关（开机自启 / 最小化到托盘 / 显示通知 / 自动开始监控）。
+- 监控：2 个 NumberBox（监控间隔 / 空闲阈值）+ 3 个开关（键盘 / 鼠标 / 网页活动）。
+
+**验证**（新增 `scripts/verify_367.py`）：
+- **常规分区**：切换「显示通知」→ 日志 `设置变更 ShowNotifications = true` →
+  `settings.json` 由 `false` 变 `true`。
+- **监控分区**：`MonitoringIntervalBox` 由 1 改为 3 → 日志 `设置变更 MonitoringInterval = 3`
+  → `settings.json` 同步为 `3`。
+  （UIA 树中该分区 ToggleSwitch 未暴露 AutomationId，改以 NumberBox 的 RangeValuePattern
+  验证读写，同样覆盖 Section 的 `RaiseChanged`/`LoadFromViewModel` 链路。）
+- 新增 ERR/FTL=0；构建 0 错误（24 警告=基线）；156/156 测试；发布 3.67.0.0 部署、冒烟 PASS。
+
+**遗留（D3 步骤 3b）**：外观 / 任务栏 / 桌面插件 / 数据 四个分区（对应「常规」分组的外观卡、
+「界面」分组的两卡、「数据」分组）。
+
 ## [3.66.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 D3（步骤 2b）——SettingsPage「便签」分区拆为 UserControl

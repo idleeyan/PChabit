@@ -53,133 +53,12 @@
             <!-- ======================================== -->
             <!-- 基本设置                                    -->
             <!-- ======================================== -->
-            <Border x:Name="GeneralSection" Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="20">
-                    <!-- 分组标题 -->
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Border
-                                Width="32"
-                                Height="32"
-                                Background="{StaticResource PrimarySoftBrush}"
-                                CornerRadius="6">
-                                <FontIcon
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    Foreground="{StaticResource PrimaryBrush}"
-                                    Glyph="&#xE713;" />
-                            </Border>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="基本设置" />
-                        </StackPanel>
-                        <TextBlock
-                            Margin="44,0,0,0"
-                            FontSize="12"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="这些设置控制应用程序的启动和显示行为"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <Border
-                        Margin="44,0,0,0"
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        CornerRadius="8"
-                        Padding="16,4">
-                        <StackPanel Spacing="0">
-                            <ToggleSwitch
-                                x:Name="StartWithWindowsSwitch"
-                                Header="开机自启动"
-                                IsOn="True" />
-                            <ToggleSwitch
-                                x:Name="MinimizeToTraySwitch"
-                                Header="最小化到系统托盘" />
-                            <ToggleSwitch
-                                x:Name="ShowNotificationsSwitch"
-                                Header="显示通知" />
-                            <ToggleSwitch
-                                x:Name="AutoStartMonitoringSwitch"
-                                Header="自动开始监控" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Border>
+            <settings:GeneralSettingsSection x:Name="GeneralControl" />
 
             <!-- ======================================== -->
             <!-- 监控设置                                    -->
             <!-- ======================================== -->
-            <Border x:Name="MonitorSection" Style="{StaticResource CardStyle}">
-                <StackPanel Spacing="20">
-                    <StackPanel Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <Border
-                                Width="32"
-                                Height="32"
-                                Background="{StaticResource SuccessSoftBrush}"
-                                CornerRadius="6">
-                                <FontIcon
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    FontSize="14"
-                                    Foreground="{StaticResource SuccessBrush}"
-                                    Glyph="&#xE8D1;" />
-                            </Border>
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="监控设置" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <Grid Margin="44,0,0,0" ColumnSpacing="16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <StackPanel Grid.Column="0" Spacing="8">
-                            <TextBlock Text="监控间隔 (分钟)" />
-                            <NumberBox
-                                x:Name="MonitoringIntervalBox"
-                                Maximum="60"
-                                Minimum="1" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="1" Spacing="8">
-                            <TextBlock Text="空闲阈值 (分钟)" />
-                            <NumberBox
-                                x:Name="IdleThresholdBox"
-                                Maximum="60"
-                                Minimum="1" />
-                        </StackPanel>
-                    </Grid>
-
-                    <StackPanel Margin="44,0,0,0" Spacing="4">
-                        <TextBlock FontWeight="Medium" Text="数据采集" />
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            CornerRadius="8"
-                            Margin="0,8,0,0"
-                            Padding="16,4">
-                            <StackPanel>
-                                <ToggleSwitch
-                                    x:Name="TrackKeyboardSwitch"
-                                    Header="记录键盘输入" />
-                                <ToggleSwitch
-                                    x:Name="TrackMouseSwitch"
-                                    Header="记录鼠标活动" />
-                                <ToggleSwitch
-                                    x:Name="TrackWebBrowsingSwitch"
-                                    Header="记录网页浏览" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <settings:MonitorSettingsSection x:Name="MonitorControl" />
 
             <!-- ======================================== -->
             <!-- ======================================== -->
@@ -503,6 +382,7 @@
             </ScrollViewer>
     </Grid>
 </Page>
+
 
 
 
