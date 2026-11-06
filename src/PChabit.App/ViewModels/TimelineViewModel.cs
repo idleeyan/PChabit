@@ -1,19 +1,18 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
 public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.TimelineStats>
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly TimelineQueryService _queryService;
     private readonly IAppIconService _iconService;
 
     [ObservableProperty]
@@ -25,9 +24,9 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
     public ObservableCollection<TimelineHourGroup> HourGroups { get; } = new();
     public ObservableCollection<DateSummary> RecentDates { get; } = new();
 
-    public TimelineViewModel(IDbContextFactory<PChabitDbContext> dbFactory, IAppIconService iconService) : base()
+    public TimelineViewModel(TimelineQueryService queryService, IAppIconService iconService) : base()
     {
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _iconService = iconService;
         Title = "时间线";
     }
@@ -86,44 +85,14 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
     private async Task<TimelineStats> LoadStatsOnBackgroundAsync(CancellationToken cancellationToken)
     {
         var selectedDate = SelectedDate.Date;
-        var nextDay = selectedDate.AddDays(1);
 
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-        List<Core.Entities.AppSession> appSessions;
-        try
-        {
-            appSessions = await dbContext.AppSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= selectedDate && s.StartTime < nextDay)
-                .OrderByDescending(s => s.StartTime)
-                .ToListAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 AppSessions 失败");
-            appSessions = new List<Core.Entities.AppSession>();
-        }
-
-        List<Core.Entities.WebSession> webSessions;
-        try
-        {
-            webSessions = await dbContext.WebSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= selectedDate && s.StartTime < nextDay && !s.IsLegacy)
-                .OrderByDescending(s => s.StartTime)
-                .ToListAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 WebSessions 失败");
-            webSessions = new List<Core.Entities.WebSession>();
-        }
+        var day = await _queryService.LoadDayAsync(selectedDate, cancellationToken);
+        var appSessions = day.AppSessions;
+        var webSessions = day.WebSessions;
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // 分类统一走 AppStatsEngine：用户映射表优先，会话自带分类仅作回落
-        var categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory, cancellationToken);
+        var categoryMap = day.CategoryMap;
 
         var hourlyGroups = appSessions
             .GroupBy(s => s.StartTime.Hour)
@@ -362,30 +331,13 @@ public partial class TimelineViewModel : DbSafeViewModel<TimelineViewModel.Timel
         {
             var selectedDate = group.Date;
             var hourStart = selectedDate.AddHours(group.Hour);
-            var hourEnd = hourStart.AddHours(1);
 
-            var sessions = await Task.Run(async () =>
-            {
-                await using var dbContext = await _dbFactory.CreateDbContextAsync();
-                return await dbContext.AppSessions
-                    .AsNoTracking()
-                    .Where(s => s.StartTime >= hourStart && s.StartTime < hourEnd)
-                    .OrderByDescending(s => s.StartTime)
-                    .ToListAsync();
-            });
-
-            var webInHour = await Task.Run(async () =>
-            {
-                await using var dbContext = await _dbFactory.CreateDbContextAsync();
-                return await dbContext.WebSessions
-                    .AsNoTracking()
-                    .Where(s => s.StartTime >= hourStart && s.StartTime < hourEnd && !s.IsLegacy)
-                    .OrderByDescending(s => s.StartTime)
-                    .ToListAsync();
-            });
+            var hour = await _queryService.LoadHourAsync(hourStart);
+            var sessions = hour.AppSessions;
+            var webInHour = hour.WebSessions;
+            var categoryMap = hour.CategoryMap;
 
             group.Activities.Clear();
-            var categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
             foreach (var session in sessions)
                 group.Activities.Add(CreateActivity(session, categoryMap));
             foreach (var web in webInHour)

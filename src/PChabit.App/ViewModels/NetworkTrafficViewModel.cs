@@ -1,11 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using PChabit.App.Services;
 using PChabit.HardwareMonitor.Hardware;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 using Serilog;
 
 namespace PChabit.App.ViewModels;
@@ -16,16 +15,16 @@ public partial class NetworkTrafficViewModel : ViewModelBase
     public const string Period7 = "近 7 天";
     public const string Period30 = "近 30 天";
 
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly NetworkTrafficQueryService _queryService;
     private readonly ProcessNetworkMonitor _monitor;
     private readonly NetworkTrafficPersistenceService _persistence;
 
     public NetworkTrafficViewModel(
-        IDbContextFactory<PChabitDbContext> dbFactory,
+        NetworkTrafficQueryService queryService,
         ProcessNetworkMonitor monitor,
         NetworkTrafficPersistenceService persistence)
     {
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _monitor = monitor;
         _persistence = persistence;
         _selectedPeriod = PeriodToday;
@@ -78,7 +77,7 @@ public partial class NetworkTrafficViewModel : ViewModelBase
     [ObservableProperty]
     private string _categoryEmptyText = "暂无分类流量记录";
 
-    private Dictionary<string, (string Name, string ColorHex)> _categoryMap = new();
+    private IReadOnlyDictionary<string, (string Name, string ColorHex)> _categoryMap = new Dictionary<string, (string Name, string ColorHex)>();
 
     public ObservableCollection<DayTrafficBar> DayBars { get; } = new();
     public ObservableCollection<HourTrafficBar> HourBars { get; } = new();
@@ -105,26 +104,10 @@ public partial class NetworkTrafficViewModel : ViewModelBase
 
             var toExclusive = DateTime.ParseExact(toDate, "yyyy-MM-dd", null).AddDays(1).ToString("yyyy-MM-dd");
 
-            await using var db = await _dbFactory.CreateDbContextAsync();
-
-            var samples = await db.NetworkTrafficSamples.AsNoTracking()
-                .Where(x => string.Compare(x.Timestamp, fromDate) >= 0 && string.Compare(x.Timestamp, toExclusive) < 0)
-                .ToListAsync();
-
-            var procRows = await db.ProcessNetworkUsages.AsNoTracking()
-                .Where(x => string.Compare(x.Date, fromDate) >= 0 && string.Compare(x.Date, toDate) <= 0)
-                .ToListAsync();
-
-            // 分类映射复用 AppStatsEngine（设置-应用分类，进程名 → 分类名/颜色）
-            try
-            {
-                _categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning(ex, "加载应用分类映射失败，分类聚合按未分类处理");
-                _categoryMap = new Dictionary<string, (string Name, string ColorHex)>();
-            }
+            var result = await _queryService.LoadAsync(fromDate, toExclusive, toDate);
+            var samples = result.Samples;
+            var procRows = result.ProcessRows;
+            _categoryMap = result.CategoryMap;
 
             long up = 0;
             long down = 0;

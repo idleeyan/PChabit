@@ -28,12 +28,10 @@ ViewModels/DetailDialogViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/DetailDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/KeyboardDetailsViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/NetworkTrafficViewModel.cs|PChabit.Infrastructure.Analysis
-ViewModels/NetworkTrafficViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/NotesViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Data
 ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Services
 ViewModels/TimelineViewModel.cs|PChabit.Infrastructure.Analysis
-ViewModels/TimelineViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.Activity.cs|PChabit.Infrastructure.Analysis
 ViewModels/WebDetailsViewModel.Categorization.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.Categorization.cs|PChabit.Infrastructure.Services

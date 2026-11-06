@@ -2,6 +2,31 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.75.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-2——Timeline/NetworkTraffic 查询服务化
+
+E3 第二批：计划优先级 3/5 位的两个 VM 去 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/Queries/TimelineQueryService`**：
+  `LoadDayAsync`（当日 AppSessions+WebSessions+分类映射三合一，查询失败
+  降级空列表的容错行为逐字保留）、`LoadHourAsync`（展开时段按需查询，
+  原两段 `Task.Run` 内建库的写法收进服务）。时间线页主查询与时段展开
+  均不再接触 factory；`TimelineStats`/`TimelineHourGroup` 等 UI 绑定模型
+  留在 VM（投影不迁）。
+- **新增 `PChabit.Application/Queries/NetworkTrafficQueryService`**：
+  `LoadAsync` 返回分钟样本+进程小时行+分类映射；映射加载失败降级空映射
+  （行为不变）。`BuildDayBars/ProcessRows/CategoryRows/HourBars` 四个 UI
+  投影方法留在 VM；`_categoryMap` 字段类型放宽为 `IReadOnlyDictionary`。
+- **DI**：两服务经 `AddTaiApplication` 注册；VM 构造签名由 DI 自动适配。
+- **白名单收缩 48→46**：两 VM 的 `using PChabit.Infrastructure.Data` 清除。
+  残留 `Analysis` using 为 `AppStatsEngine` 静态与 `IsProductiveCategory`
+  依赖，随 DTO 批次处理。
+- **验证**：build 0 错误（24 警告=基线）；187/187；分层守卫 46/46 无新
+  违规；审计 `usingInfrastructureCount` 74→72（归因：两 VM 各删 1 条 Data
+  using）；部署时发现用户常驻实例占用部署目录（既有流程：停实例→部署
+  →冒烟→恢复）；冒烟 PASS（3.75.0，0 ERR/FTL）；常驻实例已恢复运行。
+
 ## [3.74.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-1——Analytics/Sankey 查询服务化（VM 去 DbContext 首批）

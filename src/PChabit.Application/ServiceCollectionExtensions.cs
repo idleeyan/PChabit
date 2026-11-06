@@ -15,6 +15,9 @@ public static class ServiceCollectionExtensions
         // E3-1（3.74.0）：分析页/桑基图查询服务，VM 去 IDbContextFactory
         services.AddSingleton<Queries.AnalyticsQueryService>();
         services.AddSingleton<Queries.SankeyQueryService>();
+        // E3-2（3.75.0）：时间线/流量页查询服务
+        services.AddSingleton<Queries.TimelineQueryService>();
+        services.AddSingleton<Queries.NetworkTrafficQueryService>();
 
         return services;
     }
