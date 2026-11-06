@@ -8,17 +8,11 @@ ViewModels/CategoryDetailDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/CategoryEditDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/DashboardViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/DashboardViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/DataManagementViewModel.Backup.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.Backup.cs|PChabit.Infrastructure.Services
-ViewModels/DataManagementViewModel.Cleanup.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.Cleanup.cs|PChabit.Infrastructure.Services
-ViewModels/DataManagementViewModel.CloudSync.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.CloudSync.cs|PChabit.Infrastructure.Services
-ViewModels/DataManagementViewModel.Export.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.Export.cs|PChabit.Infrastructure.Services
-ViewModels/DataManagementViewModel.Utils.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.Utils.cs|PChabit.Infrastructure.Services
-ViewModels/DataManagementViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/DetailDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/NetworkTrafficViewModel.cs|PChabit.Infrastructure.Analysis

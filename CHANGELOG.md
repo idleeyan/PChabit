@@ -2,6 +2,28 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.81.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-8——DataManagement 收尾，E3 阶段完成
+
+E3 第八批（收官）：数据管理页六分部去 `IDbContextFactory`。
+**至此 E3 阶段（ViewModel 去 DbContext）全部完成**——所有 ViewModel
+不再注入 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/Queries/DataManagementQueryService`**：
+  `LoadOverviewStatsAsync` 收口概览统计（四表 Count + 最早/最新会话时间）；
+  备份/清理/导出/云同步分部的 Services 接口依赖（IBackupService/
+  IWebDAVSyncService/IExportService）保持原位不动。
+- **白名单收缩 34→28**（主文件+五分部各清 1 条 Data using）；
+  审计 `usingInfrastructureCount` 60→54。
+- **E3 阶段总结**：8 批完成（3.74.0–3.81.0），14 个 VM 文件组全部
+  服务化；白名单 50→28，剩余 28 条全部为 DTO record（KpiCard/
+  HourHeatItem 等）与 Services 接口（IAnalyticsAiService 等）依赖，
+  属下一阶段「DTO 归属迁移」范畴。
+- **验证**：build 0 错误（24 警告=基线）；187/187；守卫 28/28；
+  冒烟 PASS（3.81.0，0 ERR/FTL）；停实例→部署→恢复闭环
+  （部署时撞上实例自动重启占用目录，二次停后部署成功——经验已记台账）。
+
 ## [3.80.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-7——CategoryCrud 写操作服务化

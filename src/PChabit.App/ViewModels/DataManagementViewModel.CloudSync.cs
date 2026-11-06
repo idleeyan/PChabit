@@ -4,7 +4,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Interfaces;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 using Serilog;
 

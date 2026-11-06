@@ -8,7 +8,7 @@
       "count": 2
     },
     {
-      "file": "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs",
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
       "count": 1
     },
     {
@@ -16,11 +16,11 @@
       "count": 1
     },
     {
-      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
+      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
       "count": 1
     },
     {
-      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "file": "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs",
       "count": 1
     }
   ],
@@ -51,11 +51,11 @@
       "count": 12
     },
     {
-      "file": "src\\PChabit.App\\App.xaml.cs",
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.cs",
       "count": 12
     },
     {
-      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.cs",
+      "file": "src\\PChabit.App\\App.xaml.cs",
       "count": 12
     },
     {
@@ -67,17 +67,17 @@
       "count": 9
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
+      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
       "count": 7
     },
     {
-      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
+      "file": "src\\PChabit.App\\Views\\QuickNoteWindow.cs",
       "count": 7
     }
   ],
   "asyncVoidCount": 62,
   "taskRunCount": 43,
-  "usingInfrastructureCount": 60,
+  "usingInfrastructureCount": 54,
   "topFilesByLines": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessNetworkMonitor.cs",

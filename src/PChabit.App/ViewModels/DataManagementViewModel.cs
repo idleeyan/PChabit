@@ -2,9 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Interfaces;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 using Serilog;
 
@@ -14,7 +12,7 @@ public partial class DataManagementViewModel : ViewModelBase
 {
     private readonly IBackupService _backupService;
     private readonly ISettingsService _settingsService;
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly Application.Queries.DataManagementQueryService _queryService;
     private readonly IWebDAVSyncService _webDAVSyncService;
     private readonly IExportService _exportService;
     #region 数据概览
@@ -80,13 +78,13 @@ public partial class DataManagementViewModel
     public DataManagementViewModel(
         IBackupService backupService,
         ISettingsService settingsService,
-        IDbContextFactory<PChabitDbContext> dbFactory,
+        Application.Queries.DataManagementQueryService queryService,
         IWebDAVSyncService webDAVSyncService,
         IExportService exportService) : base()
     {
         _backupService = backupService;
         _settingsService = settingsService;
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _webDAVSyncService = webDAVSyncService;
         _exportService = exportService;
         Title = "数据管理";
@@ -155,19 +153,13 @@ public partial class DataManagementViewModel
                     sizeText = "未找到";
                 }
 
-                // 总记录数 + 最早/最新记录
-                await using var dbContext = await _dbFactory.CreateDbContextAsync();
-                var appCount = await dbContext.AppSessions.CountAsync();
-                var keyCount = await dbContext.KeyboardSessions.CountAsync();
-                var mouseCount = await dbContext.MouseSessions.CountAsync();
-                var webCount = await dbContext.WebSessions.CountAsync();
-                var totalCount = appCount + keyCount + mouseCount + webCount;
-                var recordsText = $"{totalCount:N0} (应用 {appCount:N0} / 键鼠 {keyCount + mouseCount:N0} / 网页 {webCount:N0})";
+                // 总记录数 + 最早/最新记录（E3-8：经 DataManagementQueryService）
+                var stats = await _queryService.LoadOverviewStatsAsync();
+                var totalCount = stats.AppSessions + stats.KeySessions + stats.MouseSessions + stats.WebSessions;
+                var recordsText = $"{totalCount:N0} (应用 {stats.AppSessions:N0} / 键鼠 {stats.KeySessions + stats.MouseSessions:N0} / 网页 {stats.WebSessions:N0})";
 
-                var earliest = await dbContext.AppSessions.MinAsync(s => (DateTime?)s.StartTime);
-                var latest = await dbContext.AppSessions.MaxAsync(s => (DateTime?)s.StartTime);
-                var earliestStr = earliest?.ToString("yyyy-MM-dd") ?? "无";
-                var latestStr = latest?.ToString("yyyy-MM-dd") ?? "无";
+                var earliestStr = stats.Earliest?.ToString("yyyy-MM-dd") ?? "无";
+                var latestStr = stats.Latest?.ToString("yyyy-MM-dd") ?? "无";
 
                 // 本地备份数
                 var backups = await _backupService.GetBackupListAsync();

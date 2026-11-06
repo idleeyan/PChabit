@@ -31,6 +31,8 @@ public static class ServiceCollectionExtensions
         // E3-7（3.80.0）：分类 CRUD 写操作服务（应用/网站各一份具体服务）
         services.AddSingleton<Application.UseCases.ProgramCategoryCrudService>();
         services.AddSingleton<Application.UseCases.WebsiteCategoryCrudService>();
+        // E3-8（3.81.0）：数据管理概览查询服务
+        services.AddSingleton<Queries.DataManagementQueryService>();
 
         return services;
     }
