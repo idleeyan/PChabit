@@ -1,8 +1,5 @@
 using System.Diagnostics;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
-using PChabit.Core.Entities;
-using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
@@ -16,51 +13,19 @@ public class RunningProcessItem
 /// <summary>
 /// 应用分类管理（3.33.0 由CategoryCrudViewModelBase 承接通用 CRUD，
 /// 本类只提供「进程名映射」相关的差异实现）。
+/// E3-7（3.80.0）：数据操作经 ProgramCategoryCrudService（Application/UseCases）。
 /// </summary>
 public partial class CategoryManagementViewModel
-    : CategoryCrudViewModelBase<ProgramCategory, ProgramCategoryMapping>
+    : CategoryCrudViewModelBase<Core.Entities.ProgramCategory, Core.Entities.ProgramCategoryMapping>
 {
     protected override string LogPrefix => "CategoryManagementViewModel";
 
-    public CategoryManagementViewModel(IDbContextFactory<PChabitDbContext> dbFactory) : base(dbFactory)
+    public CategoryManagementViewModel(Application.UseCases.ProgramCategoryCrudService crud) : base(crud)
     {
     }
-
-    protected override Task<List<ProgramCategory>> QueryCategoriesAsync(PChabitDbContext db)
-        => db.ProgramCategories
-            .Include(c => c.ProgramMappings)
-            .Where(c => c.IsActive)
-            .OrderBy(c => c.SortOrder)
-            .ThenBy(c => c.Name)
-            .ToListAsync();
-
-    protected override Task<List<ProgramCategoryMapping>> QueryMappingsAsync(PChabitDbContext db)
-        => db.ProgramCategoryMappings.ToListAsync();
-
-    protected override void AddCategoryTo(PChabitDbContext db, ProgramCategory category)
-    {
-        category.IsActive = true;
-        category.CreatedAt = DateTime.Now;
-        db.ProgramCategories.Add(category);
-    }
-
-    protected override Task<ProgramCategory?> FindCategoryAsync(PChabitDbContext db, int id)
-        => Task.FromResult(db.ProgramCategories.Find(id));
-
-    protected override void AddMappingTo(PChabitDbContext db, ProgramCategoryMapping mapping)
-    {
-        mapping.CreatedAt = DateTime.Now;
-        db.ProgramCategoryMappings.Add(mapping);
-    }
-
-    protected override Task<ProgramCategoryMapping?> FindMappingAsync(PChabitDbContext db, int id)
-        => Task.FromResult(db.ProgramCategoryMappings.Find(id));
-
-    protected override void RemoveMappingFrom(PChabitDbContext db, ProgramCategoryMapping mapping)
-        => db.ProgramCategoryMappings.Remove(mapping);
 
     /// <summary>搜索键 = 进程名 + 别名（两者任一命中即匹配）。</summary>
-    protected override string GetMappingKey(ProgramCategoryMapping mapping)
+    protected override string GetMappingKey(Core.Entities.ProgramCategoryMapping mapping)
         => string.IsNullOrEmpty(mapping.ProcessAlias)
             ? mapping.ProcessName
             : $"{mapping.ProcessName} {mapping.ProcessAlias}";

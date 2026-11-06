@@ -47,11 +47,11 @@
       "count": 12
     },
     {
-      "file": "src\\PChabit.App\\App.xaml.cs",
+      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
       "count": 12
     },
     {
-      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
+      "file": "src\\PChabit.App\\App.xaml.cs",
       "count": 12
     },
     {
@@ -59,25 +59,25 @@
       "count": 12
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareMonitor.cs",
-      "count": 9
-    },
-    {
       "file": "src\\PChabit.App\\App.StickyNotes.cs",
       "count": 9
     },
     {
-      "file": "src\\PChabit.App\\Services\\NetworkTrafficPersistenceService.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareMonitor.cs",
+      "count": 9
+    },
+    {
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
       "count": 7
     },
     {
-      "file": "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs",
+      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
       "count": 7
     }
   ],
   "asyncVoidCount": 62,
-  "taskRunCount": 42,
-  "usingInfrastructureCount": 63,
+  "taskRunCount": 43,
+  "usingInfrastructureCount": 60,
   "topFilesByLines": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessNetworkMonitor.cs",

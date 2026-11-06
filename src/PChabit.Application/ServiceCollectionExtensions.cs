@@ -28,6 +28,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Queries.WebHistoryQueryService>();
         // E3-6（3.79.0）：网页访问详情查询服务
         services.AddSingleton<Queries.WebDetailsQueryService>();
+        // E3-7（3.80.0）：分类 CRUD 写操作服务（应用/网站各一份具体服务）
+        services.AddSingleton<Application.UseCases.ProgramCategoryCrudService>();
+        services.AddSingleton<Application.UseCases.WebsiteCategoryCrudService>();
 
         return services;
     }

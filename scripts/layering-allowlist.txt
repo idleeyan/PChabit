@@ -4,10 +4,8 @@ ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/AppStatsViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/AppStatsViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/CategoryCrudViewModelBase.cs|PChabit.Infrastructure.Data
 ViewModels/CategoryDetailDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/CategoryEditDialogViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/CategoryManagementViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/DashboardViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/DashboardViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/DataManagementViewModel.Backup.cs|PChabit.Infrastructure.Data
@@ -34,4 +32,3 @@ ViewModels/WebDetailsViewModel.Computation.cs|PChabit.Infrastructure.Analysis
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/WebsiteCategoryEditDialogViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/WebsiteCategoryManagementViewModel.cs|PChabit.Infrastructure.Data

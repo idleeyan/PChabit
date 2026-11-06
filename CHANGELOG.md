@@ -2,6 +2,29 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.80.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-7——CategoryCrud 写操作服务化
+
+E3 第七批（写操作模式）：应用/网站分类管理三文件去 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/UseCases/CategoryCrudService<TCategory,TMapping>`**：
+  通用 CRUD 服务基类——模板方法与抽象钩子结构自原 VM 基类整体平移
+  （读 LoadAsync + 增删改五方法），SaveChanges 时点与软删除语义
+  （IsActive=false）逐字保持。
+- **新增两个具体服务**：`ProgramCategoryCrudService`（进程名映射）、
+  `WebsiteCategoryCrudService`（域名映射）——原两子类的 EF DbSet
+  差异实现原样承接（Include 导航/过滤/排序/Find）。
+- **VM 基类瘦身为 UI 编排**：`CategoryCrudViewModelBase` 不再持
+  `DbFactory`，CRUD 转调注入的服务；ObservableCollection 填充/过滤/
+  日志留 VM；两子类删全部 EF 钩子，只留搜索键差异与运行进程枚举。
+- **白名单收缩 37→34**（三文件各清 1 条 Data using）；审计
+  `usingInfrastructureCount` 63→60。
+- **验证**：build 0 错误（24 警告=基线）；187/187；守卫 34/34；
+  冒烟 PASS（3.80.0，0 ERR/FTL）；停实例→部署→恢复闭环。
+  写链路为逐字平移（同 SaveChanges 模式），运行期建议用户打开
+  「设置-应用分类/网站分类」页做一次增删验证。
+
 ## [3.79.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-6——WebDetails 四分部查询服务化

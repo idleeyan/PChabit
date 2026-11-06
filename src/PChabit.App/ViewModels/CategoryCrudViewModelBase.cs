@@ -1,10 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
-using PChabit.Infrastructure.Data;
+using PChabit.Application.UseCases;
 
 namespace PChabit.App.ViewModels;
 
@@ -26,7 +25,8 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     where TCategory : class, ICategoryEntity
     where TMapping : class, IMappingEntity
 {
-    protected readonly IDbContextFactory<PChabitDbContext> DbFactory;
+    /// <summary>CRUD 数据操作服务（E3-7，3.80.0：写操作已下沉 Application/UseCases）。</summary>
+    protected readonly CategoryCrudService<TCategory, TMapping> Crud;
 
     /// <summary>日志前缀，用于区分两套分类的日志。</summary>
     protected abstract string LogPrefix { get; }
@@ -36,29 +36,6 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
 
     /// <summary>映射的副文本（仅应用分类有进程别名）。</summary>
     protected virtual string GetMappingSubText(TMapping mapping) => string.Empty;
-
-    // ===== 以下为差异点，由子类实现 =====
-
-    /// <summary>读取分类列表（含导航集合 + 过滤 + 排序）。</summary>
-    protected abstract Task<List<TCategory>> QueryCategoriesAsync(PChabitDbContext db);
-
-    /// <summary>读取全部映射。</summary>
-    protected abstract Task<List<TMapping>> QueryMappingsAsync(PChabitDbContext db);
-
-    /// <summary>把新分类写入 DbContext（不保存）。</summary>
-    protected abstract void AddCategoryTo(PChabitDbContext db, TCategory category);
-
-    /// <summary>按 Id 找分类（用于更新 / 软删除）。</summary>
-    protected abstract Task<TCategory?> FindCategoryAsync(PChabitDbContext db, int id);
-
-    /// <summary>把新映射写入 DbContext（不保存）。</summary>
-    protected abstract void AddMappingTo(PChabitDbContext db, TMapping mapping);
-
-    /// <summary>按 Id 找映射（用于删除）。</summary>
-    protected abstract Task<TMapping?> FindMappingAsync(PChabitDbContext db, int id);
-
-    /// <summary>把映射从 DbContext 移除。</summary>
-    protected abstract void RemoveMappingFrom(PChabitDbContext db, TMapping mapping);
 
     /// <summary>映射的匹配文本（搜索过滤与列表显示共用）。</summary>
     protected abstract string GetMappingKey(TMapping mapping);
@@ -81,9 +58,9 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     public ObservableCollection<TMapping> AllMappings { get; } = new();
     public ObservableCollection<TMapping> FilteredMappings { get; } = new();
 
-    protected CategoryCrudViewModelBase(IDbContextFactory<PChabitDbContext> dbFactory) : base()
+    protected CategoryCrudViewModelBase(CategoryCrudService<TCategory, TMapping> crud) : base()
     {
-        DbFactory = dbFactory;
+        Crud = crud;
     }
 
     public async Task InitializeAsync()
@@ -93,15 +70,8 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
 
         try
         {
-            // Phase 1: 线程池 — DB 查询
-            List<TCategory> categories;
-            List<TMapping> mappings;
-
-            await using (var db = await DbFactory.CreateDbContextAsync())
-            {
-                categories = await QueryCategoriesAsync(db);
-                mappings = await QueryMappingsAsync(db);
-            }
+            // Phase 1: 线程池 — 数据加载（E3-7：经 CategoryCrudService）
+            var (categories, mappings) = await Task.Run(Crud.LoadAsync);
 
             // Phase 2: UI 线程 — ObservableCollection 更新（陷阱 5.6）
             await RunOnUIThreadAsync(() =>
@@ -170,13 +140,8 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     {
         try
         {
-            await using (var db = await DbFactory.CreateDbContextAsync())
-            {
-                AddCategoryTo(db, category);
-                await db.SaveChangesAsync();
-            }
+            await Crud.AddCategoryAsync(category);
             await InitializeAsync();
-            Log.Information("{Prefix}: 添加分类成功 {Name}", LogPrefix, category.Name);
         }
         catch (Exception ex)
         {
@@ -188,22 +153,8 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     {
         try
         {
-            await using (var db = await DbFactory.CreateDbContextAsync())
-            {
-                var existing = await FindCategoryAsync(db, category.Id);
-                if (existing != null)
-                {
-                    existing.Name = category.Name;
-                    existing.Description = category.Description;
-                    existing.Color = category.Color;
-                    existing.Icon = category.Icon;
-                    existing.SortOrder = category.SortOrder;
-                    existing.UpdatedAt = DateTime.Now;
-                    await db.SaveChangesAsync();
-                }
-            }
+            await Crud.UpdateCategoryAsync(category);
             await InitializeAsync();
-            Log.Information("{Prefix}: 更新分类成功 {Name}", LogPrefix, category.Name);
         }
         catch (Exception ex)
         {
@@ -216,24 +167,13 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     {
         try
         {
-            await using (var db = await DbFactory.CreateDbContextAsync())
-            {
-                var category = await FindCategoryAsync(db, categoryId);
-                if (category != null)
-                {
-                    category.IsActive = false;
-                    await db.SaveChangesAsync();
-                }
-            }
-
+            await Crud.DeleteCategoryAsync(categoryId);
             await InitializeAsync();
 
             if (SelectedCategory?.Id == categoryId)
             {
                 SelectCategory(null);
             }
-
-            Log.Information("{Prefix}: 删除分类成功 {Id}", LogPrefix, categoryId);
         }
         catch (Exception ex)
         {
@@ -245,14 +185,9 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     {
         try
         {
-            await using (var db = await DbFactory.CreateDbContextAsync())
-            {
-                AddMappingTo(db, mapping);
-                await db.SaveChangesAsync();
-            }
+            await Crud.AddMappingAsync(mapping);
             await InitializeAsync();
             ApplyFilter();
-            Log.Information("{Prefix}: 添加映射成功 {Key}", LogPrefix, GetMappingKey(mapping));
         }
         catch (Exception ex)
         {
@@ -264,18 +199,9 @@ public abstract partial class CategoryCrudViewModelBase<TCategory, TMapping> : V
     {
         try
         {
-            await using (var db = await DbFactory.CreateDbContextAsync())
-            {
-                var mapping = await FindMappingAsync(db, mappingId);
-                if (mapping != null)
-                {
-                    RemoveMappingFrom(db, mapping);
-                    await db.SaveChangesAsync();
-                }
-            }
+            await Crud.DeleteMappingAsync(mappingId);
             await InitializeAsync();
             ApplyFilter();
-            Log.Information("{Prefix}: 删除映射成功 {Id}", LogPrefix, mappingId);
         }
         catch (Exception ex)
         {
