@@ -31,6 +31,8 @@ public partial class App : Microsoft.UI.Xaml.Application
 
     private void RefreshTrayDisplay()
     {
+        // F2（3.83.0）：5s Tick 重入防护（陷阱 27）——内含 async 内容刷新链
+        if (Interlocked.Exchange(ref _trayTickBusy, 1) == 1) return;
         try
         {
             var settings = _serviceProvider!.GetRequiredService<ISettingsService>();
@@ -39,6 +41,10 @@ public partial class App : Microsoft.UI.Xaml.Application
         catch (Exception ex)
         {
             Log.Warning(ex, "刷新任务栏小窗失败");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _trayTickBusy, 0);
         }
     }
 

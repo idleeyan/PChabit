@@ -1,5 +1,6 @@
 // 类 HardwareMonitor 与子命名空间 PChabit.HardwareMonitor.Hardware 同名，需别名消歧
 using Hardware = PChabit.HardwareMonitor.Hardware;
+using Interlocked = System.Threading.Interlocked;
 
 namespace PChabit.HardwareMonitor;
 
@@ -15,6 +16,8 @@ public sealed class HardwareMonitorService : IDisposable
     private readonly object _sync = new();
     private Hardware.HardwareMonitor? _monitor;
     private System.Threading.Timer? _timer;
+    /// <summary>F2（3.83.0）：采样 Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
+    private int _tickBusy;
 
     /// <summary>采集数值更新事件（线程池线程触发）。</summary>
     public event Action? ValuesUpdated;
@@ -76,6 +79,8 @@ public sealed class HardwareMonitorService : IDisposable
 
     private void Tick(object? state)
     {
+        // F2（3.83.0）：采样慢一轮时下一拍跳过，不堆积（陷阱 27）
+        if (Interlocked.Exchange(ref _tickBusy, 1) == 1) return;
         try
         {
             _monitor?.UpdateAll();
@@ -83,6 +88,10 @@ public sealed class HardwareMonitorService : IDisposable
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[HardwareMonitorService] Tick Error: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _tickBusy, 0);
         }
     }
 

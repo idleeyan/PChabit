@@ -55,6 +55,8 @@ public sealed class ProcessNetworkMonitor : IDisposable
     private const int MaxTrackedProcesses = 256;
 
     private readonly object _sync = new();
+    /// <summary>F2（3.83.0）：采样 Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
+    private int _tickBusy;
     private System.Threading.Timer? _timer;
     private bool _running;
 
@@ -110,6 +112,8 @@ public sealed class ProcessNetworkMonitor : IDisposable
 
     private void TickSafe()
     {
+        // F2（3.83.0）：采样慢一轮时下一拍跳过，不堆积（陷阱 27）
+        if (Interlocked.Exchange(ref _tickBusy, 1) == 1) return;
         try
         {
             SampleOnce();
@@ -119,6 +123,10 @@ public sealed class ProcessNetworkMonitor : IDisposable
         {
             // 预期：单拍采样失败不打断监控主循环（Debug 防高频刷屏）
             Log.Debug(ex, "进程网络采样失败，本拍跳过");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _tickBusy, 0);
         }
     }
 

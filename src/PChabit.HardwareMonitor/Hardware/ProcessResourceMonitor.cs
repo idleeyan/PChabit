@@ -52,6 +52,8 @@ public sealed class ProcessResourceMonitor : IDisposable
     };
 
     private readonly object _sync = new();
+    /// <summary>F2（3.83.0）：采样 Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
+    private int _tickBusy;
     private System.Threading.Timer? _timer;
     private bool _running;
 
@@ -108,6 +110,8 @@ public sealed class ProcessResourceMonitor : IDisposable
 
     private void TickSafe()
     {
+        // F2（3.83.0）：采样慢一轮时下一拍跳过，不堆积（陷阱 27）
+        if (Interlocked.Exchange(ref _tickBusy, 1) == 1) return;
         try
         {
             SampleOnce();
@@ -118,6 +122,10 @@ public sealed class ProcessResourceMonitor : IDisposable
             // 预期：单拍采样失败不打断主循环；到这一层的异常极少（内部已有细粒度保护），
             // Debug 级防高频刷屏，持续失败表现为"最大占用进程"卡片为空
             Log.Debug(ex, "进程资源采样失败，本拍跳过");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _tickBusy, 0);
         }
     }
 

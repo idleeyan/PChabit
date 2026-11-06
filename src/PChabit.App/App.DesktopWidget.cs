@@ -26,6 +26,8 @@ public partial class App
     // 「当前」行分类映射缓存（60s 刷新，避免每秒查库；口径与流量/统计页 AppStatsEngine 一致）
     private Dictionary<string, (string Name, string ColorHex)> _widgetCategoryMap = new();
     private DateTime _widgetCategoryMapLoadedAt = DateTime.MinValue;
+    /// <summary>F2（3.83.0）：1s Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
+    private int _widgetTickBusy;
 
     private void StartDesktopWidgetTimer()
     {
@@ -66,6 +68,9 @@ public partial class App
     /// </summary>
     private void RefreshDesktopWidget()
     {
+        // F2（3.83.0）：1s Tick 重入防护（陷阱 27 模式）——回调内含同步阻塞点，
+        // 慢一轮时下一拍直接跳过，避免 UI 线程堆积
+        if (Interlocked.Exchange(ref _widgetTickBusy, 1) == 1) return;
         try
         {
             var settings = _serviceProvider!.GetRequiredService<ISettingsService>();
@@ -108,6 +113,10 @@ public partial class App
         catch (Exception ex)
         {
             Log.Warning(ex, "刷新桌面悬浮插件失败");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _widgetTickBusy, 0);
         }
     }
 

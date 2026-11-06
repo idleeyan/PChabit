@@ -14,6 +14,8 @@ public class BackupService : IBackupService, IDisposable
     private readonly ISettingsService _settingsService;
     private readonly string _defaultBackupPath;
     private System.Timers.Timer? _periodicBackupTimer;
+    /// <summary>F2（3.83.0）：定时备份重入防护标志（System.Timers.Elapsed 允许并发触发，Interlocked 防备份叠加，陷阱 27）。</summary>
+    private int _backupTickBusy;
     private bool _disposed;
 
     public event EventHandler<BackupProgressEventArgs>? ProgressChanged;
@@ -211,7 +213,17 @@ public class BackupService : IBackupService, IDisposable
         _periodicBackupTimer = new System.Timers.Timer(interval.TotalMilliseconds);
         _periodicBackupTimer.Elapsed += async (s, e) =>
         {
-            await CreateBackupAsync();
+            // F2（3.83.0）：System.Timers.Elapsed 并发触发防护——上一轮备份（含 VACUUM）
+            // 未完成时本轮直接跳过，避免慢备份叠加
+            if (System.Threading.Interlocked.Exchange(ref _backupTickBusy, 1) == 1) return;
+            try
+            {
+                await CreateBackupAsync();
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _backupTickBusy, 0);
+            }
         };
         _periodicBackupTimer.Start();
 

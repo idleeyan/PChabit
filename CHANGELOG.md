@@ -2,6 +2,26 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.83.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 F2——周期任务重入防护
+
+**目标**（计划阶段 F2）：所有 Timer/DispatcherTimer 回调统一
+`Interlocked.CompareExchange` 防重入（陷阱 27），慢一轮时下一拍跳过，
+不出现任务堆积。
+
+- **防护盘点（六补二留）**：仪表盘 30s（`_tickBusy`）与便签同步
+  （`_noteSyncRunning`）已有防护保持不动；**新增六处**——
+  - 桌面悬浮插件 1s `RefreshDesktopWidget`（`_widgetTickBusy`，回调内含同步阻塞点）
+  - 托盘/任务栏 5s `RefreshTrayDisplay`（`_trayTickBusy`，含 async 内容链）
+  - `HardwareMonitorService.Tick`（硬件采样）
+  - `ProcessNetworkMonitor.TickSafe` / `ProcessResourceMonitor.TickSafe`（进程采样）
+  - `BackupService.StartPeriodicBackupAsync` 的 Elapsed（**System.Timers 允许并发触发，重入高危**；慢备份含 VACUUM 叠加会放大锁争用）
+- **验证**：build 0 错误（24 警告=基线）；187/187；冒烟 PASS（3.83.0，
+  0 ERR/FTL）；运行期观察：悬浮插件 1s 定时器正常启动、硬件/网络采样
+  按分钟桶持续落库（21:59→22:01 逐分钟递增）、进程稳定 382MB——
+  防护未破坏任何周期链路，无堆积迹象。
+
 ## [3.82.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 F1——async void 治理

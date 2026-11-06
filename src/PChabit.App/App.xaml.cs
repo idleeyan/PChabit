@@ -33,6 +33,8 @@ public partial class App : Microsoft.UI.Xaml.Application
     private HardwareSampleWriter? _hardwareSampleWriter;
     private TrayService? _trayService;
     private Microsoft.UI.Xaml.DispatcherTimer? _trayDisplayTimer;
+    /// <summary>F2（3.83.0）：托盘 5s Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
+    private int _trayTickBusy;
     private TaskbarWidget? _taskbarWidget;
     // 桌面悬浮插件字段/驱动见 App.DesktopWidget.cs（3.23.0 分部类拆分）
     private double _todayActiveMinutes;
