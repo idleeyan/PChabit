@@ -27,7 +27,14 @@ public sealed partial class KeyboardDetailsTab : UserControl
 
     private async void KeyboardDetailsTab_Loaded(object sender, RoutedEventArgs e)
     {
+        try
+        {
         await EnsureLoadedAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "KeyboardDetailsTab_Loaded 处理失败");
+        }
     }
 
     /// <summary>
@@ -52,11 +59,25 @@ public sealed partial class KeyboardDetailsTab : UserControl
 
     private async void PreviousDay_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         await ViewModel.ChangeDateAsync(-1);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "PreviousDay_Click 处理失败");
+        }
     }
 
     private async void NextDay_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         await ViewModel.ChangeDateAsync(1);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "NextDay_Click 处理失败");
+        }
     }
 }

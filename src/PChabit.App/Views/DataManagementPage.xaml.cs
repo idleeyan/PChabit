@@ -112,6 +112,8 @@ public sealed partial class DataManagementPage : Page
 
     private async void BrowseBackupPath_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         var folderPicker = new FolderPicker();
         folderPicker.SuggestedStartLocation = PickerLocationId.DocumentsLibrary;
         folderPicker.FileTypeFilter.Add("*");
@@ -123,6 +125,11 @@ public sealed partial class DataManagementPage : Page
         if (folder != null)
         {
             ViewModel.BackupPath = folder.Path;
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "BrowseBackupPath_Click 处理失败");
         }
     }
 
@@ -144,11 +151,18 @@ public sealed partial class DataManagementPage : Page
 
     private async void SaveWebDAVConfig_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         ViewModel.WebDAVUrl = WebDAVUrlBox?.Text ?? "";
         ViewModel.WebDAVUsername = WebDAVUsernameBox?.Text ?? "";
         ViewModel.WebDAVPassword = WebDAVPasswordBox?.Password ?? "";
         ViewModel.WebDAVEnabled = WebDAVEnabledBox?.IsChecked ?? false;
         await ViewModel.SaveWebDAVSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "SaveWebDAVConfig_Click 处理失败");
+        }
     }
 
     private void RestoreCloud_Click(object sender, RoutedEventArgs e)

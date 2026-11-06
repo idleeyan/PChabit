@@ -386,7 +386,8 @@ public partial class App : Microsoft.UI.Xaml.Application
             {
                 InitializeTrayService();
                 InitializeStickyNotes();
-                StartMonitoring();
+                // F1（3.82.0）：StartMonitoringAsync 全程自带 try/catch 兜底
+                _ = StartMonitoringAsync();
             });
 
             // 后台服务可以在任意线程启动

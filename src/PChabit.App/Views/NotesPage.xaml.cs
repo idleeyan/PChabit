@@ -57,17 +57,31 @@ public sealed partial class NotesPage : Page
 
     private async void NotesGrid_ItemClick(object sender, ItemClickEventArgs e)
     {
+        try
+        {
         if (ViewModel.IsTrashView) return; // 回收站只提供还原/彻底删除，不进入编辑
         if (e.ClickedItem is NoteItemViewModel item)
             await OpenEditAsync(item.Id);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "NotesGrid_ItemClick 处理失败");
+        }
     }
 
     /// <summary>「+ 新建便签」：创建空白便签后立即打开编辑框（3.55.0 修复新建后无编辑框的既有缺陷）。</summary>
     private async void NewNote_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         var note = await ViewModel.CreateNewAsync();
         if (note == null) return;
         await OpenEditAsync(note.Id);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "NewNote_Click 处理失败");
+        }
     }
 
     private async System.Threading.Tasks.Task OpenEditAsync(Guid id)
@@ -108,6 +122,8 @@ public sealed partial class NotesPage : Page
 
     private async void EditDialog_Primary(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        try
+        {
         // 空内容不允许保存（提示并保持打开）
         if (string.IsNullOrWhiteSpace(ViewModel.EditContent))
         {
@@ -115,10 +131,17 @@ public sealed partial class NotesPage : Page
             return;
         }
         await ViewModel.SaveEditCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "EditDialog_Primary 处理失败");
+        }
     }
 
     private async void EditDialog_Delete(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        try
+        {
         var editing = ViewModel.EditingNote;
         if (editing == null) return;
         // 新建的空白便签：物理清理；其余移入回收站
@@ -127,10 +150,17 @@ public sealed partial class NotesPage : Page
         else
             await ViewModel.DeleteCommand.ExecuteAsync(editing.Id);
         ViewModel.CancelEdit();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "EditDialog_Delete 处理失败");
+        }
     }
 
     private async void EditDialog_Closing(ContentDialog sender, ContentDialogClosingEventArgs args)
     {
+        try
+        {
         // 保存/删除路径已将 EditingNote 置空；此处仅兜底「取消/遮罩」——新建的空便签物理清理
         var editing = ViewModel.EditingNote;
         if (editing == null) return;
@@ -139,6 +169,11 @@ public sealed partial class NotesPage : Page
         ViewModel.CancelEdit();
         if (blank)
             await ViewModel.PurgeCommand.ExecuteAsync(id);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "EditDialog_Closing 处理失败");
+        }
     }
 
     private void ColorPick_Click(object sender, RoutedEventArgs e)
@@ -149,6 +184,8 @@ public sealed partial class NotesPage : Page
 
     private async void EditBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        try
+        {
         // Ctrl+Enter 保存并关闭
         if (e.Key == Windows.System.VirtualKey.Enter && InputKeyboardType())
         {
@@ -156,6 +193,11 @@ public sealed partial class NotesPage : Page
             if (string.IsNullOrWhiteSpace(ViewModel.EditContent)) return;
             await ViewModel.SaveEditCommand.ExecuteAsync(null);
             EditDialog.Hide();
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "EditBox_KeyDown 处理失败");
         }
     }
 
@@ -165,11 +207,18 @@ public sealed partial class NotesPage : Page
 
     private async void EmptyTrash_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         ConfirmDialog.Title = "清空回收站？";
         ConfirmDialog.Content = "回收站中的全部便签将被彻底删除，且无法通过云同步找回。";
         var r = await ConfirmDialog.ShowAsync();
         if (r == ContentDialogResult.Primary)
             await ViewModel.EmptyTrashCommand.ExecuteAsync(null);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "EmptyTrash_Click 处理失败");
+        }
     }
 
     private async System.Threading.Tasks.Task PurgeWithConfirmAsync(Guid id)

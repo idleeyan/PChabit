@@ -75,6 +75,8 @@ public sealed partial class CategoryManagementTab : UserControl
 
     private async void OnEditCategoryClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (ViewModel.SelectedCategory == null) return;
 
         Log.Information("编辑分类: {CategoryName}", ViewModel.SelectedCategory.Name);
@@ -90,10 +92,17 @@ public sealed partial class CategoryManagementTab : UserControl
             var category = (ProgramCategory)dialog.ResultCategory!;
             await ViewModel.UpdateCategoryAsync(category);
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnEditCategoryClick 处理失败");
+        }
     }
 
     private async void OnDeleteCategoryClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (ViewModel.SelectedCategory == null) return;
         if (ViewModel.SelectedCategory.IsSystem) return;
 
@@ -113,10 +122,17 @@ public sealed partial class CategoryManagementTab : UserControl
         {
             await ViewModel.DeleteCategoryAsync(ViewModel.SelectedCategory.Id);
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnDeleteCategoryClick 处理失败");
+        }
     }
 
     private async void OnAddMappingClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (ViewModel.SelectedCategory == null) return;
 
         var runningProcesses = ViewModel.GetRunningProcesses();
@@ -223,10 +239,17 @@ public sealed partial class CategoryManagementTab : UserControl
                 await ViewModel.AddMappingAsync(mapping);
             }
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnAddMappingClick 处理失败");
+        }
     }
 
     private async void OnDeleteMappingClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (sender is Button button && button.Tag is int mappingId)
         {
             var dialog = new ContentDialog
@@ -245,6 +268,11 @@ public sealed partial class CategoryManagementTab : UserControl
             {
                 await ViewModel.DeleteMappingAsync(mappingId);
             }
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnDeleteMappingClick 处理失败");
         }
     }
 }

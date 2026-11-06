@@ -253,6 +253,8 @@ public sealed class QuickNoteWindow
 
     private async void OnFocusLostSave()
     {
+        try
+        {
         if (_saving) return;
         if (string.IsNullOrWhiteSpace(_view.Content))
         {
@@ -260,6 +262,11 @@ public sealed class QuickNoteWindow
             return;
         }
         await SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnFocusLostSave 处理失败");
+        }
     }
 
     private async System.Threading.Tasks.Task SaveAsync()

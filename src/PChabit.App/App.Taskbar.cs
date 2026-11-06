@@ -34,7 +34,7 @@ public partial class App : Microsoft.UI.Xaml.Application
         try
         {
             var settings = _serviceProvider!.GetRequiredService<ISettingsService>();
-            RefreshTaskbarWidget(settings);
+            _ = RefreshTaskbarWidgetAsync(settings);
         }
         catch (Exception ex)
         {
@@ -42,32 +42,41 @@ public partial class App : Microsoft.UI.Xaml.Application
         }
     }
 
-    /// <summary>驱动任务栏小窗：开关 + 两行文本（AI_MAINTENANCE 3.9.1 记录）。</summary>
-    private async void RefreshTaskbarWidget(ISettingsService settings)
+    /// <summary>驱动任务栏小窗：开关 + 两行文本（AI_MAINTENANCE 3.9.1 记录）。
+    /// F1（3.82.0）：async void 改 Task（定时器 Tick 链，非事件处理器）；
+    /// 方法体自带 try/catch 兜底，异常不再直达 App 级崩溃。</summary>
+    private async Task RefreshTaskbarWidgetAsync(ISettingsService settings)
     {
-        if (!settings.TaskbarEnabled)
+        try
         {
-            if (_taskbarWidget != null && _taskbarWidget.IsRunning)
+            if (!settings.TaskbarEnabled)
             {
-                _taskbarWidget.Dispose();
-                _taskbarWidget = null;
-                Log.Information("任务栏小窗已隐藏");
+                if (_taskbarWidget != null && _taskbarWidget.IsRunning)
+                {
+                    _taskbarWidget.Dispose();
+                    _taskbarWidget = null;
+                    Log.Information("任务栏小窗已隐藏");
+                }
+                return;
             }
-            return;
-        }
 
-        if (_taskbarWidget == null)
+            if (_taskbarWidget == null)
+            {
+                _taskbarWidget = new TaskbarWidget();
+            }
+            // Start 幂等：失效句柄会重建，父窗口变化会重挂载（Explorer 重启后可恢复）
+            _taskbarWidget.Start();
+            if (!_taskbarWidget.IsRunning) return;
+
+            double todayMinutes = GetTodayActiveMinutes();
+            long todayDownBytes = await GetTodayDownBytesAsync();
+            _taskbarWidget.UpdateContent(BuildTaskbarRows(settings, todayMinutes, todayDownBytes));
+            _taskbarWidget.SetTheme(IsSystemLightTheme());
+        }
+        catch (Exception ex)
         {
-            _taskbarWidget = new TaskbarWidget();
+            Log.Warning(ex, "刷新任务栏小窗内容失败");
         }
-        // Start 幂等：失效句柄会重建，父窗口变化会重挂载（Explorer 重启后可恢复）
-        _taskbarWidget.Start();
-        if (!_taskbarWidget.IsRunning) return;
-
-        double todayMinutes = GetTodayActiveMinutes();
-        long todayDownBytes = await GetTodayDownBytesAsync();
-        _taskbarWidget.UpdateContent(BuildTaskbarRows(settings, todayMinutes, todayDownBytes));
-        _taskbarWidget.SetTheme(IsSystemLightTheme());
     }
 
     /// <summary>

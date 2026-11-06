@@ -20,9 +20,16 @@ public sealed partial class AppDetailDialog : ContentDialog
 
     private async void OnCopyClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
+        try
+        {
         args.Cancel = true;
         ViewModel.CopySummaryCommand.Execute(null);
         await Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnCopyClick 处理失败");
+        }
     }
 
     private void ChangeCategory_Click(object sender, RoutedEventArgs e)

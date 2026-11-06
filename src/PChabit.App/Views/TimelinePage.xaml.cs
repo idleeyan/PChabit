@@ -51,9 +51,16 @@ public sealed partial class TimelinePage : Page
     
     private async void HourGroup_Expanding(Expander sender, ExpanderExpandingEventArgs args)
     {
+        try
+        {
         if (sender.DataContext is TimelineHourGroup group)
         {
             await ViewModel.ExpandHourGroupAsync(group);
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "HourGroup_Expanding 处理失败");
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -89,6 +89,8 @@ public sealed partial class SankeyView : UserControl
     
     private async void CoreWebView2_NavigationCompleted(Microsoft.Web.WebView2.Core.CoreWebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
     {
+        try
+        {
         if (!_isNavigating) return;
         _isNavigating = false;
         
@@ -107,6 +109,11 @@ public sealed partial class SankeyView : UserControl
         
         await Task.Delay(500);
         await RefreshDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "CoreWebView2_NavigationCompleted 处理失败");
+        }
     }
     
     private void CoreWebView2_WebMessageReceived(Microsoft.Web.WebView2.Core.CoreWebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs args)
@@ -124,6 +131,8 @@ public sealed partial class SankeyView : UserControl
     
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (_isLoading)
         {
             Log.Warning("[SankeyView] 正在加载中，忽略重复请求");
@@ -131,6 +140,11 @@ public sealed partial class SankeyView : UserControl
         }
         
         await RefreshDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Refresh_Click 处理失败");
+        }
     }
     
     private async Task RefreshDataAsync()

@@ -41,16 +41,30 @@ public sealed partial class WebHistorySection : UserControl
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         _loaded = false;
         await EnsureLoadedAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "Refresh_Click 处理失败");
+        }
     }
 
     /// <summary>告警条上的「开启采集」：恢复采集后立即重查一次，看是否已有新数据。</summary>
     private async void EnableIngest_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         ViewModel.EnableIngestCommand.Execute(null);
         _loaded = false;
         await EnsureLoadedAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "EnableIngest_Click 处理失败");
+        }
     }
 
     /// <summary>

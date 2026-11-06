@@ -1,10 +1,10 @@
 # PChabit code baseline audit
 
-- Generated: 2026-11-06 21:27:23
+- Generated: 2026-11-06 21:44:08
 - Empty catch count: 
 - Silent catch count (no Log./throw inside): 6
-- catch(Exception) count: 399
-- async void count: 62
+- catch(Exception) count: 436
+- async void count: 61
 - Task.Run count: 43
 - using Infrastructure in App/ViewModel: 54
 
@@ -18,10 +18,10 @@
 | File | Count |
 |---|---|
 | src\PChabit.Infrastructure\Services\WebSocketServer.cs | 2 |
-| src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs | 1 |
-| src\PChabit.App\Services\HardwareSampleWriter.cs | 1 |
 | src\PChabit.App\Services\AppIconService.cs | 1 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs | 1 |
 | src\PChabit.Core\Interfaces\IBackgroundAppSettings.cs | 1 |
+| src\PChabit.App\Services\HardwareSampleWriter.cs | 1 |
 
 ## Silent catch locations
 
@@ -37,15 +37,15 @@
 | File | Count |
 |---|---|
 | src\PChabit.HardwareMonitor\Hardware\ProcessResourceMonitor.cs | 16 |
+| src\PChabit.App\Views\DashboardPage.xaml.cs | 13 |
 | src\PChabit.App\App.Shutdown.cs | 13 |
-| src\PChabit.App\Services\AppIconService.cs | 12 |
-| src\PChabit.App\Views\DashboardPage.xaml.cs | 12 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.cs | 12 |
 | src\PChabit.App\App.xaml.cs | 12 |
+| src\PChabit.App\Services\AppIconService.cs | 12 |
+| src\PChabit.App\Views\AppStatsTab.xaml.cs | 11 |
 | src\PChabit.App\App.StickyNotes.cs | 9 |
 | src\PChabit.HardwareMonitor\Hardware\HardwareMonitor.cs | 9 |
-| src\PChabit.Infrastructure\Services\MonitorManager.cs | 7 |
-| src\PChabit.App\Views\QuickNoteWindow.cs | 7 |
+| src\PChabit.App\Views\NotesPage.xaml.cs | 8 |
 
 ## Top 20 files by line count
 

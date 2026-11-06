@@ -258,8 +258,15 @@ public sealed partial class WebStatsTab : UserControl
 
     private async void ClearCategory_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (string.IsNullOrWhiteSpace(_contextDomain)) return;
         await AssignCategoryAsync(_contextDomain, null);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "ClearCategory_Click 处理失败");
+        }
     }
 
     private async Task AssignCategoryAsync(string domain, int? categoryId)

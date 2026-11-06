@@ -8,19 +8,19 @@
       "count": 2
     },
     {
-      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
-      "count": 1
-    },
-    {
-      "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
-      "count": 1
-    },
-    {
       "file": "src\\PChabit.App\\Services\\AppIconService.cs",
       "count": 1
     },
     {
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
+      "count": 1
+    },
+    {
       "file": "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs",
+      "count": 1
+    },
+    {
+      "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
       "count": 1
     }
   ],
@@ -32,23 +32,19 @@
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:143",
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:229"
   ],
-  "catchGenericCount": 399.0,
+  "catchGenericCount": 436.0,
   "catchGenericTopFiles": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessResourceMonitor.cs",
       "count": 16
     },
     {
-      "file": "src\\PChabit.App\\App.Shutdown.cs",
+      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
       "count": 13
     },
     {
-      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
-      "count": 12
-    },
-    {
-      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
-      "count": 12
+      "file": "src\\PChabit.App\\App.Shutdown.cs",
+      "count": 13
     },
     {
       "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.cs",
@@ -59,6 +55,14 @@
       "count": 12
     },
     {
+      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "count": 12
+    },
+    {
+      "file": "src\\PChabit.App\\Views\\AppStatsTab.xaml.cs",
+      "count": 11
+    },
+    {
       "file": "src\\PChabit.App\\App.StickyNotes.cs",
       "count": 9
     },
@@ -67,15 +71,11 @@
       "count": 9
     },
     {
-      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
-      "count": 7
-    },
-    {
-      "file": "src\\PChabit.App\\Views\\QuickNoteWindow.cs",
-      "count": 7
+      "file": "src\\PChabit.App\\Views\\NotesPage.xaml.cs",
+      "count": 8
     }
   ],
-  "asyncVoidCount": 62,
+  "asyncVoidCount": 61,
   "taskRunCount": 43,
   "usingInfrastructureCount": 54,
   "topFilesByLines": [

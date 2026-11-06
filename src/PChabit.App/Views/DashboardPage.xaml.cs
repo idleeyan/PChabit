@@ -59,12 +59,19 @@ public sealed partial class DashboardPage : Page
 
     private async void DashboardPage_Loaded(object sender, RoutedEventArgs e)
     {
+        try
+        {
         await InitChartAsync();
         PushChart();
 
         // 进入页面才启动实时刷新，离开即停（对齐 3.24.0 的省电思路）
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         ViewModel.StartLiveRefresh();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "DashboardPage_Loaded 处理失败");
+        }
     }
 
     private void DashboardPage_Unloaded(object sender, RoutedEventArgs e)

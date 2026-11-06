@@ -47,6 +47,8 @@ public sealed partial class AppStatsTab : UserControl
 
     private async void AppStatsTab_Loaded(object sender, RoutedEventArgs e)
     {
+        try
+        {
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
 
         // 同步周期下拉初始选中
@@ -58,13 +60,25 @@ public sealed partial class AppStatsTab : UserControl
         // 数据加载与 WebView2 初始化并行（陷阱 13：数据加载不依赖 UI 组件生命周期）
         _ = ViewModel.LoadDataAsync();
         await InitializePieChartAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "AppStatsTab_Loaded 处理失败");
+        }
     }
 
     private async void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        try
+        {
         if (e.PropertyName == nameof(ViewModel.PieChartData))
         {
             await UpdatePieChartAsync();
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "ViewModel_PropertyChanged 处理失败");
         }
     }
 
@@ -190,15 +204,29 @@ public sealed partial class AppStatsTab : UserControl
 
     private async void RefreshButton_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         await ViewModel.LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "RefreshButton_Click 处理失败");
+        }
     }
 
     private async void CopySummaryButton_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         await ViewModel.CopySummaryCommand.ExecuteAsync(null);
         CopyFeedback.Visibility = Visibility.Visible;
         await Task.Delay(2000);
         CopyFeedback.Visibility = Visibility.Collapsed;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "CopySummaryButton_Click 处理失败");
+        }
     }
 
     // === 排行行交互 ===
@@ -252,9 +280,16 @@ public sealed partial class AppStatsTab : UserControl
 
     private async void CategoryTag_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (sender is Button button && button.Tag is string processName)
         {
             await ShowCategoryPickerAsync(processName);
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "CategoryTag_Click 处理失败");
         }
     }
 

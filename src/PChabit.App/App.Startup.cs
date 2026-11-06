@@ -9,7 +9,7 @@ namespace PChabit.App;
 
 public partial class App : Microsoft.UI.Xaml.Application
 {
-    private async void StartMonitoring()
+    private async Task StartMonitoringAsync()
     {
         try
         {

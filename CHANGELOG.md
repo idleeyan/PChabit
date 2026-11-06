@@ -2,6 +2,35 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.82.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 F1——async void 治理
+
+**目标**（计划阶段 F1）：非事件处理器的 `async void` 全部改
+`async Task`；事件处理器 100% 包裹 try/catch+日志，异常不再直达
+App 级崩溃。
+
+- **非事件处理器改造（2 处）**：
+  - `App.StartMonitoring` → `StartMonitoringAsync`（fire-and-forget
+    调用点改 `_ =`，方法体已有 try/catch 兜底）；
+  - `App.RefreshTaskbarWidget`（定时器 Tick 链回调）→
+    `RefreshTaskbarWidgetAsync` + 新增方法体 try/catch
+    （原靠调用方 catch 无法捕获异步异常）。
+- **事件处理器 try/catch 补齐（36 处）**：机械包裹整方法体
+  （`catch (Exception ex) { Serilog.Log.Error(...) }`），涉及 15 个
+  View 文件（AppStatsTab/NotesPage/CategoryManagementTab/
+  WebsiteCategoryTab/DashboardPage/KeyboardDetailsTab/SankeyView/
+  TimelinePage/WebAccessPage/WebHistorySection/WebStatsTab/
+  DataManagementPage/QuickNoteWindow/AppDetailDialog 等）。
+- **新增 `scripts/audit_async_void.ps1`**：async void 覆盖率核验脚本
+  （61→58 处带 try/catch 覆盖率 100%，注释行已排除）。
+- **验收实验**：在 `DashboardPage_Loaded` 临时注入
+  `InvalidOperationException` 实测——应用**未崩溃**（进程存活）、
+  日志出现 `[ERR] DashboardPage_Loaded 处理失败`+异常栈、0 FTL；
+  实验代码已移除。
+- **验证**：build 0 错误（24 警告=基线）；187/187；守卫 28/28；
+  冒烟 PASS（3.82.0，0 ERR/FTL，主窗口正常）。
+
 ## [3.81.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-8——DataManagement 收尾，E3 阶段完成

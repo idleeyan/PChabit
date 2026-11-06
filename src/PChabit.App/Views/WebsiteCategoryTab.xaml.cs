@@ -75,6 +75,8 @@ public sealed partial class WebsiteCategoryTab : UserControl
 
     private async void OnAddCategoryClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         var dialog = App.GetService<WebsiteCategoryEditDialog>();
         dialog.ViewModel.InitializeForAdd();
         dialog.XamlRoot = XamlRoot;
@@ -87,10 +89,17 @@ public sealed partial class WebsiteCategoryTab : UserControl
             CategoryList.ItemsSource = ViewModel.Categories;
             TotalCategoriesText.Text = $"共 {ViewModel.Categories.Count} 个分类";
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnAddCategoryClick 处理失败");
+        }
     }
 
     private async void OnEditCategoryClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (ViewModel.SelectedCategory == null) return;
 
         Log.Information("编辑网站分类: {CategoryName}", ViewModel.SelectedCategory.Name);
@@ -107,10 +116,17 @@ public sealed partial class WebsiteCategoryTab : UserControl
             CategoryList.ItemsSource = ViewModel.Categories;
             UpdateCategoryDetailUI();
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnEditCategoryClick 处理失败");
+        }
     }
 
     private async void OnDeleteCategoryClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (ViewModel.SelectedCategory == null) return;
         if (ViewModel.SelectedCategory.IsSystem) return;
 
@@ -134,10 +150,17 @@ public sealed partial class WebsiteCategoryTab : UserControl
             UpdateCategoryDetailUI();
             TotalCategoriesText.Text = $"共 {ViewModel.Categories.Count} 个分类";
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnDeleteCategoryClick 处理失败");
+        }
     }
 
     private async void OnAddMappingClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (ViewModel.SelectedCategory == null) return;
 
         var dialog = new ContentDialog
@@ -238,6 +261,11 @@ public sealed partial class WebsiteCategoryTab : UserControl
                 MappingList.ItemsSource = ViewModel.FilteredMappings;
             }
         }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnAddMappingClick 处理失败");
+        }
     }
 
     private async Task<List<string>> LoadRecentDomainsAsync()
@@ -269,6 +297,8 @@ public sealed partial class WebsiteCategoryTab : UserControl
 
     private async void OnDeleteMappingClick(object sender, RoutedEventArgs e)
     {
+        try
+        {
         if (sender is Button button && button.Tag is int mappingId)
         {
             var dialog = new ContentDialog
@@ -286,6 +316,11 @@ public sealed partial class WebsiteCategoryTab : UserControl
                 await ViewModel.DeleteMappingAsync(mappingId);
                 MappingList.ItemsSource = ViewModel.FilteredMappings;
             }
+        }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "OnDeleteMappingClick 处理失败");
         }
     }
 

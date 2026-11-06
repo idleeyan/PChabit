@@ -23,15 +23,22 @@ public sealed partial class WebAccessPage : Page
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
-        base.OnNavigatedTo(e);
-
-        // 跨页落点：NavigateTo("WebAccess", "history") 滚动到浏览历史区块并加载它。
-        // 3.36.0 起本页已无二级页签，历史内容是页面底部的原生区块。
-        if (e.Parameter is string tag &&
-            string.Equals(tag, "history", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            await StatsSection.ScrollToHistoryAsync();
-            Log.Information("WebAccessPage: 已落点至浏览历史区块");
+            base.OnNavigatedTo(e);
+
+            // 跨页落点：NavigateTo("WebAccess", "history") 滚动到浏览历史区块并加载它。
+            // 3.36.0 起本页已无二级页签，历史内容是页面底部的原生区块。
+            if (e.Parameter is string tag &&
+                string.Equals(tag, "history", StringComparison.OrdinalIgnoreCase))
+            {
+                await StatsSection.ScrollToHistoryAsync();
+                Log.Information("WebAccessPage: 已落点至浏览历史区块");
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Error(ex, "WebAccessPage_OnNavigatedTo 处理失败");
         }
     }
 
