@@ -22,6 +22,18 @@
   按分钟桶持续落库（21:59→22:01 逐分钟递增）、进程稳定 382MB——
   防护未破坏任何周期链路，无堆积迹象。
 
+### 变更：工程改造计划阶段 F3——Task.Run 审计（审计完成，零违规，无代码改动）
+
+- **全量审计 47 处 Task.Run**（含 fire-and-forget `_ = Task.Run`）：
+  逐项标注用途（UI→后台计算 / 后台定时 / 纯后台 IO）。
+- **双层 Task.Run**：0 处（正则+块级扫描复核，两处疑似为相邻独立调用误报）。
+- **跨线程 ObservableCollection**：0 处违规（WebDetails 分页构建为局部
+  List 回 UI 线程填充；NotificationService 为 Dictionary 非集合绑定）。
+- **COMException 0x8001010E**：3.83.0 运行段 0 条（全日日志唯一一条
+  COMException 为 09:26 历史记录、F1 修复前的 ContentDialog 单开冲突，
+  已被兜住记 ERR 未崩溃）。
+- **结论**：F3 验收条款天然满足，本批为纯审计批次，无代码改动。
+
 ## [3.82.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 F1——async void 治理
