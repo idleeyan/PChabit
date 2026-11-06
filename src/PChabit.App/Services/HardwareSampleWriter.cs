@@ -2,21 +2,22 @@ using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
-using PChabit.HardwareMonitor;
+using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.Services;
 
 /// <summary>
 /// 硬件分钟样本写入器（分析升级 P0）：
-/// 订阅 <see cref="HardwareMonitorService.ValuesUpdated"/>（1s，线程池线程），
+/// 订阅 <see cref="IHardwareTelemetrySource.ValuesUpdated"/>（1s，线程池线程），
 /// 在内存分钟桶内聚合均值/峰值，每分钟翻转一次，经 Channel 串行 Upsert 到 HardwareSamples。
 /// 休眠/关机缺分钟无行；停监控时提交残余分钟（普通事务，不做 WAL checkpoint）。
 /// 聚合逻辑在 <see cref="MinuteBucket"/>（无 IO，可单测）。
+/// E2-a 修订版（3.72.0）：数据源依赖改为 Core 接口，HardwareMonitor 由适配器桥接。
 /// </summary>
 public sealed class HardwareSampleWriter : IDisposable
 {
-    private readonly HardwareMonitorService _hardware;
+    private readonly IHardwareTelemetrySource _hardware;
     private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
     private readonly object _bucketLock = new();
     private readonly Channel<HardwareSample> _channel =
@@ -28,7 +29,7 @@ public sealed class HardwareSampleWriter : IDisposable
     private bool _started;
     private bool _disposed;
 
-    public HardwareSampleWriter(HardwareMonitorService hardware, IDbContextFactory<PChabitDbContext> dbFactory)
+    public HardwareSampleWriter(IHardwareTelemetrySource hardware, IDbContextFactory<PChabitDbContext> dbFactory)
     {
         _hardware = hardware;
         _dbFactory = dbFactory;

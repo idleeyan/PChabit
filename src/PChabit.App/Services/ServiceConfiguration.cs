@@ -67,6 +67,14 @@ public static class ServiceConfiguration
         
         // 硬件监控（LiteMonitor 核心移植，见 src/PChabit.HardwareMonitor/NOTICE.md）
         services.AddSingleton<HardwareMonitorService>();
+        // E2-a 修订版（3.72.0）：平台 TFM 的 HardwareMonitor 经适配器桥接为 Core 接口，
+        // 持久化服务只依赖接口（陷阱 3：注册与实现同批提交）
+        services.AddSingleton<Core.Interfaces.IHardwareTelemetrySource>(sp =>
+            sp.GetRequiredService<HardwareTelemetrySourceAdapter>());
+        services.AddSingleton<HardwareTelemetrySourceAdapter>();
+        services.AddSingleton<Core.Interfaces.IProcessNetworkSource>(sp =>
+            sp.GetRequiredService<ProcessNetworkSourceAdapter>());
+        services.AddSingleton<ProcessNetworkSourceAdapter>();
         // 进程网络流量（IP Helper 连接表 + ESTATS，硬件页「最大占用进程/流量统计」）
         services.AddSingleton<PChabit.HardwareMonitor.Hardware.ProcessNetworkMonitor>();
         // 进程 CPU/内存/磁盘/GPU 占用（硬件卡片「最大占用进程」）

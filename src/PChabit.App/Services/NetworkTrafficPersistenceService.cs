@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PChabit.Core.Entities;
-using PChabit.HardwareMonitor.Hardware;
+using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 using Serilog;
 
@@ -8,7 +8,8 @@ namespace PChabit.App.Services;
 
 /// <summary>
 /// 网络流量落库：系统分钟样本 + 进程日/小时聚合。
-/// 从 ProcessNetworkMonitor 读增量写入 SQLite，供「网络流量」独立页统计。
+/// 从 <see cref="IProcessNetworkSource"/> 读增量写入 SQLite，供「网络流量」独立页统计。
+/// E2-a 修订版（3.72.0）：数据源依赖改为 Core 接口，ProcessNetworkMonitor 由适配器桥接。
 /// </summary>
 public sealed class NetworkTrafficPersistenceService : IDisposable
 {
@@ -16,7 +17,7 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
     private const int SampleRetainDays = 30;
     private const int ProcessRetainDays = 90;
 
-    private readonly ProcessNetworkMonitor _monitor;
+    private readonly IProcessNetworkSource _monitor;
     private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
 
     private System.Threading.Timer? _timer;
@@ -39,7 +40,7 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
         new(StringComparer.OrdinalIgnoreCase);
 
     public NetworkTrafficPersistenceService(
-        ProcessNetworkMonitor monitor,
+        IProcessNetworkSource monitor,
         IDbContextFactory<PChabitDbContext> dbFactory)
     {
         _monitor = monitor;
@@ -148,10 +149,9 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
     /// <summary>立即把增量写入数据库（15s 定时与退出时调用）。</summary>
     public void FlushNow()
     {
-        var snap = _monitor.GetSnapshot(3);
         var totals = _monitor.GetSystemTotals();
         var procs = _monitor.GetAllTodayProcesses();
-        var rates = snap.TopByRateList;
+        var rates = _monitor.GetTopRates(3);
 
         long sysUpDelta;
         long sysDownDelta;
@@ -254,7 +254,7 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
         }
     }
 
-    private void WriteProcessHourDeltas(List<ProcessNetworkItem> procs)
+    private void WriteProcessHourDeltas(List<NetworkProcessTotals> procs)
     {
         if (procs.Count == 0) return;
 

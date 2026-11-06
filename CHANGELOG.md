@@ -2,6 +2,41 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.72.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E2-a（修订版）——硬件/网络数据源接口下沉 Core
+
+用户拍板「接口下沉 Core」方案。两持久化服务不再直接依赖平台 TFM 的
+HardwareMonitor 具体类型，改为依赖 Core 纯数据契约；HardwareMonitor 由
+App 侧适配器桥接。**物理迁移 Infrastructure 的技术阻塞已解除**（留待后续
+独立批次执行）。
+
+- **新增 `PChabit.Core/Interfaces/IHardwareTelemetry.cs`**（零第三方/WinRT 依赖）：
+  `IHardwareTelemetrySource`（`ValuesUpdated` 事件 + `Get(key)` 传感器查询）、
+  `IProcessNetworkSource`（系统今日累计 / 全部进程今日累计 / 速率 TopN 快照 /
+  双维度种子回填）、载荷类型 `NetworkProcessTotals` / `NetworkRateItem`
+  （消费面按两服务实测 API 逐一核定，最小面设计）。
+- **新增 `App/Services/HardwareTelemetryAdapters.cs`**：
+  `HardwareTelemetrySourceAdapter`（事件 +=/-= 直通转发）与
+  `ProcessNetworkSourceAdapter`（`ProcessNetworkItem` → Core 载荷映射）。
+- **两服务改依赖接口**（逻辑零变化，仅类型替换）：
+  `HardwareSampleWriter` 注入 `IHardwareTelemetrySource`；
+  `NetworkTrafficPersistenceService` 注入 `IProcessNetworkSource`，
+  `FlushNow` 的 `GetSnapshot(3).TopByRateList` 改为 `GetTopRates(3)`，
+  `WriteProcessHourDeltas` 参数类型 `List<ProcessNetworkItem>` → `List<NetworkProcessTotals>`。
+- **DI**（陷阱 3：注册与实现同批）：适配器单例 + 接口→适配器转发注册；
+  两服务构造签名不变位置不变，`App.Startup`/`App.Shutdown` 零改动。
+- 新增 5 个 Core 接口契约测试（`HardwareTelemetryContractTests`），测试 182 → **187**。
+  说明：适配器与两服务在 App 层（平台 TFM），Tests（net10.0）无法引用——
+  装配正确性由运行期实证覆盖（该限制与 E2-a 原阻塞同根源）。
+
+**验证**：构建 0 错误（24 警告 = 基线）；187/187 测试；发布 3.72.0.0 部署
+（15 文件）；自包含校验通过。运行期实证：启动后 `HardwareSampleWriter`/
+`网络流量落库服务` 均正常启动、0 ERR/0 FTL；**实数据落点**——
+`HardwareSamples` 与 `NetworkTrafficSamples` 启动后每分钟 1 行持续写入
+（08:02–08:09 共 8 行），`ProcessNetworkUsages` 当日 333 行，
+采集→适配器→接口→服务→落库全链路无回归；冒烟 PASS。
+
 ## [工程改造计划 阶段 E1] - 2026-11-06
 
 ### 变更：应用层边界定义 + 分层守卫脚本（阶段 E1，无独立版本号，沿用阶段 A 先例）
