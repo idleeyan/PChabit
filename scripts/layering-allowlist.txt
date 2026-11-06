@@ -1,5 +1,5 @@
 ViewModels/AnalyticsViewModel.cs|PChabit.Infrastructure.Analysis
-ViewModels/AnalyticsViewModel.cs|PChabit.Infrastructure.Data
+ViewModels/SankeyViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Services
@@ -30,8 +30,6 @@ ViewModels/KeyboardDetailsViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/NetworkTrafficViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/NetworkTrafficViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/NotesViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/SankeyViewModel.cs|PChabit.Infrastructure.Analysis
-ViewModels/SankeyViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Data
 ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Services
 ViewModels/TimelineViewModel.cs|PChabit.Infrastructure.Analysis

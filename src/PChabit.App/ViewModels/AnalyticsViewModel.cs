@@ -2,22 +2,22 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
+using PChabit.Application.Queries;
 
 namespace PChabit.App.ViewModels;
 
 /// <summary>
 /// 分析页：周期选择 + KPI 环比 + 日历/小时热力 + Top 变化 + 硬件 + 应用流向。
 /// 计算逻辑在 AnalyticsEngine，本类只负责绑定与交互。
+/// E3-1（3.74.0）：不再注入 IDbContextFactory，查询经 AnalyticsQueryService。
 /// </summary>
 public partial class AnalyticsViewModel : ViewModelBase
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
+    private readonly AnalyticsQueryService _queryService;
     private AnalyticsPeriodReport? _lastReport;
 
     [ObservableProperty]
@@ -82,9 +82,9 @@ public partial class AnalyticsViewModel : ViewModelBase
     public HardwareAnalyticsReport? HardwareReport { get; private set; }
 
     public AnalyticsViewModel(
-        IDbContextFactory<PChabitDbContext> dbContextFactory) : base()
+        AnalyticsQueryService queryService) : base()
     {
-        _dbContextFactory = dbContextFactory;
+        _queryService = queryService;
         Title = "分析";
     }
 
@@ -128,7 +128,7 @@ public partial class AnalyticsViewModel : ViewModelBase
                 period = AnalyticsPeriod.FromCustom(DateTime.Today.AddDays(-2), DateTime.Today.AddDays(1), "近 3 天");
             else
                 period = AnalyticsPeriod.FromKind(kind);
-            var report = await AnalyticsEngine.BuildAsync(_dbContextFactory, period);
+            var report = await _queryService.BuildReportAsync(period);
             _lastReport = report;
 
             await RunOnUIThreadAsync(() =>

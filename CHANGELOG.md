@@ -2,6 +2,33 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.74.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-1——Analytics/Sankey 查询服务化（VM 去 DbContext 首批）
+
+**目标**（计划阶段 E3）：ViewModel 不再注入 `IDbContextFactory`，改为
+注入查询服务。本批覆盖计划优先级第 2/3 位的两个 VM。
+
+- **新增 `PChabit.Application/Queries/AnalyticsQueryService`**：
+  `BuildReportAsync(period)` 透传 `AnalyticsEngine.BuildAsync`，
+  `AnalyticsViewModel` 不再持 `_dbContextFactory`，报告构建经服务产出
+  （计算逻辑零变化）。
+- **新增 `PChabit.Application/Queries/SankeyQueryService`**：
+  `LoadAsync` 返回 `SankeyQueryResult`（聚合数据 + 分类映射 + 会话快照
+  分类），「分类映射 + 快照映射 + 聚合」三步合一收进服务，保持 3.45.0
+  以来的统一分类口径（陷阱 43：漏快照映射会出现「未分类」假象）。
+  `SankeyViewModel.ToJson` 的分类解析改用服务返回的映射，行为不变。
+- **DI**：两个查询服务经 `AddTaiApplication` 注册；VM 构造签名变化由
+  DI 自动适配（`AnalyticsPage`/`SankeyView` 均 `GetRequiredService` 取 VM）。
+- **白名单收缩 50→48**：两 VM 的 `using PChabit.Infrastructure.Data` 清除
+  （DbContext 依赖归零）。残留的 `Infrastructure.Analysis` using 为 DTO
+  record（KpiCard/HourHeatItem/SankeyData 分类辅助等）与 `AppStatsEngine`
+  静态依赖，DTO 归属迁移留独立批次，同 commit 登记白名单。
+- **验证**：build 0 错误（24 警告=基线）；187/187；分层守卫 0 新违规、
+  0 过期条目；审计 `usingInfrastructureCount` 76→74（归因：两 VM 各删
+  1 条 Data using）；冒烟 PASS×2（第二次主窗口正常检出；首次 PASS 带
+  30s 边界窗口检测 WARN，为检测时序抖动，非启动异常）。
+
 ## [3.73.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E2-b/E2-c——DataCollectionService 整类迁入 Application 层

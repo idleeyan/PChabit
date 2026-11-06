@@ -1,30 +1,26 @@
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Application.Aggregators;
 using PChabit.Core.Entities;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 
 namespace PChabit.App.ViewModels;
 
 public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
 {
-    private readonly SankeyAggregator _aggregator;
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly SankeyQueryService _queryService;
     private IReadOnlyDictionary<string, (string Name, string ColorHex)> _categoryMap
         = new Dictionary<string, (string Name, string ColorHex)>();
 
     /// <summary>会话快照分类表（归一化进程名 → 分类名），与映射表一起构成统一分类解析的两级输入。</summary>
-    private Dictionary<string, string> _snapshotMap = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyDictionary<string, string> _snapshotMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
     public SankeyViewModel(
-        SankeyAggregator aggregator,
-        IDbContextFactory<PChabitDbContext> dbFactory) : base()
+        SankeyQueryService queryService) : base()
     {
-        _aggregator = aggregator;
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         Title = "桑基图";
     }
 
@@ -49,11 +45,10 @@ public partial class SankeyViewModel : DbSafeViewModel<SankeyData?>
     {
         var startDt = StartDate?.Date ?? DateTime.Today.AddDays(-6);
         var endDt = EndDate?.Date.AddDays(1) ?? DateTime.Today.AddDays(1);
-        _categoryMap = await AppStatsEngine.LoadCategoryMapAsync(_dbFactory);
-        // 3.45.0：分类解析统一走 AppStatsEngine 唯一入口，需同时取会话快照分类，
-        // 否则「历史记录库无映射的进程」在本页会显示「未分类」，与应用排行不一致（陷阱 43）。
-        _snapshotMap = await AppStatsEngine.LoadSnapshotCategoryMapAsync(_dbFactory, startDt, endDt);
-        return await _aggregator.GetSankeyDataAsync(startDt, endDt, TopN);
+        var result = await _queryService.LoadAsync(startDt, endDt, TopN);
+        _categoryMap = result.CategoryMap;
+        _snapshotMap = result.SnapshotMap;
+        return result.Data;
     }
 
     protected override async Task ApplyStatsOnUIAsync(SankeyData? data)
