@@ -2,6 +2,28 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.85.0] - 2026-11-06
+
+### 变更：移除设置页「AI」分区（用户需求）
+
+设置页的 AI 分区不再有存在意义，整区删除。**注意：AI 功能链本身
+保留**——仪表盘「今日速览」的 AI 摘要（`DashboardViewModel.RequestAiSummaryAsync`）、
+每周自动 AI 解读（`IWeeklyAiInsightService`）、`AnalyticsAiService` 等仍在
+运行；删除的只是配置入口。
+
+- **删除**：`Views/Settings/AiSettingsSection.xaml(.cs)`（381 行，3.64.0
+  D3 批次拆出的自治分区）、设置页侧栏「AI」导航项、宿主接线三处
+  （Initialize/ApplySection.Show/Reload）。
+- **保留**：`SettingsViewModel`/`SettingsService` 的 AI 属性与
+  `settings.json` 既有配置（用户当前 `AiInsightsEnabled=true`，仪表盘
+  AI 摘要继续生效；如需关闭可改 settings.json 或后续批次移除功能链）。
+- **审计基线漂移归因**：`asyncVoidCount` 61→60（删除的
+  `AiTestConnection_Click` 事件处理器）、`catchGenericCount` 436→434
+  （删除文件内 2 处 catch）；其余计数零变化。
+- **验证**：build 0 错误（24 警告=基线）；206/206；守卫 28/28；
+  冒烟 PASS（3.85.0，0 ERR/FTL）；`smoke_ui.py` 9/9 页面 34 秒；
+  设置页实测：AI 项确认消失、分区切换正常、运行日志 0 ERR/FTL。
+
 ## [3.84.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 G——测试扩面（G1/G2/G3 完成，G4 基线建立）

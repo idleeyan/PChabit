@@ -35,7 +35,6 @@
                 <ListViewItem Content="界面" Tag="interface" />
                 <ListViewItem Content="便签" Tag="notes" />
                 <ListViewItem Content="数据" Tag="data" />
-                <ListViewItem Content="AI" Tag="ai" />
                 <ListViewItem Content="关于" Tag="about" />
             </ListView>
         </Border>
@@ -81,8 +80,6 @@
             <!-- 数据管理                                    -->
             <!-- ======================================== -->
             <settings:DataSettingsSection x:Name="DataControl" />
-
-            <settings:AiSettingsSection x:Name="AiSectionControl" />
 
             <settings:AboutSettingsSection x:Name="AboutSectionControl" />
         </StackPanel>

@@ -8,11 +8,11 @@
       "count": 2
     },
     {
-      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
       "count": 1
     },
     {
-      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
+      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
       "count": 1
     },
     {
@@ -20,7 +20,7 @@
       "count": 1
     },
     {
-      "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
       "count": 1
     }
   ],
@@ -32,18 +32,18 @@
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:143",
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:229"
   ],
-  "catchGenericCount": 436.0,
+  "catchGenericCount": 434.0,
   "catchGenericTopFiles": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessResourceMonitor.cs",
       "count": 16
     },
     {
-      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
+      "file": "src\\PChabit.App\\App.Shutdown.cs",
       "count": 13
     },
     {
-      "file": "src\\PChabit.App\\App.Shutdown.cs",
+      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
       "count": 13
     },
     {
@@ -71,17 +71,17 @@
       "count": 9
     },
     {
-      "file": "src\\PChabit.App\\Views\\NotesPage.xaml.cs",
+      "file": "src\\PChabit.App\\Views\\QuickNoteWindow.cs",
       "count": 8
     }
   ],
-  "asyncVoidCount": 61,
+  "asyncVoidCount": 60,
   "taskRunCount": 43,
   "usingInfrastructureCount": 54,
   "topFilesByLines": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessNetworkMonitor.cs",
-      "lines": 916
+      "lines": 924
     },
     {
       "file": "src\\PChabit.Infrastructure\\Data\\DatabaseInitializer.cs",
@@ -124,11 +124,11 @@
       "lines": 598
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareValueProvider.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
       "lines": 564
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareValueProvider.cs",
       "lines": 564
     },
     {

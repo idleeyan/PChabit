@@ -1,10 +1,10 @@
 # PChabit code baseline audit
 
-- Generated: 2026-11-06 21:44:08
+- Generated: 2026-11-06 23:23:13
 - Empty catch count: 
 - Silent catch count (no Log./throw inside): 6
-- catch(Exception) count: 436
-- async void count: 61
+- catch(Exception) count: 434
+- async void count: 60
 - Task.Run count: 43
 - using Infrastructure in App/ViewModel: 54
 
@@ -18,10 +18,10 @@
 | File | Count |
 |---|---|
 | src\PChabit.Infrastructure\Services\WebSocketServer.cs | 2 |
-| src\PChabit.App\Services\AppIconService.cs | 1 |
-| src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs | 1 |
-| src\PChabit.Core\Interfaces\IBackgroundAppSettings.cs | 1 |
 | src\PChabit.App\Services\HardwareSampleWriter.cs | 1 |
+| src\PChabit.App\Services\AppIconService.cs | 1 |
+| src\PChabit.Core\Interfaces\IBackgroundAppSettings.cs | 1 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs | 1 |
 
 ## Silent catch locations
 
@@ -37,21 +37,21 @@
 | File | Count |
 |---|---|
 | src\PChabit.HardwareMonitor\Hardware\ProcessResourceMonitor.cs | 16 |
-| src\PChabit.App\Views\DashboardPage.xaml.cs | 13 |
 | src\PChabit.App\App.Shutdown.cs | 13 |
+| src\PChabit.App\Views\DashboardPage.xaml.cs | 13 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.cs | 12 |
 | src\PChabit.App\App.xaml.cs | 12 |
 | src\PChabit.App\Services\AppIconService.cs | 12 |
 | src\PChabit.App\Views\AppStatsTab.xaml.cs | 11 |
 | src\PChabit.App\App.StickyNotes.cs | 9 |
 | src\PChabit.HardwareMonitor\Hardware\HardwareMonitor.cs | 9 |
-| src\PChabit.App\Views\NotesPage.xaml.cs | 8 |
+| src\PChabit.App\Views\QuickNoteWindow.cs | 8 |
 
 ## Top 20 files by line count
 
 | File | Lines |
 |---|---|
-| src\PChabit.HardwareMonitor\Hardware\ProcessNetworkMonitor.cs | 916 |
+| src\PChabit.HardwareMonitor\Hardware\ProcessNetworkMonitor.cs | 924 |
 | src\PChabit.Infrastructure\Data\DatabaseInitializer.cs | 824 |
 | src\PChabit.Infrastructure\Analysis\AnalyticsEngine.cs | 819 |
 | src\PChabit.App\Services\TaskbarWidget.cs | 786 |
@@ -62,8 +62,8 @@
 | src\PChabit.App\Views\HardwareMonitorPage.xaml | 607 |
 | src\PChabit.App\Views\WebStatsTab.xaml | 603 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Collection.cs | 598 |
-| src\PChabit.HardwareMonitor\Hardware\HardwareValueProvider.cs | 564 |
 | src\PChabit.HardwareMonitor\Hardware\NetworkManager.cs | 564 |
+| src\PChabit.HardwareMonitor\Hardware\HardwareValueProvider.cs | 564 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Maintenance.cs | 562 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Web.cs | 553 |
 | src\PChabit.App\ViewModels\SettingsViewModel.cs | 545 |

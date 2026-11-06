@@ -30,7 +30,6 @@ public sealed partial class SettingsPage : Page
             // 分区注入同一 ViewModel 实例（SettingsViewModel 注册为 Transient，
             // 各分区不可自行 App.GetService，否则会拿到不同实例导致读写失效）
             AboutSectionControl.Refresh();
-            AiSectionControl.Initialize(ViewModel);
             StickyNotesControl.Initialize(ViewModel);
             GeneralControl.Initialize(ViewModel);
             MonitorControl.Initialize(ViewModel);
@@ -76,7 +75,6 @@ public sealed partial class SettingsPage : Page
         Show(DesktopWidgetControl, tag == "interface");
         Show(StickyNotesControl, tag == "notes");
         Show(DataControl, tag == "data");
-        Show(AiSectionControl, tag == "ai");
         Show(AboutSectionControl, tag == "about");
     }
 
@@ -93,7 +91,6 @@ public sealed partial class SettingsPage : Page
             Log.Information("SettingsPage: InitializeAsync 完成");
 
             // 各分区重新加载当前值（等价原集中式 LoadSettingsToUI 的按分区切片）
-            AiSectionControl.Reload();
             StickyNotesControl.Reload();
             GeneralControl.Reload();
             MonitorControl.Reload();
