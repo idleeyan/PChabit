@@ -1,12 +1,12 @@
 # PChabit code baseline audit
 
-- Generated: 2026-11-06 07:22:40
+- Generated: 2026-11-06 08:53:19
 - Empty catch count: 
 - Silent catch count (no Log./throw inside): 6
 - catch(Exception) count: 398
 - async void count: 62
 - Task.Run count: 42
-- using Infrastructure in App/ViewModel: 89
+- using Infrastructure in App/ViewModel: 76
 
 ## Empty catch by file
 
@@ -18,16 +18,16 @@
 | File | Count |
 |---|---|
 | src\PChabit.Infrastructure\Services\WebSocketServer.cs | 2 |
-| src\PChabit.App\Services\DataCollectionService.Persistence.cs | 1 |
 | src\PChabit.App\Services\HardwareSampleWriter.cs | 1 |
 | src\PChabit.App\Services\AppIconService.cs | 1 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs | 1 |
 | src\PChabit.Core\Interfaces\IBackgroundAppSettings.cs | 1 |
 
 ## Silent catch locations
 
 - src\PChabit.App\Services\AppIconService.cs:137
-- src\PChabit.App\Services\DataCollectionService.Persistence.cs:374
-- src\PChabit.App\Services\HardwareSampleWriter.cs:120
+- src\PChabit.App\Services\HardwareSampleWriter.cs:121
+- src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs:374
 - src\PChabit.Core\Interfaces\IBackgroundAppSettings.cs:94
 - src\PChabit.Infrastructure\Services\WebSocketServer.cs:143
 - src\PChabit.Infrastructure\Services\WebSocketServer.cs:229
@@ -38,14 +38,14 @@
 |---|---|
 | src\PChabit.HardwareMonitor\Hardware\ProcessResourceMonitor.cs | 16 |
 | src\PChabit.App\App.Shutdown.cs | 13 |
-| src\PChabit.App\Views\DashboardPage.xaml.cs | 12 |
-| src\PChabit.App\Services\DataCollectionService.cs | 12 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.cs | 12 |
 | src\PChabit.App\App.xaml.cs | 12 |
+| src\PChabit.App\Views\DashboardPage.xaml.cs | 12 |
 | src\PChabit.App\Services\AppIconService.cs | 12 |
 | src\PChabit.HardwareMonitor\Hardware\HardwareMonitor.cs | 9 |
 | src\PChabit.App\App.StickyNotes.cs | 9 |
+| src\PChabit.HardwareMonitor\Hardware\NetworkManager.cs | 7 |
 | src\PChabit.Infrastructure\Services\MonitorManager.cs | 7 |
-| src\PChabit.App\Services\NetworkTrafficPersistenceService.cs | 7 |
 
 ## Top 20 files by line count
 
@@ -61,11 +61,11 @@
 | src\PChabit.HardwareMonitor\Hardware\HardwareMonitor.cs | 627 |
 | src\PChabit.App\Views\HardwareMonitorPage.xaml | 607 |
 | src\PChabit.App\Views\WebStatsTab.xaml | 603 |
-| src\PChabit.App\Services\DataCollectionService.Collection.cs | 598 |
-| src\PChabit.HardwareMonitor\Hardware\NetworkManager.cs | 564 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.Collection.cs | 598 |
 | src\PChabit.HardwareMonitor\Hardware\HardwareValueProvider.cs | 564 |
-| src\PChabit.App\Services\DataCollectionService.Maintenance.cs | 562 |
-| src\PChabit.App\Services\DataCollectionService.Web.cs | 553 |
+| src\PChabit.HardwareMonitor\Hardware\NetworkManager.cs | 564 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.Maintenance.cs | 562 |
+| src\PChabit.Application\UseCases\Collection\DataCollectionService.Web.cs | 553 |
 | src\PChabit.App\ViewModels\SettingsViewModel.cs | 545 |
 | src\PChabit.App\Controls\MarkdownText.cs | 539 |
 | src\PChabit.Infrastructure\Services\SettingsService.cs | 527 |

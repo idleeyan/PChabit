@@ -5,7 +5,7 @@ using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Data;
 
-namespace PChabit.App.Services;
+namespace PChabit.Application.UseCases.Collection;
 
 /// <summary>
 /// 分析升级 P0：DailySummaries 扩展指标的硬件日聚合与历史回填。

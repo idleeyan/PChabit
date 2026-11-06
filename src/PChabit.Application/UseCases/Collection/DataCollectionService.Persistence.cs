@@ -9,9 +9,9 @@ using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 
-namespace PChabit.App.Services;
+namespace PChabit.Application.UseCases.Collection;
 
-public partial class DataCollectionService : IDisposable
+public partial class DataCollectionService : IDataCollectionService, IDisposable
 {
     private void EnqueueSaveCurrentSession()
     {

@@ -8,15 +8,15 @@
       "count": 2
     },
     {
-      "file": "src\\PChabit.App\\Services\\DataCollectionService.Persistence.cs",
-      "count": 1
-    },
-    {
       "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
       "count": 1
     },
     {
       "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "count": 1
+    },
+    {
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs",
       "count": 1
     },
     {
@@ -26,8 +26,8 @@
   ],
   "silentCatchLocations": [
     "src\\PChabit.App\\Services\\AppIconService.cs:137",
-    "src\\PChabit.App\\Services\\DataCollectionService.Persistence.cs:374",
-    "src\\PChabit.App\\Services\\HardwareSampleWriter.cs:120",
+    "src\\PChabit.App\\Services\\HardwareSampleWriter.cs:121",
+    "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Persistence.cs:374",
     "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs:94",
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:143",
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:229"
@@ -43,15 +43,15 @@
       "count": 13
     },
     {
-      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
-      "count": 12
-    },
-    {
-      "file": "src\\PChabit.App\\Services\\DataCollectionService.cs",
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.cs",
       "count": 12
     },
     {
       "file": "src\\PChabit.App\\App.xaml.cs",
+      "count": 12
+    },
+    {
+      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
       "count": 12
     },
     {
@@ -67,17 +67,17 @@
       "count": 9
     },
     {
-      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
       "count": 7
     },
     {
-      "file": "src\\PChabit.App\\Services\\NetworkTrafficPersistenceService.cs",
+      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
       "count": 7
     }
   ],
   "asyncVoidCount": 62,
   "taskRunCount": 42,
-  "usingInfrastructureCount": 89,
+  "usingInfrastructureCount": 76,
   "topFilesByLines": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessNetworkMonitor.cs",
@@ -120,23 +120,23 @@
       "lines": 603
     },
     {
-      "file": "src\\PChabit.App\\Services\\DataCollectionService.Collection.cs",
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Collection.cs",
       "lines": 598
-    },
-    {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
-      "lines": 564
     },
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareValueProvider.cs",
       "lines": 564
     },
     {
-      "file": "src\\PChabit.App\\Services\\DataCollectionService.Maintenance.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
+      "lines": 564
+    },
+    {
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Maintenance.cs",
       "lines": 562
     },
     {
-      "file": "src\\PChabit.App\\Services\\DataCollectionService.Web.cs",
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.Web.cs",
       "lines": 553
     },
     {

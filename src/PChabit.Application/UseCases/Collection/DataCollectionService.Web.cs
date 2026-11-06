@@ -10,7 +10,7 @@ using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 using PChabit.Infrastructure.Services;
 
-namespace PChabit.App.Services;
+namespace PChabit.Application.UseCases.Collection;
 
 /// <summary>单个网页会话的运行时活跃跟踪状态</summary>
 internal sealed class WebSessionRuntime

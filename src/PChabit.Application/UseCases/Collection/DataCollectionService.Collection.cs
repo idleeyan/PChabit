@@ -9,9 +9,9 @@ using PChabit.Core.Interfaces;
 using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Monitoring;
 
-namespace PChabit.App.Services;
+namespace PChabit.Application.UseCases.Collection;
 
-public partial class DataCollectionService : IDisposable
+public partial class DataCollectionService : IDataCollectionService, IDisposable
 {
     private readonly Dictionary<(DateTime Date, int Hour), (DateTime startTime, int keyCount)> _typingBursts = new();
     private const int TypingBurstThresholdMs = 1000;

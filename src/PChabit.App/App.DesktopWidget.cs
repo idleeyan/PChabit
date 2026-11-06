@@ -262,7 +262,7 @@ public partial class App
     /// </summary>
     private (string ProcessName, string Category) GetCurrentActivity()
     {
-        var dcs = _serviceProvider?.GetService<DataCollectionService>();
+        var dcs = _serviceProvider?.GetService<IDataCollectionService>();
         var process = dcs?.CurrentProcessName ?? string.Empty;
         if (string.IsNullOrEmpty(process)) return (string.Empty, string.Empty);
 

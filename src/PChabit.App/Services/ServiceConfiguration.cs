@@ -84,7 +84,11 @@ public static class ServiceConfiguration
         // 硬件分钟样本落库（分析升级 P0，订阅 HardwareMonitorService.ValuesUpdated）
         services.AddSingleton<HardwareSampleWriter>();
 
-        services.AddSingleton<DataCollectionService>();
+        // E2-b/c（3.73.0）：用例编排迁 Application/UseCases/Collection（六分部整类），
+        // App 只依赖 Core 接口（陷阱 3：注册与实现同批提交）
+        services.AddSingleton<Application.UseCases.Collection.DataCollectionService>();
+        services.AddSingleton<Core.Interfaces.IDataCollectionService>(sp =>
+            sp.GetRequiredService<Application.UseCases.Collection.DataCollectionService>());
         services.AddSingleton<IAppIconService, AppIconService>();
         services.AddSingleton<IBackgroundAppSettings, BackgroundAppSettings>();
         services.AddSingleton<ISettingsService, SettingsService>();

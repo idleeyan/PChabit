@@ -28,7 +28,7 @@ public partial class App : Microsoft.UI.Xaml.Application
     private MonitorManager? _monitorManager;
     private readonly TaskCompletionSource _dbInitCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    private DataCollectionService? _dataCollectionService;
+    private Core.Interfaces.IDataCollectionService? _dataCollectionService;
     private HardwareMonitorService? _hardwareMonitorService;
     private HardwareSampleWriter? _hardwareSampleWriter;
     private TrayService? _trayService;

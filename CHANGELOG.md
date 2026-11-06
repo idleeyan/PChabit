@@ -2,6 +2,29 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.73.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E2-b/E2-c——DataCollectionService 整类迁入 Application 层
+
+`src\PChabit.App\Services\DataCollectionService.*`（6 个分部文件，约 2,243 行）
+按计划 E2-b/E2-c 批次整类迁入 `PChabit.Application\UseCases\Collection\`。
+用例编排自此不再住在表示层。**E2 物理迁移全部完成**（E2-a 接口下沉 3.72.0
++ 本批）。
+
+- **跨程序集迁移必须整类搬运**：partial 类不能拆散在两个程序集，6 个分部
+  文件（.Analysis/.Collection/.Maintenance/.Persistence/.Web/主文件）一次
+  全部搬移，仅改命名空间（`PChabit.App.Services` →
+  `PChabit.Application.UseCases.Collection`），逻辑零变化。
+- **新增 `PChabit.Core/Interfaces/IDataCollectionService.cs`**：App 层消费方
+  （App.xaml.cs 启动/关机、App.Startup、App.DesktopWidget）不再引用具体类，
+  只依赖 Core 接口（`Start`/`Stop`/`CurrentProcessName`）。
+- **DI 注册同批收口**：`AddSingleton<接口>(实现)` 注册对齐 E2-a 适配器模式
+  （陷阱 3：注册与实现同批提交）。
+- **验证**：build 0 错误（24 警告=基线）；`dotnet test` **187/187 通过**；
+  部署 `D:\Tool\PChabit` 自包含校验通过（runtimeconfig includedFrameworks、
+  exe 3.73.0.0 与 csproj 一致）；启动 30s **0 ERR/0 FTL**，进程存活、主窗口
+  正常；冒烟 **PASS**。
+
 ## [3.72.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E2-a（修订版）——硬件/网络数据源接口下沉 Core

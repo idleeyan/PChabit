@@ -23,7 +23,7 @@ public partial class App : Microsoft.UI.Xaml.Application
             // 兼容旧路径：钩子线程不可用时才回退 UI 调度器
             _monitorManager.UIDispatcher = action => Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().TryEnqueue(() => action());
 
-            _dataCollectionService = _serviceProvider!.GetRequiredService<DataCollectionService>();
+            _dataCollectionService = _serviceProvider!.GetRequiredService<Core.Interfaces.IDataCollectionService>();
 
             // 书签/历史同步消息处理器：必须在 WebSocketServer 启动前完成订阅
             _serviceProvider!.GetRequiredService<BrowserSyncWebSocketHandler>();
