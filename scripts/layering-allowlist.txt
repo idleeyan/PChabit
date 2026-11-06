@@ -4,7 +4,6 @@ ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/AppDetailViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/AppStatsViewModel.cs|PChabit.Infrastructure.Analysis
-ViewModels/AppStatsViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/AppStatsViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/CategoryCrudViewModelBase.cs|PChabit.Infrastructure.Data
 ViewModels/CategoryDetailDialogViewModel.cs|PChabit.Infrastructure.Services
@@ -26,7 +25,6 @@ ViewModels/DataManagementViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/DataManagementViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/DetailDialogViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/DetailDialogViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/KeyboardDetailsViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/NetworkTrafficViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/NotesViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Data

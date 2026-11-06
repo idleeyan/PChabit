@@ -2,6 +2,27 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.76.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-3——AppStats/KeyboardDetails 查询服务化
+
+E3 第三批：计划优先级第 5 位的两个 VM 去 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/Queries/AppStatsQueryService`**：
+  `BuildReportAsync` 透传 `AppStatsEngine.BuildAsync`（周期/分类过滤/搜索
+  三参，逻辑零变化）。应用说明批量加载（`IAppDescriptionService`）仍在 VM
+  后台阶段执行（其属 Services 接口，不在本批范畴）。
+- **新增 `PChabit.Application/Queries/KeyboardDetailsQueryService`**：
+  `LoadAsync` 返回当日 KeyboardSessions+MouseSessions 原始行（两表合一，
+  加载日志保留在服务内）；键位聚合/快捷键 Top/每小时统计等计算留在 VM
+  （消费其内嵌 stats 模型）。
+- **白名单收缩 46→44**：两 VM 的 `using PChabit.Infrastructure.Data` 清除。
+  AppStats 残留 `Analysis`/`Services` using 为 DTO 与接口依赖，随后续批次
+  处理；KeyboardDetails 已无任何 Infrastructure using。
+- **验证**：build 0 错误（24 警告=基线）；187/187；分层守卫 44/44 无新
+  违规；审计 `usingInfrastructureCount` 72→70（归因：两 VM 各删 1 条 Data
+  using）；冒烟 PASS（3.76.0，0 ERR/FTL）；常驻实例停→部署→恢复闭环。
+
 ## [3.75.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-2——Timeline/NetworkTraffic 查询服务化

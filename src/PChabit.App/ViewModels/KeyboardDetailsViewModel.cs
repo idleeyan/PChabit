@@ -1,19 +1,18 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
-using PChabit.Infrastructure.Data;
+using PChabit.Application.Queries;
 
 namespace PChabit.App.ViewModels;
 
 public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsViewModel.KeyboardDetailsStats>
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbContextFactory;
+    private readonly KeyboardDetailsQueryService _queryService;
 
-    public KeyboardDetailsViewModel(IDbContextFactory<PChabitDbContext> dbContextFactory) : base()
+    public KeyboardDetailsViewModel(KeyboardDetailsQueryService queryService) : base()
     {
-        _dbContextFactory = dbContextFactory;
+        _queryService = queryService;
         Title = "键鼠详情";
     }
     
@@ -97,17 +96,10 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     {
         var selectedDate = SelectedDate;
         var stats = new KeyboardDetailsStats();
-        
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync();
-        
-        // 键盘数据
-        var keySessions = await dbContext.KeyboardSessions
-            .AsNoTracking()
-            .Where(s => s.Date >= selectedDate && s.Date < selectedDate.AddDays(1))
-            .ToListAsync();
 
-        Log.Information("键盘数据加载: 日期={Date}, 会话数={Count}, 总按键={TotalKeys}",
-            selectedDate.ToString("yyyy-MM-dd"), keySessions.Count, keySessions.Sum(s => s.TotalKeyPresses));
+        var day = await _queryService.LoadAsync(selectedDate);
+        var keySessions = day.KeySessions;
+        var mouseSessions = day.MouseSessions;
 
         var k = stats.Keyboard;
         k.TotalPresses = keySessions.Sum(s => s.TotalKeyPresses);
@@ -119,15 +111,6 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
         ComputeKeyUsage(keySessions, k);
         ComputeHourlyData(keySessions, k);
         ComputeShortcuts(keySessions, k);
-
-        // 鼠标数据
-        var mouseSessions = await dbContext.MouseSessions
-            .AsNoTracking()
-            .Where(s => s.Date >= selectedDate && s.Date < selectedDate.AddDays(1))
-            .ToListAsync();
-
-        Log.Information("鼠标数据加载: 日期={Date}, 会话数={Count}, 总点击={TotalClicks}",
-            selectedDate.ToString("yyyy-MM-dd"), mouseSessions.Count, mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount));
 
         var m = stats.Mouse;
         m.TotalClicks = mouseSessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);

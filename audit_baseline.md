@@ -1,12 +1,12 @@
 # PChabit code baseline audit
 
-- Generated: 2026-11-06 09:23:12
+- Generated: 2026-11-06 09:39:37
 - Empty catch count: 
 - Silent catch count (no Log./throw inside): 6
 - catch(Exception) count: 398
 - async void count: 62
 - Task.Run count: 42
-- using Infrastructure in App/ViewModel: 72
+- using Infrastructure in App/ViewModel: 70
 
 ## Empty catch by file
 
@@ -19,9 +19,9 @@
 |---|---|
 | src\PChabit.Infrastructure\Services\WebSocketServer.cs | 2 |
 | src\PChabit.Core\Interfaces\IBackgroundAppSettings.cs | 1 |
-| src\PChabit.App\Services\HardwareSampleWriter.cs | 1 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Persistence.cs | 1 |
 | src\PChabit.App\Services\AppIconService.cs | 1 |
+| src\PChabit.App\Services\HardwareSampleWriter.cs | 1 |
 
 ## Silent catch locations
 
@@ -38,14 +38,14 @@
 |---|---|
 | src\PChabit.HardwareMonitor\Hardware\ProcessResourceMonitor.cs | 16 |
 | src\PChabit.App\App.Shutdown.cs | 13 |
-| src\PChabit.App\Views\DashboardPage.xaml.cs | 12 |
 | src\PChabit.App\Services\AppIconService.cs | 12 |
 | src\PChabit.App\App.xaml.cs | 12 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.cs | 12 |
+| src\PChabit.App\Views\DashboardPage.xaml.cs | 12 |
 | src\PChabit.HardwareMonitor\Hardware\HardwareMonitor.cs | 9 |
 | src\PChabit.App\App.StickyNotes.cs | 9 |
-| src\PChabit.Infrastructure\Services\WebSocketServer.cs | 7 |
-| src\PChabit.App\Views\QuickNoteWindow.cs | 7 |
+| src\PChabit.Infrastructure\Services\MonitorManager.cs | 7 |
+| src\PChabit.App\Services\NetworkTrafficPersistenceService.cs | 7 |
 
 ## Top 20 files by line count
 
@@ -62,8 +62,8 @@
 | src\PChabit.App\Views\HardwareMonitorPage.xaml | 607 |
 | src\PChabit.App\Views\WebStatsTab.xaml | 603 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Collection.cs | 598 |
-| src\PChabit.HardwareMonitor\Hardware\HardwareValueProvider.cs | 564 |
 | src\PChabit.HardwareMonitor\Hardware\NetworkManager.cs | 564 |
+| src\PChabit.HardwareMonitor\Hardware\HardwareValueProvider.cs | 564 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Maintenance.cs | 562 |
 | src\PChabit.Application\UseCases\Collection\DataCollectionService.Web.cs | 553 |
 | src\PChabit.App\ViewModels\SettingsViewModel.cs | 545 |

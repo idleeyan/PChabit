@@ -18,6 +18,9 @@ public static class ServiceCollectionExtensions
         // E3-2（3.75.0）：时间线/流量页查询服务
         services.AddSingleton<Queries.TimelineQueryService>();
         services.AddSingleton<Queries.NetworkTrafficQueryService>();
+        // E3-3（3.76.0）：应用统计/键鼠详情查询服务
+        services.AddSingleton<Queries.AppStatsQueryService>();
+        services.AddSingleton<Queries.KeyboardDetailsQueryService>();
 
         return services;
     }

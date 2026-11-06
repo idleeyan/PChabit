@@ -2,14 +2,13 @@ using System.Collections.ObjectModel;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 using Windows.ApplicationModel.DataTransfer;
 
@@ -17,7 +16,7 @@ namespace PChabit.App.ViewModels;
 
 public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly AppStatsQueryService _queryService;
     private readonly IAppIconService _iconService;
     private readonly IBackgroundAppSettings _backgroundAppSettings;
     private readonly IAppDescriptionService? _descriptionService;
@@ -108,12 +107,12 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
     };
 
     public AppStatsViewModel(
-        IDbContextFactory<PChabitDbContext> dbFactory,
+        AppStatsQueryService queryService,
         IAppIconService iconService,
         IBackgroundAppSettings backgroundAppSettings,
         IAppDescriptionService? descriptionService = null)
     {
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _iconService = iconService;
         _backgroundAppSettings = backgroundAppSettings;
         _descriptionService = descriptionService;
@@ -134,7 +133,7 @@ public partial class AppStatsViewModel : DbSafeViewModel<AppStatsReport>
         };
 
         LastPeriod = period;
-        var report = await AppStatsEngine.BuildAsync(_dbFactory, period, SelectedCategoryFilter, SearchText);
+        var report = await _queryService.BuildReportAsync(period, SelectedCategoryFilter, SearchText);
 
         // 批量加载本页应用说明（后台阶段执行，避免阻塞 UI；进程名统一规范化）
         _descMap = new Dictionary<string, string>(StringComparer.Ordinal);
