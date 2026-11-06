@@ -2,6 +2,27 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.77.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-4——AppDetail/DetailDialog 查询服务化
+
+E3 第四批：两个详情弹窗 VM 去 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/Queries/AppDetailQueryService`**：
+  `BuildReportAsync` 透传 `AppDetailEngine.BuildAsync`（原 VM 的
+  `Task.Run` 后台执行语义收进服务，逻辑零变化）。说明查询与统计并行的
+  结构（陷阱 13 风格）保持在 VM。
+- **新增 `PChabit.Application/Queries/DetailDialogQueryService`**：
+  `LoadKeyboardSessionsAsync`/`LoadMouseSessionsAsync`/`LoadWebSessionsAsync`
+  三方法，各自的容错降级（空列表 + Log.Warning）逐字保留；按键排行/
+  应用按键统计/每小时分布等聚合展示留在 VM。
+- **白名单收缩 44→42**：两 VM 的 `using PChabit.Infrastructure.Data` 清除。
+  残留 `Analysis`/`Services` using 为 DTO 与接口依赖（IWebsiteCategoryService/
+  IAppDescriptionService），随后续批次处理。
+- **验证**：build 0 错误（24 警告=基线）；187/187；分层守卫 42/42 无新
+  违规；审计 `usingInfrastructureCount` 70→68（归因：两 VM 各删 1 条 Data
+  using）；冒烟 PASS（3.77.0，0 ERR/FTL）；停实例→部署→恢复闭环。
+
 ## [3.76.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-3——AppStats/KeyboardDetails 查询服务化

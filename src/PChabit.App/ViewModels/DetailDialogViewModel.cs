@@ -1,24 +1,23 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
 using PChabit.Core.Entities;
-using PChabit.Infrastructure.Data;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Services;
 
 namespace PChabit.App.ViewModels;
 
 public partial class DetailDialogViewModel : ObservableObject
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly DetailDialogQueryService _queryService;
     private readonly IWebsiteCategoryService _websiteCategoryService;
 
     public DetailDialogViewModel(
-        IDbContextFactory<PChabitDbContext> dbFactory,
+        DetailDialogQueryService queryService,
         IWebsiteCategoryService websiteCategoryService)
     {
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _websiteCategoryService = websiteCategoryService;
     }
     
@@ -35,21 +34,7 @@ public partial class DetailDialogViewModel : ObservableObject
     {
         Title = "按键详情";
 
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-        List<Core.Entities.KeyboardSession> sessions;
-
-        try
-        {
-            sessions = await dbContext.KeyboardSessions
-                .Where(s => s.Date >= date && s.Date < date.AddDays(1))
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 KeyboardSessions 失败");
-            sessions = new List<Core.Entities.KeyboardSession>();
-        }
+        var sessions = await _queryService.LoadKeyboardSessionsAsync(date);
         
         var totalPresses = sessions.Sum(s => s.TotalKeyPresses);
         var totalBackspace = sessions.Sum(s => s.BackspaceCount);
@@ -143,21 +128,7 @@ public partial class DetailDialogViewModel : ObservableObject
     {
         Title = "鼠标点击详情";
 
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-        List<Core.Entities.MouseSession> sessions;
-
-        try
-        {
-            sessions = await dbContext.MouseSessions
-                .Where(s => s.Date >= date && s.Date < date.AddDays(1))
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 MouseSessions 失败");
-            sessions = new List<Core.Entities.MouseSession>();
-        }
+        var sessions = await _queryService.LoadMouseSessionsAsync(date);
         
         var totalClicks = sessions.Sum(s => s.LeftClickCount + s.RightClickCount + s.MiddleClickCount);
         var leftClicks = sessions.Sum(s => s.LeftClickCount);
@@ -203,25 +174,7 @@ public partial class DetailDialogViewModel : ObservableObject
     {
         Title = "网页访问详情";
 
-        var tomorrow = date.AddDays(1);
-
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-        List<Core.Entities.WebSession> sessions;
-
-        try
-        {
-            sessions = await dbContext.WebSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= date && s.StartTime < tomorrow)
-                .OrderByDescending(s => s.StartTime)
-                .ToListAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 WebSessions 失败");
-            sessions = new List<Core.Entities.WebSession>();
-        }
+        var sessions = await _queryService.LoadWebSessionsAsync(date);
         
         var totalPages = sessions.Count;
         var uniqueDomains = sessions.Select(s => s.Domain).Distinct().Count();

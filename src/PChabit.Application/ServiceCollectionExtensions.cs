@@ -21,6 +21,9 @@ public static class ServiceCollectionExtensions
         // E3-3（3.76.0）：应用统计/键鼠详情查询服务
         services.AddSingleton<Queries.AppStatsQueryService>();
         services.AddSingleton<Queries.KeyboardDetailsQueryService>();
+        // E3-4（3.77.0）：应用详情卡片/详情弹窗查询服务
+        services.AddSingleton<Queries.AppDetailQueryService>();
+        services.AddSingleton<Queries.DetailDialogQueryService>();
 
         return services;
     }

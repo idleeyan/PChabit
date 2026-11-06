@@ -1,13 +1,12 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml.Media;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Core.Interfaces;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 
 namespace PChabit.App.ViewModels;
@@ -34,7 +33,7 @@ public class AppDetailDayItem
 /// <summary>应用详情卡片 ViewModel（与 AppDetailDialog.xaml 绑定）。</summary>
 public partial class AppDetailViewModel : ObservableObject
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly AppDetailQueryService _queryService;
     private readonly IAppIconService _iconService;
     private readonly IAppDescriptionService? _descriptionService;
 
@@ -129,12 +128,12 @@ public partial class AppDetailViewModel : ObservableObject
     public ObservableCollection<string> WindowTitles { get; } = new();
 
     public AppDetailViewModel(
-        IDbContextFactory<PChabitDbContext> dbFactory,
+        AppDetailQueryService queryService,
         IAppIconService iconService,
         ICategoryService? categoryService = null,
         IAppDescriptionService? descriptionService = null)
     {
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _iconService = iconService;
         _ = categoryService;
         _descriptionService = descriptionService;
@@ -182,8 +181,8 @@ public partial class AppDetailViewModel : ObservableObject
             // 说明查询与详情统计并行（陷阱 13 风格：数据加载不串行依赖）
             var descTask = _descriptionService?.GetDescriptionAsync(_processName);
 
-            var report = await Task.Run(() => AppDetailEngine.BuildAsync(
-                _dbFactory, _period, _processName, _appName, _category, _category));
+            var report = await _queryService.BuildReportAsync(
+                _period, _processName, _appName, _category, _category);
 
             var share = _totalMinutesAllApps > 0 && report.TotalMinutes > 0
                 ? report.TotalMinutes / _totalMinutesAllApps * 100
