@@ -1,10 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 
 
@@ -20,13 +18,7 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
 
     private async Task LoadCategoryOptionsAsync()
     {
-        await using var dbContext = await _dbFactory.CreateDbContextAsync();
-        var categoryNames = await dbContext.WebsiteCategories
-            .AsNoTracking()
-            .Where(c => c.IsActive)
-            .OrderBy(c => c.SortOrder)
-            .Select(c => c.Name)
-            .ToListAsync();
+        var categoryNames = await _queryService.LoadCategoryNamesAsync();
 
         var options = new List<string> { "全部分类" };
         options.AddRange(categoryNames);

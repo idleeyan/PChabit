@@ -26,6 +26,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Queries.DetailDialogQueryService>();
         // E3-5（3.78.0）：网页浏览历史查询服务
         services.AddSingleton<Queries.WebHistoryQueryService>();
+        // E3-6（3.79.0）：网页访问详情查询服务
+        services.AddSingleton<Queries.WebDetailsQueryService>();
 
         return services;
     }

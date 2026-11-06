@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Infrastructure.Analysis;
 
@@ -89,24 +88,10 @@ public partial class WebDetailsViewModel
     {
         try
         {
-            await using var db = await _dbFactory.CreateDbContextAsync();
-            var end = EndDate.AddDays(1);
-
-            var rows = await db.AppSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= StartDate && s.StartTime < end)
-                .Select(s => new { s.StartTime, s.Duration })
-                .ToListAsync();
-
-            var result = new List<AppHourPoint>(24);
-            for (var h = 0; h < 24; h++)
-            {
-                var mins = rows
-                    .Where(s => s.StartTime.Hour == h)
-                    .Sum(s => s.Duration.TotalMinutes);
-                result.Add(new AppHourPoint(h, $"{h:00}:00", mins));
-            }
-            return result;
+            var result = await _queryService.LoadAppHourlyAsync(StartDate, EndDate);
+            return result
+                .Select(r => new AppHourPoint(r.Hour, r.Label, r.Minutes))
+                .ToList();
         }
         catch (Exception ex)
         {

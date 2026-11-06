@@ -8,11 +8,11 @@
       "count": 2
     },
     {
-      "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
+      "file": "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs",
       "count": 1
     },
     {
-      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "file": "src\\PChabit.App\\Services\\HardwareSampleWriter.cs",
       "count": 1
     },
     {
@@ -20,7 +20,7 @@
       "count": 1
     },
     {
-      "file": "src\\PChabit.Core\\Interfaces\\IBackgroundAppSettings.cs",
+      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
       "count": 1
     }
   ],
@@ -32,7 +32,7 @@
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:143",
     "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs:229"
   ],
-  "catchGenericCount": 398.0,
+  "catchGenericCount": 399.0,
   "catchGenericTopFiles": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessResourceMonitor.cs",
@@ -43,11 +43,7 @@
       "count": 13
     },
     {
-      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.cs",
-      "count": 12
-    },
-    {
-      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
+      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
       "count": 12
     },
     {
@@ -55,7 +51,11 @@
       "count": 12
     },
     {
-      "file": "src\\PChabit.App\\Services\\AppIconService.cs",
+      "file": "src\\PChabit.App\\Views\\DashboardPage.xaml.cs",
+      "count": 12
+    },
+    {
+      "file": "src\\PChabit.Application\\UseCases\\Collection\\DataCollectionService.cs",
       "count": 12
     },
     {
@@ -67,17 +67,17 @@
       "count": 9
     },
     {
-      "file": "src\\PChabit.Infrastructure\\Services\\WebDAVSyncService.cs",
+      "file": "src\\PChabit.App\\Services\\NetworkTrafficPersistenceService.cs",
       "count": 7
     },
     {
-      "file": "src\\PChabit.Infrastructure\\Services\\MonitorManager.cs",
+      "file": "src\\PChabit.Infrastructure\\Services\\WebSocketServer.cs",
       "count": 7
     }
   ],
   "asyncVoidCount": 62,
   "taskRunCount": 42,
-  "usingInfrastructureCount": 67,
+  "usingInfrastructureCount": 63,
   "topFilesByLines": [
     {
       "file": "src\\PChabit.HardwareMonitor\\Hardware\\ProcessNetworkMonitor.cs",
@@ -124,11 +124,11 @@
       "lines": 598
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareValueProvider.cs",
       "lines": 564
     },
     {
-      "file": "src\\PChabit.HardwareMonitor\\Hardware\\HardwareValueProvider.cs",
+      "file": "src\\PChabit.HardwareMonitor\\Hardware\\NetworkManager.cs",
       "lines": 564
     },
     {

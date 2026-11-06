@@ -29,13 +29,9 @@ ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Data
 ViewModels/SettingsViewModel.Models.cs|PChabit.Infrastructure.Services
 ViewModels/TimelineViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/WebDetailsViewModel.Activity.cs|PChabit.Infrastructure.Analysis
-ViewModels/WebDetailsViewModel.Categorization.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.Categorization.cs|PChabit.Infrastructure.Services
 ViewModels/WebDetailsViewModel.Computation.cs|PChabit.Infrastructure.Analysis
-ViewModels/WebDetailsViewModel.Computation.cs|PChabit.Infrastructure.Data
-ViewModels/WebDetailsViewModel.Models.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Analysis
-ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/WebsiteCategoryEditDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/WebsiteCategoryManagementViewModel.cs|PChabit.Infrastructure.Data

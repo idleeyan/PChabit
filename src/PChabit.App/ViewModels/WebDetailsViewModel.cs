@@ -1,11 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
+using PChabit.Application.Queries;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 using PChabit.Infrastructure.Services;
 
 
@@ -13,15 +12,15 @@ namespace PChabit.App.ViewModels;
 
 public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.WebStatsData>
 {
-    private readonly IDbContextFactory<PChabitDbContext> _dbFactory;
+    private readonly WebDetailsQueryService _queryService;
     private readonly IWebsiteCategoryService _websiteCategoryService;
     private bool _isCategoriesInitialized;
 
     public WebDetailsViewModel(
-        IDbContextFactory<PChabitDbContext> dbFactory,
+        WebDetailsQueryService queryService,
         IWebsiteCategoryService websiteCategoryService) : base()
     {
-        _dbFactory = dbFactory;
+        _queryService = queryService;
         _websiteCategoryService = websiteCategoryService;
         Title = "网页访问详情";
         _startDateOffset = new DateTimeOffset(DateTime.Today);

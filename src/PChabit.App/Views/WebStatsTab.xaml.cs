@@ -18,9 +18,9 @@ public sealed partial class WebStatsTab : UserControl
 
     public WebStatsTab()
     {
-        var dbFactory = App.GetService<IDbContextFactory<PChabitDbContext>>();
+        var queryService = App.GetService<PChabit.Application.Queries.WebDetailsQueryService>();
         var websiteCategoryService = App.GetService<IWebsiteCategoryService>();
-        ViewModel = new WebDetailsViewModel(dbFactory, websiteCategoryService);
+        ViewModel = new WebDetailsViewModel(queryService, websiteCategoryService);
         DataContext = ViewModel;
 
         InitializeComponent();

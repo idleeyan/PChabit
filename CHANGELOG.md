@@ -2,6 +2,25 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.79.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-6——WebDetails 四分部查询服务化
+
+E3 第六批：网页访问详情页（partial 四分部）去 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/Queries/WebDetailsQueryService`**：
+  四类查询收口——`LoadCategoryNamesAsync`（启用分类）、
+  `LoadAppHourlyAsync`（应用小时聚合，失败降级不影响网页侧）、
+  `LoadSessionsAsync`（搜索/分类过滤含物化 CategoryName 回退逻辑）、
+  `LoadBrowserUsageAsync`（浏览器流量归因行）。各降级语义逐字保留；
+  浏览器进程名过滤留在 VM（依赖其 BrowserProcesses 常量）。
+- **消费点适配**：`WebStatsTab.xaml.cs` 原手动 `new WebDetailsViewModel
+  (dbFactory, ...)` 改为从 DI 取 `WebDetailsQueryService` 构造。
+- **白名单收缩 41→37**（四分部各清 1 条 Data using）；审计
+  `usingInfrastructureCount` 67→63。
+- **验证**：build 0 错误（24 警告=基线）；187/187；守卫 37/37；
+  冒烟 PASS（3.79.0，0 ERR/FTL，主窗口正常）；停实例→部署→恢复闭环。
+
 ## [3.78.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-5——WebHistory 查询服务化

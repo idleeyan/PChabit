@@ -1,11 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Infrastructure.Analysis;
-using PChabit.Infrastructure.Data;
 
 
 namespace PChabit.App.ViewModels;
@@ -284,74 +282,15 @@ public partial class WebDetailsViewModel : DbSafeViewModel<WebDetailsViewModel.W
 
     private async Task<List<Core.Entities.WebSession>> LoadSessionsAsync()
     {
-        try
-        {
-            await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-            Log.Debug("WebDetails: 构建查询");
-            var query = dbContext.WebSessions
-                .AsNoTracking()
-                .Where(s => s.StartTime >= StartDate && s.StartTime <= EndDate.AddDays(1));
-            
-            if (!string.IsNullOrEmpty(SearchText))
-            {
-                var searchLower = SearchText.ToLower();
-                query = query.Where(s => 
-                    s.Domain.ToLower().Contains(searchLower) || 
-                    s.Title.ToLower().Contains(searchLower) ||
-                    s.Url.ToLower().Contains(searchLower));
-            }
-            
-            if (SelectedCategory != "全部分类")
-            {
-                // 优先按物化 CategoryName 过滤；历史行回退域名映射
-                var category = await dbContext.WebsiteCategories
-                    .AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.Name == SelectedCategory);
-
-                if (category != null)
-                {
-                    query = query.Where(s => s.CategoryId == category.Id || s.CategoryName == SelectedCategory);
-                }
-                else
-                {
-                    query = query.Where(s => s.CategoryName == SelectedCategory);
-                }
-            }
-            
-            Log.Debug("WebDetails: 执行查询");
-            var result = await query.OrderByDescending(s => s.StartTime).ToListAsync();
-            Log.Debug("WebDetails: 查询返回 {Count} 条记录", result.Count);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载 WebSessions 失败");
-            return new List<Core.Entities.WebSession>();
-        }
+        return await _queryService.LoadSessionsAsync(StartDate, EndDate, SearchText, SelectedCategory);
     }
 
     private async Task<List<Core.Entities.ProcessNetworkUsage>> LoadBrowserUsageAsync()
     {
-        try
-        {
-            await using var dbContext = await _dbFactory.CreateDbContextAsync();
-
-            var startKey = StartDate.ToString("yyyy-MM-dd");
-            var endKey = EndDate.ToString("yyyy-MM-dd");
-            var rows = await dbContext.ProcessNetworkUsages.AsNoTracking()
-                .Where(x => string.Compare(x.Date, startKey) >= 0 && string.Compare(x.Date, endKey) <= 0)
-                .ToListAsync();
-
-            return rows
-                .Where(x => BrowserProcesses.Contains(AppStatsEngine.NormalizeProcessName(x.ProcessName)))
-                .ToList();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "加载浏览器流量归因数据失败");
-            return new List<Core.Entities.ProcessNetworkUsage>();
-        }
+        var rows = await _queryService.LoadBrowserUsageAsync(StartDate, EndDate);
+        return rows
+            .Where(x => BrowserProcesses.Contains(AppStatsEngine.NormalizeProcessName(x.ProcessName)))
+            .ToList();
     }
 
     private SummaryStatsResult ComputeSummaryStats(List<Core.Entities.WebSession> sessions)
