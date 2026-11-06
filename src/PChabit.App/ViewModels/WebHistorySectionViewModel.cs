@@ -1,11 +1,10 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using PChabit.Core.Entities;
 using PChabit.Core.Interfaces;
-using PChabit.Infrastructure.Data;
+using PChabit.Application.Queries;
 
 namespace PChabit.App.ViewModels;
 
@@ -71,7 +70,7 @@ public sealed record HistoryDetailRecord(string Url, string Title, DateTime Visi
 /// </summary>
 public partial class WebHistorySectionViewModel : ViewModelBase
 {
-    private readonly IDbContextFactory<PChabitDbContext> _factory;
+    private readonly WebHistoryQueryService _queryService;
     private readonly ISettingsService _settings;
 
     /// <summary>数据超过该时长未更新即视为陈旧。</summary>
@@ -148,10 +147,10 @@ public partial class WebHistorySectionViewModel : ViewModelBase
     public bool HasNoRows => !IsLoading && FilteredDomains.Count == 0;
 
     public WebHistorySectionViewModel(
-        IDbContextFactory<PChabitDbContext> factory,
+        WebHistoryQueryService queryService,
         ISettingsService settings)
     {
-        _factory = factory;
+        _queryService = queryService;
         _settings = settings;
     }
 
@@ -252,58 +251,30 @@ public partial class WebHistorySectionViewModel : ViewModelBase
 
     private async Task<List<HistoryDomainRow>> LoadOnBackgroundAsync()
     {
-        await using var db = await _factory.CreateDbContextAsync();
+        // E3-5（3.78.0）：查询+聚合+明细索引下沉 WebHistoryQueryService；
+        // 这里的百分比与排序属 UI 投影，留在 VM。
+        var result = await _queryService.LoadAsync();
 
-        // 只取聚合与下钻所需的最小字段（AsNoTracking + 投影，避免加载整表 25k+ 条）。
-        // 刻意不取 VisitCount：该字段是入库时的重复推送累积值，非真实访问次数
-        var items = await db.BrowserHistoryItems
-            .AsNoTracking()
-            .Select(x => new { x.Url, x.Title, x.VisitTime })
-            .ToListAsync();
-
-        var map = new Dictionary<string, (int Count, HashSet<string> Urls, DateTime Last)>(
-            StringComparer.OrdinalIgnoreCase);
-
-        // 3.38.0：同步建立域名 → 明细记录索引，供点击域名后展示详情
+        // 详情索引接管：供点击域名后展示详情（口径与原实现一致，见服务注释）
         _details.Clear();
-        foreach (var it in items)
+        foreach (var kv in result.DetailsByDomain)
         {
-            var domain = ExtractDomain(it.Url);
-            if (string.IsNullOrEmpty(domain)) continue;
-
-            // VisitTime 是 Unix 毫秒（BrowserHistoryItem 约定）
-            var visit = DateTimeOffset.FromUnixTimeMilliseconds(it.VisitTime).LocalDateTime;
-            if (!_details.TryGetValue(domain, out var list))
-            {
-                list = new List<HistoryDetailRecord>();
-                _details[domain] = list;
-            }
-            list.Add(new HistoryDetailRecord(it.Url ?? string.Empty, it.Title ?? string.Empty, visit));
-
-            if (map.TryGetValue(domain, out var cur))
-            {
-                cur.Count++;
-                cur.Urls.Add(it.Url ?? string.Empty);
-                if (visit > cur.Last) cur.Last = visit;
-                map[domain] = cur;
-            }
-            else
-            {
-                map[domain] = (1, new HashSet<string> { it.Url ?? string.Empty }, visit);
-            }
+            _details[kv.Key] = kv.Value
+                .Select(r => new HistoryDetailRecord(r.Url, r.Title, r.Visit))
+                .ToList();
         }
 
-        // 分母同样按记录条数，与上面的 map 计数口径保持一致，
+        // 分母同样按记录条数，与聚合行计数口径保持一致，
         // 否则各行占比之和会远超 100%
-        int total = map.Values.Sum(v => v.Count);
-        return map
-            .Select(kv => new HistoryDomainRow
+        int total = result.Domains.Sum(d => d.RecordCount);
+        return result.Domains
+            .Select(d => new HistoryDomainRow
             {
-                Domain = kv.Key,
-                RecordCount = kv.Value.Count,
-                UniqueUrlCount = kv.Value.Urls.Count,
-                LastVisit = kv.Value.Last,
-                Percentage = total > 0 ? kv.Value.Count * 100.0 / total : 0
+                Domain = d.Domain,
+                RecordCount = d.RecordCount,
+                UniqueUrlCount = d.UniqueUrlCount,
+                LastVisit = d.LastVisit,
+                Percentage = total > 0 ? d.RecordCount * 100.0 / total : 0
             })
             .OrderByDescending(x => x.RecordCount)
             .ThenBy(x => x.Domain)
@@ -415,22 +386,6 @@ public partial class WebHistorySectionViewModel : ViewModelBase
         {
             Log.Error(ex, "WebHistorySection: 打开域名失败 {Domain}", domain);
         }
-    }
-
-    /// <summary>从 URL 提取域名（与前端 report.js 的 extractDomain 口径一致）。</summary>
-    private static string ExtractDomain(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return string.Empty;
-        var s = url.Trim();
-        if (!s.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-            !s.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-        {
-            s = "http://" + s;
-        }
-
-        return Uri.TryCreate(s, UriKind.Absolute, out var uri)
-            ? uri.Host.ToLowerInvariant()
-            : string.Empty;
     }
 
     partial void OnSearchTextChanged(string value) => ApplyFilter();

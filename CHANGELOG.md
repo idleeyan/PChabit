@@ -2,6 +2,26 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.78.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 E3-5——WebHistory 查询服务化
+
+E3 第五批：网页浏览历史页去 `IDbContextFactory`。
+
+- **新增 `PChabit.Application/Queries/WebHistoryQueryService`**：
+  `LoadAsync` 返回域名聚合行（record 数/URL 数/最近访问）+ 每域明细
+  索引；投影查询（AsNoTracking 最小字段）、`ExtractDomain` 口径
+  （无 scheme 补 http、Host 小写归一，与前端 report.js 一致）逐字保留。
+- **VM 侧**：百分比与排序（UI 投影）留在 VM；`_details` 明细索引由
+  查询结果接管（原 LoadOnBackgroundAsync 内的聚合逻辑整体下沉）。
+- **批次调整**：原计划本批同做的 CategoryCrud×3（应用/网站分类管理，
+  CRUD 基类持 protected `DbFactory` + 6 处写操作 + 抽象钩子收
+  `PChabicDbContext` 参数）属写操作模式，需重设计 CRUD 服务边界，
+  移出本批单独处理（已登记台账与计划表）。
+- **白名单收缩 42→41**。验证：build 0 错误（24 警告=基线）；187/187；
+  守卫 41/41；审计 `usingInfrastructureCount` 68→67；冒烟 PASS
+  （3.78.0，0 ERR/FTL）；停实例→部署→恢复闭环。
+
 ## [3.77.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 E3-4——AppDetail/DetailDialog 查询服务化

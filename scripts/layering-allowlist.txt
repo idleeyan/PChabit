@@ -37,6 +37,5 @@ ViewModels/WebDetailsViewModel.Models.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Analysis
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/WebDetailsViewModel.cs|PChabit.Infrastructure.Services
-ViewModels/WebHistorySectionViewModel.cs|PChabit.Infrastructure.Data
 ViewModels/WebsiteCategoryEditDialogViewModel.cs|PChabit.Infrastructure.Services
 ViewModels/WebsiteCategoryManagementViewModel.cs|PChabit.Infrastructure.Data

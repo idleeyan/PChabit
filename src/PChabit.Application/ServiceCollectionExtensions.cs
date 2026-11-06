@@ -24,6 +24,8 @@ public static class ServiceCollectionExtensions
         // E3-4（3.77.0）：应用详情卡片/详情弹窗查询服务
         services.AddSingleton<Queries.AppDetailQueryService>();
         services.AddSingleton<Queries.DetailDialogQueryService>();
+        // E3-5（3.78.0）：网页浏览历史查询服务
+        services.AddSingleton<Queries.WebHistoryQueryService>();
 
         return services;
     }
