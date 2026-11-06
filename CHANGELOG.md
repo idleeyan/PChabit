@@ -2,6 +2,36 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.84.0] - 2026-11-06
+
+### 变更：工程改造计划阶段 G——测试扩面（G1/G2/G3 完成，G4 基线建立）
+
+**测试总数 187 → 206（计划目标 ≥200 达成）。**
+
+- **G1 迁移双路径测试（`DatabaseMigrationTests`，10 用例）**：新库
+  `EnsureCreated` / 老库缺表缺列走 `DatabaseInitializer` 手动 SQL 迁移 /
+  幂等重复执行不破坏 schema 与数据 / 关键列完整性（AppSessions
+  Duration、KeyboardSessions KeyFrequency 等）。**测试坑**：迁移器开
+  第二条独立连接，内存 SQLite 必须 `cache=shared` 且每库唯一名
+  （xUnit 并行共享同一内存库会导致 EnsureCreated 假失败）。
+- **G2 采集链路测试（`DataCollectionServiceTests`，9 用例）**：
+  **3.26.2 回归**——同批 50 条操作含主键冲突对时，逐条隔离重试保住
+  48 条合法数据（反射预灌批次，确定性无竞态）；会话切换闭合
+  （StartTime=事件时间戳、EndTime=墙钟的真实语义）；键鼠桶 Upsert；
+  网页会话 PageView→PageClose 落库；Stop 残余提交；幂等 Start/Stop。
+  测试发现：SQLite 对空进程名无约束，空值不构成脏数据——改用同 Id
+  主键冲突作为真实脏数据源。
+- **G3 冒烟页面导航（`scripts/smoke_ui.py`）**：uiautomation 遍历
+  9 个主页面（仪表盘/时间线/应用使用/网页访问/硬件监控/分析/便签/
+  分类管理/数据管理），断言每页无新增 ERR/FTL。**实测：9/9 通过、
+  全程 38 秒（<2 分钟验收达标）**。
+- **G4 覆盖率基线（cobertura 实测）**：Infrastructure.Analysis
+  **66.5%**（目标 70%，差 3.5pp）；Infrastructure.Data **70.6%**
+  （目标 50%，达标）；Application **31.2%**（目标 60%，主体为
+  DataCollectionService 六分部，随持续测试扩面推进）。
+- **验证**：206/206；build 0 错误（24 警告=基线）；冒烟 PASS
+  （3.84.0，0 ERR/FTL）。
+
 ## [3.83.0] - 2026-11-06
 
 ### 变更：工程改造计划阶段 F2——周期任务重入防护
