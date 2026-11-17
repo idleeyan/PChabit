@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>3.85.0</Version>
+        <Version>3.87.0</Version>
         <Platforms>x64</Platforms>
         <PlatformTarget>x64</PlatformTarget>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -262,6 +262,25 @@
         <PackageReference Include="Serilog.Sinks.File" Version="6.*" />
         <PackageReference Include="System.Drawing.Common" Version="10.0.0" />
     </ItemGroup>
+
+    <!--
+      Rust 进程网络采样内核（pchabit-netd.exe）。
+      只做拷贝、不在这里调 cargo：没有 Rust 工具链的机器也能正常构建；
+      内核产物由 rust\pchabit-netd 下手动执行 cargo build（release profile）生成，或由 CI 生成。
+      产物缺失时 App 会自动回退到内置 C# 采样，不影响功能。
+    -->
+    <PropertyGroup>
+        <RustNetdDir>$(MSBuildThisFileDirectory)..\..\rust\pchabit-netd</RustNetdDir>
+        <RustNetdExe>$(RustNetdDir)\target\release\pchabit-netd.exe</RustNetdExe>
+    </PropertyGroup>
+
+    <Target Name="CopyRustNetdToOutput" AfterTargets="Build" Condition="Exists('$(RustNetdExe)')">
+        <Copy SourceFiles="$(RustNetdExe)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    </Target>
+
+    <Target Name="CopyRustNetdToPublish" AfterTargets="Publish" Condition="Exists('$(RustNetdExe)')">
+        <Copy SourceFiles="$(RustNetdExe)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    </Target>
 </Project>
 
 

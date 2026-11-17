@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Security.Principal;
 using Serilog;
 using static PChabit.HardwareMonitor.Hardware.ProcessNetworkNative;
 
@@ -48,11 +49,15 @@ public sealed class ProcessNetworkSnapshot
 /// 周期采样 Windows IP Helper 连接表 + ESTATS/进程 IO，得到「当前最大占用进程」
 /// 与会话/今日流量统计（类似任务管理器网络列 + 设置里的数据使用量，应用内自采）。
 /// </summary>
-public sealed class ProcessNetworkMonitor : IDisposable
+public sealed partial class ProcessNetworkMonitor : IDisposable
 {
     private const int SampleIntervalMs = 1000;
     private const int TopListCount = 8;
     private const int MaxTrackedProcesses = 256;
+
+    /// <summary>3.85.1：自指监控必须排除，否则采集器自身的落库/监听 IO 会被算成流量。</summary>
+    private static readonly int SelfPid = ResolveSelfPid();
+    private static readonly string SelfProcessName = ResolveSelfProcessName();
 
     private readonly object _sync = new();
     /// <summary>F2（3.83.0）：采样 Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
@@ -66,7 +71,52 @@ public sealed class ProcessNetworkMonitor : IDisposable
     private readonly Dictionary<string, (long Up, long Down)> _adapterLast = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>每条 TCP 连接的 ESTATS 累计基线，只记增量，避免连接生命周期字节一次性入账。</summary>
     private readonly Dictionary<string, (ulong Up, ulong Down)> _connEstatsLast = new(StringComparer.Ordinal);
+    /// <summary>已尝试过启用连接级统计的连接键（每连接只付一次 syscall 成本）。</summary>
+    private readonly HashSet<string> _estatsEnableAttempted = new(StringComparer.Ordinal);
+    /// <summary>连接级统计可用性：null=尚未判定，true=已启用，false=权限不足（永久放弃）。</summary>
+    private bool? _estatsGranted;
+    private bool _estatsDeniedLogged;
     private bool _adapterPrimed;
+
+    // ---- 归因健康度诊断：回答「ESTATS 到底有没有在出数」 ----
+    private int _tickRodOk;            // 本拍成功读回 ROD 的连接数
+    private int _tickRodNonZero;       // 其中累计字节非零的连接数
+    private int _tickConnsWithBytes;   // 本拍产生了增量的连接数
+    private long _tickDeltaBytes;      // 本拍归因到的总字节
+    private int _zeroTickStreak;       // 连续无增量拍数
+    private bool _dataFlowLogged;
+    private DateTime _lastAttributionUtc = DateTime.MinValue;
+
+    /// <summary>当前进程是否以管理员权限运行（Windows 只允许管理员启用连接级统计）。</summary>
+    public static bool IsElevated { get; } = ResolveElevated();
+
+    /// <summary>
+    /// 连接级统计是否可用（= 已提权且启用成功）。
+    /// false 时进程榜必然为空：这不是采样失败，而是 Windows 未授权归因。
+    /// </summary>
+    public bool EstatsEnabled
+    {
+        get
+        {
+            lock (_sync) return _rust != null ? _remoteEstats == true : _estatsGranted == true;
+        }
+    }
+
+    /// <summary>
+    /// 最近 60 秒是否归因到过进程级字节。
+    /// 用于区分「确实没有进程在传数据」与「归因链路没出数」，避免浮窗给错提示。
+    /// </summary>
+    public bool HasRecentAttribution
+    {
+        get
+        {
+            lock (_sync)
+            {
+                var stamp = _rust != null ? _remoteAttributionUtc : _lastAttributionUtc;
+                return (DateTime.UtcNow - stamp).TotalSeconds < 60;
+            }
+        }
+    }
 
     private DateTime _lastSampleUtc = DateTime.UtcNow;
     private string _todayKey = DateTime.Now.ToString("yyyy-MM-dd");
@@ -95,17 +145,25 @@ public sealed class ProcessNetworkMonitor : IDisposable
             _lastSampleUtc = DateTime.UtcNow;
             _timer = new System.Threading.Timer(_ => TickSafe(), null, 200, SampleIntervalMs);
         }
+
+        // 可选通道：Rust 采样内核（PCHABIT_RUST_NETSAMPLER=1），连不上则静默回退
+        EnsureRustSampler();
     }
 
     public void Stop()
     {
         lock (_sync)
         {
-            if (!_running) return;
-            _running = false;
-            _timer?.Dispose();
-            _timer = null;
+            if (_running)
+            {
+                _running = false;
+                _timer?.Dispose();
+                _timer = null;
+            }
         }
+
+        // 即使从未 Start（例如基准工具直接调 SampleOnce），也要回收内核连接与进程
+        StopRustSampler();
     }
 
     public void Dispose() => Stop();
@@ -133,6 +191,13 @@ public sealed class ProcessNetworkMonitor : IDisposable
     /// <summary>执行一次采样（供定时器或测试调用）。</summary>
     public void SampleOnce()
     {
+        // Rust 通道：采样与聚合在守护进程内完成，本类只推系统速率并接收快照
+        if (RustActive)
+        {
+            SampleRemote();
+            return;
+        }
+
         var nowUtc = DateTime.UtcNow;
         double elapsedSec;
         lock (_sync)
@@ -140,10 +205,13 @@ public sealed class ProcessNetworkMonitor : IDisposable
             elapsedSec = Math.Clamp((nowUtc - _lastSampleUtc).TotalSeconds, 0.05, 10.0);
             _lastSampleUtc = nowUtc;
             RollDayIfNeeded();
+            _tickRodOk = 0;
+            _tickRodNonZero = 0;
+            _tickConnsWithBytes = 0;
+            _tickDeltaBytes = 0;
         }
 
         var connStats = CollectConnectionStats();
-        var ioDeltas = CollectIoDeltas();
 
         // 系统口径与硬件卡片一致：优先 LHM NET.Up/Down（页面上显示的那组）；
         // 无 getter 时用网卡 IP Statistics 增量。
@@ -176,6 +244,9 @@ public sealed class ProcessNetworkMonitor : IDisposable
 
             foreach (var (pid, conn) in connStats)
             {
+                // 3.85.1：自指监控会把本程序自身的采集/落库 IO 计入统计，直接排除
+                if (pid == SelfPid) continue;
+
                 if (!_states.TryGetValue(pid, out var st))
                 {
                     if (_states.Count >= MaxTrackedProcesses && !conn.HasBytes) continue;
@@ -187,15 +258,17 @@ public sealed class ProcessNetworkMonitor : IDisposable
                 st.ProcessName = ResolveName(pid);
             }
 
-            // 1) 有 ESTATS 字节的进程：直接记账
-            long estatsUpSum = 0;
-            long estatsDownSum = 0;
-            var fallbackPids = new List<int>();
-
+            // 1) 只对有 ESTATS 真实字节增量的进程记账。
+            // 3.85.1：此前「无 ESTATS 时按 OtherTransferCount / 连接数加权分摊整机流量」
+            // 会把系统无法归因的流量虚构到进程名下。Windows 默认未启用连接级 ESTATS
+            // （本程序也从未调用 SetPerTcpConnectionEStats），因此几乎每拍都走兜底；
+            // 而本进程持续写 SQLite/日志且常驻本地监听端口，权重最大，导致整机约 90%
+            // 的流量被误记成 PChabit 自身（实测单日 20.8 GB）。现改为只记可归因增量，
+            // 系统残余流量仅计入系统会话/今日累计，不再虚构进程归属。
             foreach (var (pid, st) in _states.ToArray())
             {
                 var hasConn = connStats.ContainsKey(pid);
-                if (!hasConn && st.ConnectionCount <= 0 && !ioDeltas.ContainsKey(pid))
+                if (!hasConn && st.ConnectionCount <= 0)
                 {
                     st.RateDown = 0;
                     st.RateUp = 0;
@@ -217,67 +290,17 @@ public sealed class ProcessNetworkMonitor : IDisposable
                     st.SessionDownBytes += estatsDown;
                     st.SessionUpBytes += estatsUp;
                     AddToday(st.ProcessName, pid, estatsUp, estatsDown);
-                    estatsDownSum += estatsDown;
-                    estatsUpSum += estatsUp;
                 }
                 else
                 {
-                    fallbackPids.Add(pid);
-                }
-            }
-
-            // 2) 无 ESTATS：按权重分摊「页面显示口径」的系统上下行
-            long residUp = Math.Max(0, sysUpDelta - estatsUpSum);
-            long residDown = Math.Max(0, sysDownDelta - estatsDownSum);
-            if (fallbackPids.Count > 0 && (residUp > 0 || residDown > 0 || (estatsUpSum == 0 && estatsDownSum == 0)))
-            {
-                if (estatsUpSum == 0 && estatsDownSum == 0)
-                {
-                    residUp = Math.Max(0, sysUpDelta);
-                    residDown = Math.Max(0, sysDownDelta);
-                }
-
-                var weights = new Dictionary<int, double>();
-                double totalWeight = 0;
-                foreach (var pid in fallbackPids)
-                {
-                    if (!_states.TryGetValue(pid, out var st)) continue;
-                    double w = 0;
-                    if (ioDeltas.TryGetValue(pid, out var io) && io > 0) w = io;
-                    else w = Math.Max(1, st.ConnectionCount);
-                    if (w <= 0) continue;
-                    weights[pid] = w;
-                    totalWeight += w;
-                }
-
-                if (totalWeight > 0)
-                {
-                    foreach (var (pid, w) in weights)
-                    {
-                        if (!_states.TryGetValue(pid, out var st)) continue;
-                        var share = w / totalWeight;
-                        var downDelta = (long)Math.Round(residDown * share);
-                        var upDelta = (long)Math.Round(residUp * share);
-                        st.RateDown = downDelta / elapsedSec;
-                        st.RateUp = upDelta / elapsedSec;
-                        st.SessionDownBytes += downDelta;
-                        st.SessionUpBytes += upDelta;
-                        AddToday(st.ProcessName, pid, upDelta, downDelta);
-                    }
-                }
-            }
-            else
-            {
-                foreach (var pid in fallbackPids)
-                {
-                    if (!_states.TryGetValue(pid, out var st)) continue;
                     st.RateDown = 0;
                     st.RateUp = 0;
                 }
             }
 
-            // 3) 对齐：进程速率之和不得超过页面上的系统速率（允许 5% 误差）
+            // 2) 对齐：进程速率之和不得超过页面上的系统速率（允许 5% 误差）
             NormalizeRatesToSystem(displayUpBps, displayDownBps);
+            ReportEstatsHealth();
 
             // 回收
             var expire = nowUtc.AddSeconds(-30);
@@ -309,12 +332,14 @@ public sealed class ProcessNetworkMonitor : IDisposable
 
         var upScale = 1.0;
         var downScale = 1.0;
-        if (sumUp > displayUpBps * 1.05 && sumUp > 0)
+        // 只有系统读数本身有效（>0）时才收缩：displayUp/Down 为 0 时（LHM 传感器缺值，
+        // 3.85.1 起速率缺值一律归零）不能把进程速率乘成 0，否则实时条目会整片消失。
+        if (displayUpBps > 0 && sumUp > displayUpBps * 1.05)
         {
             upScale = displayUpBps / sumUp;
         }
 
-        if (sumDown > displayDownBps * 1.05 && sumDown > 0)
+        if (displayDownBps > 0 && sumDown > displayDownBps * 1.05)
         {
             downScale = displayDownBps / sumDown;
         }
@@ -328,9 +353,48 @@ public sealed class ProcessNetworkMonitor : IDisposable
         }
     }
 
+    /// <summary>
+    /// 归因健康度自证：出数时记一条 Information，长期无增量时给出可诊断的 Warning。
+    /// 有了它，日志本身就能回答「ESTATS 是没读到字节，还是流量根本不走 TCP」。
+    /// </summary>
+    private void ReportEstatsHealth()
+    {
+        if (_tickDeltaBytes > 0) _lastAttributionUtc = DateTime.UtcNow;
+
+        if (_estatsGranted != true)
+        {
+            _zeroTickStreak = 0;
+            return;
+        }
+
+        if (_tickDeltaBytes > 0)
+        {
+            _zeroTickStreak = 0;
+            if (_dataFlowLogged) return;
+            _dataFlowLogged = true;
+
+            // 附上此刻的 Top3，日志即可核对「浮窗会显示哪些进程、量级是否合理」
+            var top = _states.Values
+                .Where(s => s.RateDown + s.RateUp > 0)
+                .OrderByDescending(s => s.RateDown + s.RateUp)
+                .Take(3)
+                .Select(s => $"{s.ProcessName} ↓{s.RateDown / 1024:F0}K/s ↑{s.RateUp / 1024:F0}K/s");
+
+            Log.Information("进程级流量归因开始出数：本拍 {Bytes} 字节 / {Conns} 条连接（已尝试启用 {Attempted} 条），Top: {Top}",
+                _tickDeltaBytes, _tickConnsWithBytes, _estatsEnableAttempted.Count, string.Join(" | ", top));
+            return;
+        }
+
+        _zeroTickStreak++;
+        if (_zeroTickStreak != 5 && _zeroTickStreak != 30) return;
+        Log.Warning("ESTATS 已启用但连续 {Ticks} 拍无字节增量：ROD 读到 {RodOk} 条（累计非零 {RodNonZero} 条），已尝试启用 {Attempted} 条",
+            _zeroTickStreak, _tickRodOk, _tickRodNonZero, _estatsEnableAttempted.Count);
+    }
+
     private void AddToday(string processName, int pid, long upDelta, long downDelta)
     {
         if (upDelta <= 0 && downDelta <= 0) return;
+        if (IsIgnoredProcess(processName)) return;
         var key = string.IsNullOrEmpty(processName) ? "pid:" + pid : processName;
         if (!_todayByName.TryGetValue(key, out var bucket))
         {
@@ -433,6 +497,8 @@ public sealed class ProcessNetworkMonitor : IDisposable
     {
         lock (_sync)
         {
+            if (_rust != null) return BuildRemoteSnapshot(topCount);
+
             var byName = new Dictionary<string, (double Up, double Down, long SUp, long SDown, int Conns, int Pid)>(StringComparer.OrdinalIgnoreCase);
             foreach (var s in _states.Values)
             {
@@ -459,8 +525,9 @@ public sealed class ProcessNetworkMonitor : IDisposable
                 ConnectionCount = kv.Value.Conns
             }).ToList();
 
+            // 3.85.1：只展示有真实可归因流量的进程，避免「零速率但有连接」的进程霸榜
             var byRate = items
-                .Where(i => i.TotalBytesPerSec > 0.01 || i.ConnectionCount > 0)
+                .Where(i => i.TotalBytesPerSec > 0.01)
                 .OrderByDescending(i => i.TotalBytesPerSec)
                 .ThenByDescending(i => i.ConnectionCount)
                 .Take(topCount)
@@ -509,6 +576,14 @@ public sealed class ProcessNetworkMonitor : IDisposable
     {
         lock (_sync)
         {
+            if (_rust != null)
+            {
+                return _remoteByToday
+                    .Where(v => v.TodayDownBytes > 0 || v.TodayUpBytes > 0)
+                    .OrderByDescending(v => v.TodayDownBytes + v.TodayUpBytes)
+                    .ToList();
+            }
+
             return _todayByName.Values
                 .Where(v => !IsIgnoredProcess(v.ProcessName) && (v.DownBytes > 0 || v.UpBytes > 0))
                 .Select(v => new ProcessNetworkItem
@@ -530,6 +605,10 @@ public sealed class ProcessNetworkMonitor : IDisposable
     {
         lock (_sync)
         {
+            if (_rust != null)
+            {
+                return (_remoteSessionUp, _remoteSessionDown, _remoteTodayUp, _remoteTodayDown);
+            }
             return (_systemSessionUp, _systemSessionDown, _systemTodayUp, _systemTodayDown);
         }
     }
@@ -537,11 +616,25 @@ public sealed class ProcessNetworkMonitor : IDisposable
     /// <summary>启动时用库内「今日」进程累计做种子，避免重启清零。</summary>
     public void SeedTodayFrom(IEnumerable<(string ProcessName, long BytesUp, long BytesDown)> items)
     {
+        if (TryEnsureRustForSeed())
+        {
+            var client = _rust;
+            foreach (var (name, up, down) in items)
+            {
+                if (string.IsNullOrWhiteSpace(name) || (up <= 0 && down <= 0)) continue;
+                if (IsIgnoredProcess(name)) continue;
+                // 名称含空格时作为第四个参数整体传给内核（协议按 splitn(4) 切分）
+                client!.Send($"SEEDP {up} {down} {name}");
+            }
+            return;
+        }
+
         lock (_sync)
         {
             foreach (var (name, up, down) in items)
             {
                 if (string.IsNullOrWhiteSpace(name) || (up <= 0 && down <= 0)) continue;
+                if (IsIgnoredProcess(name)) continue;
                 if (!_todayByName.TryGetValue(name, out var bucket))
                 {
                     bucket = new ProcDayBucket { ProcessName = name };
@@ -557,6 +650,12 @@ public sealed class ProcessNetworkMonitor : IDisposable
     /// <summary>启动时用库内今日系统累计做种子。</summary>
     public void SeedSystemToday(long up, long down)
     {
+        if (TryEnsureRustForSeed())
+        {
+            _rust!.Send($"SEEDSYS {up} {down}");
+            return;
+        }
+
         lock (_sync)
         {
             _systemTodayUp = Math.Max(_systemTodayUp, up);
@@ -610,10 +709,42 @@ public sealed class ProcessNetworkMonitor : IDisposable
         return name;
     }
 
+    private static int ResolveSelfPid() => Environment.ProcessId;
+
+    /// <summary>是否以管理员权限运行（决定能否启用连接级统计）。</summary>
+    private static bool ResolveElevated()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch (Exception ex)
+        {
+            // 预期：身份读取失败（极少见），按普通权限处理，进程榜为空但不影响其它功能
+            Log.Debug(ex, "管理员权限判定失败，按普通权限处理");
+            return false;
+        }
+    }
+
+    private static string ResolveSelfProcessName()
+    {
+        // Environment.ProcessName 并非 BCL API；用可执行文件路径取基名，
+        // 与 ResolveName() 里 Process.GetProcessById().ProcessName 的口径一致。
+        var path = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(path);
+            if (!string.IsNullOrWhiteSpace(name)) return name;
+        }
+        return "PChabit";
+    }
+
     private static bool IsIgnoredProcess(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return true;
-        return name.Equals("Idle", StringComparison.OrdinalIgnoreCase)
+        return name.Equals(SelfProcessName, StringComparison.OrdinalIgnoreCase)
+               || name.Equals("Idle", StringComparison.OrdinalIgnoreCase)
                || name.Equals("System", StringComparison.OrdinalIgnoreCase)
                || name.Equals("Registry", StringComparison.OrdinalIgnoreCase)
                || name.Equals("Memory Compression", StringComparison.OrdinalIgnoreCase)
@@ -658,6 +789,107 @@ public sealed class ProcessNetworkMonitor : IDisposable
         return result;
     }
 
+    /// <summary>
+    /// 为单条 IPv4 TCP 连接启用 TCP_ESTATS_DATA 采集。
+    /// 每连接只尝试一次（成功/权限不足都记入 <see cref="_estatsEnableAttempted"/>）；
+    /// 权限不足时把 <see cref="_estatsGranted"/> 永久置 false，后续采样不再产生 syscall。
+    /// </summary>
+    private void TryEnableEstats(ref MibTcpRow row, string connKey)
+    {
+        MarkEnableAttempt(connKey);
+        if (!_estatsGranted.HasValue && !IsElevated)
+        {
+            MarkEstatsUnavailable();
+            return;
+        }
+
+        if (_estatsGranted == false) return;
+
+        var rw = Marshal.AllocHGlobal(1);
+        try
+        {
+            Marshal.WriteByte(rw, 1); // TCP_ESTATS_DATA_RW_v0.EnableCollection = TRUE
+            var ret = SetPerTcpConnectionEStats(ref row, TcpEstatsType.TcpConnectionEstatsData, rw, 0, 1, 0);
+            ApplyEnableResult(ret, connKey);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(rw);
+        }
+    }
+
+    /// <summary>为单条 IPv6 TCP 连接启用 TCP_ESTATS_DATA 采集（规则同 IPv4）。</summary>
+    private void TryEnableEstats6(ref MibTcp6Row row, string connKey)
+    {
+        MarkEnableAttempt(connKey);
+        if (!_estatsGranted.HasValue && !IsElevated)
+        {
+            MarkEstatsUnavailable();
+            return;
+        }
+
+        if (_estatsGranted == false) return;
+
+        var rw = Marshal.AllocHGlobal(1);
+        try
+        {
+            Marshal.WriteByte(rw, 1);
+            var ret = SetPerTcp6ConnectionEStats(ref row, TcpEstatsType.TcpConnectionEstatsData, rw, 0, 1, 0);
+            ApplyEnableResult(ret, connKey);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(rw);
+        }
+    }
+
+    private void MarkEnableAttempt(string connKey)
+    {
+        if (_estatsEnableAttempted.Count > 1024) _estatsEnableAttempted.Clear();
+        _estatsEnableAttempted.Add(connKey);
+    }
+
+    private void MarkEstatsUnavailable()
+    {
+        _estatsGranted = false;
+        if (_estatsDeniedLogged) return;
+        _estatsDeniedLogged = true;
+        Log.Information("进程级流量归因未启用：当前非管理员权限，Windows 拒绝 SetPerTcpConnectionEStats（连接级统计）");
+    }
+
+    private void ApplyEnableResult(uint ret, string connKey)
+    {
+        switch (ret)
+        {
+            case NO_ERROR:
+                if (_estatsGranted != true)
+                {
+                    _estatsGranted = true;
+                    Log.Information("连接级 TCP 统计已启用，进程级流量归因生效");
+                }
+
+                break;
+
+            case ERROR_ACCESS_DENIED:
+                if (_estatsGranted != false)
+                {
+                    _estatsGranted = false;
+                    if (!_estatsDeniedLogged)
+                    {
+                        _estatsDeniedLogged = true;
+                        Log.Warning("进程级流量归因被拒绝（ERROR_ACCESS_DENIED）：需以管理员身份运行");
+                    }
+                }
+
+                break;
+
+            default:
+                // ERROR_NOT_FOUND 等：连接在取样与启用之间已关闭，不缓存结论，下拍重试
+                _estatsEnableAttempted.Remove(connKey);
+                break;
+        }
+    }
+
     private void CollectTcpV4(Dictionary<int, ConnAgg> result)
     {
         const int rowSize = 24; // MIB_TCPROW_OWNER_PID
@@ -700,44 +932,24 @@ public sealed class ProcessNetworkMonitor : IDisposable
                     RemotePort = row.RemotePort
                 };
 
+                // Windows 默认关闭连接级统计：未启用时 GetPerTcpConnectionEStats 返回
+                // NO_ERROR 但字节计数恒为 0（实测 40/40 条连接全 0）。必须先用
+                // SetPerTcpConnectionEStats 打开 TCP_ESTATS_DATA，该调用仅管理员可用。
+                if (_estatsGranted != false && !_estatsEnableAttempted.Contains(connKey))
+                {
+                    TryEnableEstats(ref mibRow, connKey);
+                }
+
                 var err = GetPerTcpConnectionEStats(
                     ref mibRow,
                     TcpEstatsType.TcpConnectionEstatsData,
-                    IntPtr.Zero, 0, 0,
+                    IntPtr.Zero, 0, 0,   // Rw：不改读写配置
+                    IntPtr.Zero, 0, 0,   // Ros：不要只读静态项
                     out var rod,
-                    0, (uint)Marshal.SizeOf<TcpEstatsDataRodV0>(),
-                    IntPtr.Zero, 0, 0);
+                    0, (uint)Marshal.SizeOf<TcpEstatsDataRodV0>());
 
                 if (err != NO_ERROR) continue;
-
-                var cumUp = Math.Max(rod.DataBytesOut, rod.ThruBytesAcked);
-                var cumDown = Math.Max(rod.DataBytesIn, rod.ThruBytesReceived);
-
-                if (_connEstatsLast.TryGetValue(connKey, out var last))
-                {
-                    // 只记相对上次的增量，避免连接建立前累计字节一次性计入
-                    if (cumUp >= last.Up)
-                    {
-                        var dUp = (long)(cumUp - last.Up);
-                        if (dUp > 0 && dUp < 500_000_000L)
-                        {
-                            agg.EstatsUpDelta += dUp;
-                            agg.HasBytes = true;
-                        }
-                    }
-
-                    if (cumDown >= last.Down)
-                    {
-                        var dDown = (long)(cumDown - last.Down);
-                        if (dDown > 0 && dDown < 500_000_000L)
-                        {
-                            agg.EstatsDownDelta += dDown;
-                            agg.HasBytes = true;
-                        }
-                    }
-                }
-
-                _connEstatsLast[connKey] = (cumUp, cumDown);
+                AccumulateConnEstats(agg, connKey, rod);
             }
         }
         finally
@@ -746,7 +958,49 @@ public sealed class ProcessNetworkMonitor : IDisposable
         }
     }
 
-    private static void CollectTcpV6(Dictionary<int, ConnAgg> result)
+    /// <summary>
+    /// 把一条连接的累计字节折算成本拍增量。
+    /// 只记相对上次的增量，避免连接建立前累计字节被一次性计入；
+    /// 同时累计诊断计数，用于回答「ESTATS 到底有没有在出数」。
+    /// </summary>
+    private void AccumulateConnEstats(ConnAgg agg, string connKey, in TcpEstatsDataRodV0 rod)
+    {
+        var cumUp = Math.Max(rod.DataBytesOut, rod.ThruBytesAcked);
+        var cumDown = Math.Max(rod.DataBytesIn, rod.ThruBytesReceived);
+        _tickRodOk++;
+        if (cumUp > 0 || cumDown > 0) _tickRodNonZero++;
+
+        if (_connEstatsLast.TryGetValue(connKey, out var last))
+        {
+            if (cumUp >= last.Up)
+            {
+                var dUp = (long)(cumUp - last.Up);
+                if (dUp > 0 && dUp < 500_000_000L)
+                {
+                    agg.EstatsUpDelta += dUp;
+                    agg.HasBytes = true;
+                    _tickDeltaBytes += dUp;
+                    _tickConnsWithBytes++;
+                }
+            }
+
+            if (cumDown >= last.Down)
+            {
+                var dDown = (long)(cumDown - last.Down);
+                if (dDown > 0 && dDown < 500_000_000L)
+                {
+                    agg.EstatsDownDelta += dDown;
+                    agg.HasBytes = true;
+                    _tickDeltaBytes += dDown;
+                    _tickConnsWithBytes++;
+                }
+            }
+        }
+
+        _connEstatsLast[connKey] = (cumUp, cumDown);
+    }
+
+    private void CollectTcpV6(Dictionary<int, ConnAgg> result)
     {
         const int rowSize = 56; // MIB_TCP6ROW_OWNER_PID
         int bufLen = 0;
@@ -764,9 +1018,46 @@ public sealed class ProcessNetworkMonitor : IDisposable
             for (var i = 0; i < count; i++)
             {
                 var rowPtr = IntPtr.Add(rowsPtr, i * rowSize);
-                var pid = Marshal.ReadInt32(rowPtr, 52); // OwningPid at offset 52
-                if (pid <= 0) continue;
-                GetAgg(result, pid).ConnectionCount++;
+                var row = Marshal.PtrToStructure<MibTcp6RowOwnerPid>(rowPtr);
+                if (row.OwningPid == 0 || row.OwningPid == uint.MaxValue) continue;
+
+                var pid = (int)row.OwningPid;
+                var agg = GetAgg(result, pid);
+                agg.ConnectionCount++;
+
+                if (row.State != 5) continue; // ESTABLISHED
+
+                // IPv6 地址是 16 字节二进制，用十六进制串做连接键，避免多行碰撞
+                var connKey = string.Concat(
+                    "6|", Convert.ToHexString(row.LocalAddr), ":", row.LocalPort.ToString(), ">",
+                    Convert.ToHexString(row.RemoteAddr), ":", row.RemotePort.ToString());
+                agg.ConnKeys.Add(connKey);
+
+                var mibRow = new MibTcp6Row
+                {
+                    State = row.State,
+                    LocalAddr = row.LocalAddr,
+                    LocalScopeId = row.LocalScopeId,
+                    LocalPort = row.LocalPort,
+                    RemoteAddr = row.RemoteAddr,
+                    RemoteScopeId = row.RemoteScopeId,
+                    RemotePort = row.RemotePort
+                };
+
+                if (_estatsGranted != false && !_estatsEnableAttempted.Contains(connKey))
+                {
+                    TryEnableEstats6(ref mibRow, connKey);
+                }
+
+                var err = GetPerTcp6ConnectionEStats(
+                    ref mibRow,
+                    TcpEstatsType.TcpConnectionEstatsData,
+                    IntPtr.Zero, 0, 0,
+                    IntPtr.Zero, 0, 0,
+                    out var rod,
+                    0, (uint)Marshal.SizeOf<TcpEstatsDataRodV0>());
+                if (err != NO_ERROR) continue;
+                AccumulateConnEstats(agg, connKey, rod);
             }
         }
         finally
@@ -843,63 +1134,6 @@ public sealed class ProcessNetworkMonitor : IDisposable
         }
 
         return agg;
-    }
-
-    // ===================== 进程 IO 增量（补充口径） =====================
-
-    private readonly Dictionary<int, ulong> _lastOtherIo = new();
-
-    private Dictionary<int, long> CollectIoDeltas()
-    {
-        var deltas = new Dictionary<int, long>();
-        List<int> pids;
-
-        lock (_sync)
-        {
-            pids = _states.Values
-                .Where(s => s.ConnectionCount > 0)
-                .Select(s => s.ProcessId)
-                .Distinct()
-                .Take(64)
-                .ToList();
-
-            // 也纳入刚发现的连接进程
-            foreach (var pid in _states.Keys)
-            {
-                if (_states[pid].ConnectionCount > 0 && !pids.Contains(pid))
-                {
-                    pids.Add(pid);
-                }
-            }
-        }
-
-        // 首次采样时 CollectConnectionStats 已写入 ConnectionCount；此处对活跃 PID 采 IO
-        foreach (var pid in pids.Distinct().Take(64))
-        {
-            var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-            if (handle == IntPtr.Zero) continue;
-            try
-            {
-                if (!GetProcessIoCounters(handle, out var counters)) continue;
-                var current = counters.OtherTransferCount;
-                if (_lastOtherIo.TryGetValue(pid, out var last) && current >= last)
-                {
-                    var delta = (long)(current - last);
-                    if (delta > 0 && delta < 200_000_000L)
-                    {
-                        deltas[pid] = delta;
-                    }
-                }
-
-                _lastOtherIo[pid] = current;
-            }
-            finally
-            {
-                CloseHandle(handle);
-            }
-        }
-
-        return deltas;
     }
 
     private sealed class ProcState

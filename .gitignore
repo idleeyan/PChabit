@@ -210,3 +210,6 @@ goals
 
 # Box-Agent session scratch
 .box-agent-scratch/
+
+# Rust 构建产物（cargo target 目录）
+target/
