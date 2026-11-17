@@ -17,6 +17,8 @@
 - **分钟级采样**：硬件样本持续落库，可回溯任意时段的负载曲线
 - **趋势视图**：硬件趋势图与历史对照
 - **应用 × 硬件融合画像**：查看某个应用运行期间的硬件占用情况
+- **进程级流量排行**：点击任务栏网速小窗弹出浮窗，按进程实时 ↓/↑ 排序并给出今日累计（按进程归因需管理员权限）
+- **Rust 采样内核**：进程网络采样由独立 Rust 进程（`rust/pchabit-netd`）承担，可用环境变量 `PCHABIT_RUST_NETSAMPLER=0` 关闭
 
 ### 数据分析与复盘
 
@@ -54,6 +56,7 @@
 
 - **两行实时文本**：LiteMonitor 风格，直接在任务栏显示关键指标
 - **显示项自定义**：自行选择要展示的条目
+- **点击弹出进程排行**：点击小窗弹出「实时网速 · 进程排行」浮窗，任务栏在顶部时浮窗改到下方
 
 ### 桌面悬浮插件
 
@@ -135,6 +138,7 @@
 - Visual Studio 2022 或 Build Tools
 - **.NET 10 SDK**
 - **Windows App SDK 2.5.1**
+- **Rust 工具链**（可选）：`cargo` 1.98+，用于构建进程网络采样内核 `rust/pchabit-netd`；未安装时构建照常完成，运行时会自动回退 C# 实现
 
 ### 编译步骤
 
@@ -142,6 +146,11 @@
 # 克隆仓库
 git clone https://github.com/idleeyan/PChabit.git
 cd PChabit
+
+# （可选）构建 Rust 采样内核；产物 target/release/pchabit-netd.exe 会被 publish 自动带入
+cd rust/pchabit-netd
+cargo build --release
+cd ../..
 
 # 还原并构建
 dotnet build src/PChabit.App/PChabit.App.csproj -c Release -r win-x64 -p:Platform=x64
@@ -163,6 +172,10 @@ PChabit/
 │   └── PChabit.Tests/               # 单元测试
 ├── extensions/
 │   └── tai-browser-extension/       # 浏览器扩展
+├── rust/
+│   └── pchabit-netd/               # Rust 进程网络采样内核（命名管道，可选但默认启用）
+├── tools/
+│   └── SamplingBench/              # 采样耗时度量工具（net/lhm/rust/rust-nogetter/ab，不进 sln）
 ├── scripts/                          # 构建和图标生成脚本
 ├── publish/                          # 发布输出目录
 ├── CHANGELOG.md                      # 更新日志
@@ -171,12 +184,14 @@ PChabit/
 
 ## 性能指标
 
-| 指标 | 目标值 |
-|------|--------|
-| 内存占用 | < 30MB |
-| CPU 占用 (空闲时) | < 0.5% |
-| 数据库写入延迟 | < 100ms |
-| UI 响应时间 | < 16ms |
+| 指标 | 本机实测 | 说明 |
+|------|----------|------|
+| 内存占用 | 私有约 342 MB / 工作集约 482 MB | 含 WinUI 3、WebView2 与 AI 运行时，随页面与请求浮动 |
+| CPU 占用（空闲） | 约 50–94 ms/s（0.5–0.9% 单核） | 硬件传感器每秒轮询是主要开销 |
+| Rust 采样内核 | 常驻 5.6–6.0 MB，CPU 约 1.9 ms/s | 独立进程，`PCHABIT_RUST_NETSAMPLER=0` 可关闭 |
+| 进程网络采样耗时 | C# 5.208 ms/拍 → Rust 0.444 ms/拍 | `tools/SamplingBench` 同机对照 |
+
+> 上表为本机（i5-12490F / 32G 内存 / Windows 11）Release 自包含构建的实测值，不同机器与使用状态下会有差异。
 
 ## 隐私说明
 

@@ -26,6 +26,52 @@
 - **限制**：历史数据无法回溯拆分——库里只存聚合结果，没有原始事件流，
   旧行的 `RepeatKeyPresses` 为 0，新口径只对升级后产生的数据生效。
 
+### 新增：进程网络采样内核切分至 Rust（可选通道，默认启用）
+
+**动机**：`ProcessNetworkMonitor.SampleOnce()` 本机实测 **5.208 ms/拍**（p50 4.957 / p95 7.175 /
+max 9.343，40 拍 @1Hz）。这段逻辑全是裸指针结构体解析、逐连接 ESTATS 取值与进程名字符串处理——
+与硬件传感器（LHM 占 App CPU 约 92%）相比它只有 5.5% 的分量，但它是整段「本可以交给 Rust」的代码。
+
+**切口（不整体重写）**：只搬走「连接表枚举 + 逐连接 ESTATS + 进程名解析 + 速率/会话/今日聚合」；
+硬件传感器、UI、落库、DI、数据库结构全部不动。
+
+- **独立进程** `pchabit-netd`（`rust/pchabit-netd`，8 个源文件 1,934 行，零第三方依赖），
+  手写 `iphlpapi` / `advapi32` FFI，MIB 结构体尺寸在编译期断言
+- **通信**：命名管道 `\\.\pipe\pchabit-netd-v1`，行式文本命令 + 单行 JSON 应答；命令集为
+  `PING` / `HEALTH` / `SYS` / `SEEDP` / `SEEDSYS` / `TOTALS` / `ALLTODAY` / `SNAP` / `STOP`；
+  单实例由 `Global\pchabit-netd-v1` 命名 Mutex 守卫，宿主 90 秒无请求时内核自动退出
+- **系统级口径不由内核自算**：宿主每秒推送「本拍字节增量」`SYS`，内核负责累加。
+  不用 `GetIfTable2`——`MIB_IF_ROW2` 近 1.3 KB、位序易错，`MIB_IFROW.dwInOctets` 是 32 位会回绕；
+  也不让内核按自身 elapsed 对速率积分——实测两套 1 秒时钟错拍会让系统累计偏低约 15%
+- **语义逐条对齐 C# 现有实现**：只记 ESTATS 真实增量（不按连接数分摊）、进程速率和超系统
+  105% 才收缩（且系统读数 > 0 才收缩）、30 秒无连接无速率即回收、256 进程上限、跨天清零、
+  种子按 max 回填、排除自身 PID 与自身进程名
+- **C# 侧退化为缓存层**：新增 `ProcessNetworkMonitor.Rust.cs`（289 行，`SampleRemote` /
+  `ApplyRemoteSnapshot` / `BuildRemoteSnapshot` / `EnsureRustSampler`）与 `RustNetClient.cs`
+  （227 行，连接、重连、拉起、回收）。公开 API、ViewModel、XAML、DI 全部零改动
+- **回退**：默认启用；`PCHABIT_RUST_NETSAMPLER=0`（或 `false` / `off`）整体退回内置 C# 实现；
+  内核 exe 缺失、连不上、应答超时都静默回退，只记 Debug 日志，不影响功能
+- **构建**：`cargo build --release` 产出 304 KB exe，App csproj 在 build / publish 后自动拷贝
+  （带 `Condition="Exists(...)"`，**不在此调 cargo**——没装 Rust 工具链的机器仍可正常构建）
+
+**实测（同机同秒，`tools\SamplingBench`）**：
+
+| 路径 | 每拍耗时 |
+|---|---|
+| C# 内置 `SampleOnce` | 5.208 ms（p50 4.957 / p95 7.175 / max 9.343） |
+| Rust 内核（生产路径，注入 LHM 速率） | **0.444 ms**（p50 0.359 / p95 2.163） |
+
+按可控对照推算净省约 4.76 ms/s ≈ 单核 0.48% ≈ 12 核整机 0.04%。
+A/B 一致性：进程名集合与速率逐拍一致；系统累计存在 **1 拍结构性滞后**
+（宿主推送的增量要等内核下一拍并入），末拍对比会看到 C# 先跳、Rust 后跳，不是丢数。
+线上 App 的 CPU 读数不能直接与 bench 基线对比（活跃度、LHM 是否在刷新都不可控）。
+
+**注**：本次与 3.87.0 键盘口径修正同批构建发布（部署产物同为 3.87.0.0，已含 `pchabit-netd.exe`），
+未单独递增版本号；后续改动请按规则递增。
+
+**已知限制**：内核 health 与开关未暴露到设置页，目前只有环境变量；LHM 降频
+（`RefreshMs` 1000→2000/3000）未实施，它仍是 CPU 的最大头（估算可省 30–60 ms/s）。
+
 ## [3.86.1] - 2026-11-16
 
 ### 修复：进程排行恒为空（一直显示「当前没有进程在传输数据」）
