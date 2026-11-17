@@ -61,6 +61,12 @@ public sealed class TaskbarWidget : IDisposable
     private const int WM_ERASEBKGND = 0x0014;
     private const int WM_PAINT = 0x000F;
     private const int WM_DESTROY = 0x0002;
+    private const int WM_SETCURSOR = 0x0020;
+    private const int WM_LBUTTONDOWN = 0x0201;
+    private const int WM_LBUTTONUP = 0x0202;
+    /// <summary>WM_SETCURSOR 的 lParam 低字：命中客户区。</summary>
+    private const int HTCLIENT = 1;
+    private const int IDC_HAND = 32649;
     private const int DEFAULT_CHARSET = 1;
     private const int OUT_DEFAULT_PRECIS = 0;
     private const int CLIP_DEFAULT_PRECIS = 0;
@@ -118,7 +124,39 @@ public sealed class TaskbarWidget : IDisposable
     private List<TaskbarMetricItem> _row2 = new();
     private int _blockWidth;   // 左侧区块占宽（含分隔线与留白）
     private bool _blockActive; // 是否有左侧区块内容
+    private bool _mouseDown;   // 左键是否在窗口内按下（避免拖出后松开误触发）
     private bool _disposed;
+
+    /// <summary>本次绘制记录的命中区（客户区坐标，绘制线程内使用）。</summary>
+    private readonly List<RECT> _pendingHitRects = new();
+    /// <summary>命中区快照（屏幕坐标）。整表替换，供钩子线程无锁读取。</summary>
+    private volatile List<RECT> _hitRects = new();
+    private bool _hitRectsLogged;
+
+    /// <summary>
+    /// 用户点击小窗内容。
+    /// 注意：小窗是 Shell_TrayWnd 的子窗口，任务栏的 XAML 层压在它上面，
+    /// 真实鼠标点击落不到本窗口（实测 WM_SETCURSOR/LBUTTONUP 都不来），
+    /// 因此实际入口是 <see cref="HitTestScreenPoint"/> + 全局鼠标钩子拦截。
+    /// 回调在 UI 线程（由 App 派发），订阅方仍应自行兜底异常。
+    /// </summary>
+    public event Action? Clicked;
+
+    /// <summary>
+    /// 屏幕坐标是否命中「画了文字」的区域。
+    /// 只有文字区才算点击小窗：空白像素保持透明，点击照常落到任务栏控件上。
+    /// </summary>
+    public bool HitTestScreenPoint(int x, int y)
+    {
+        var rects = _hitRects;
+        for (var i = 0; i < rects.Count; i++)
+        {
+            var r = rects[i];
+            if (x >= r.Left && x < r.Right && y >= r.Top && y < r.Bottom) return true;
+        }
+
+        return false;
+    }
 
     // ---------- Win32 ----------
     [StructLayout(LayoutKind.Sequential)]
@@ -212,6 +250,10 @@ public sealed class TaskbarWidget : IDisposable
     private static extern IntPtr CreateSolidBrush(uint color);
     [DllImport("user32.dll")]
     private static extern IntPtr FillRect(IntPtr hdc, ref RECT rect, IntPtr brush);
+    [DllImport("user32.dll")]
+    private static extern IntPtr LoadCursorW(IntPtr hInstance, IntPtr lpCursorName);
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetCursor(IntPtr hCursor);
 
     private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     private static readonly WndProcDelegate WndProcHandler = WndProc;
@@ -544,6 +586,30 @@ public sealed class TaskbarWidget : IDisposable
                 return IntPtr.Zero;
             case WM_ERASEBKGND:
                 return new IntPtr(1);
+            case WM_LBUTTONDOWN:
+                if (self != null) self._mouseDown = true;
+                return IntPtr.Zero;
+            case WM_LBUTTONUP:
+                // 先清标志再回调：回调里可能重入（弹窗、重建窗口）
+                if (self != null && self._mouseDown)
+                {
+                    self._mouseDown = false;
+                    try { self.Clicked?.Invoke(); }
+                    catch (Exception ex)
+                    {
+                        // WndProc 里抛异常会穿过消息泵直接崩进程，必须就地兜住
+                        Log.Warning(ex, "任务栏小窗点击回调异常");
+                    }
+                }
+                return IntPtr.Zero;
+            case WM_SETCURSOR:
+                // lParam 低字为命中测试码；仅客户区显示手型，提示「可点击」
+                if ((lParam.ToInt64() & 0xFFFF) == HTCLIENT)
+                {
+                    SetCursor(LoadCursorW(IntPtr.Zero, (IntPtr)IDC_HAND));
+                    return new IntPtr(1);
+                }
+                break;
             case WM_DESTROY:
                 return IntPtr.Zero;
         }
@@ -560,6 +626,8 @@ public sealed class TaskbarWidget : IDisposable
             if (!GetClientRect(hWnd, out RECT rc)) return;
             int w = rc.Right - rc.Left, h = rc.Bottom - rc.Top;
             if (w <= 0 || h <= 0) return;
+
+            _pendingHitRects.Clear();
 
             IntPtr memDc = CreateCompatibleDC(hdc);
             IntPtr bmp = CreateCompatibleBitmap(hdc, w, h);
@@ -613,6 +681,7 @@ public sealed class TaskbarWidget : IDisposable
             }
 
             BitBlt(hdc, 0, 0, w, h, memDc, 0, 0, SRCCOPY);
+            PublishHitRects(hWnd);
 
             SelectObject(memDc, oldBmp);
             DeleteObject(bmp);
@@ -648,6 +717,7 @@ public sealed class TaskbarWidget : IDisposable
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
+            int startX = x;
             if (it.Label.Length > 0)
             {
                 SelectObject(hdc, _fontLabel);
@@ -661,6 +731,7 @@ public sealed class TaskbarWidget : IDisposable
             SetTextColor(hdc, ValueColor(it.Color, theme));
             TextOutW(hdc, x, it.Emphasize ? yValueEmphasis : yValue, it.Value, it.Value.Length);
             x += MeasureText(hdc, valueFont, it.Value);
+            AddHitRect(startX, rc.Top, x, rc.Bottom);
 
             if (i < items.Count - 1) x += it.Emphasize ? EmphasizeItemGap : ItemGap;
         }
@@ -678,6 +749,7 @@ public sealed class TaskbarWidget : IDisposable
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
+            int startX = x;
             if (it.Label.Length > 0)
             {
                 SelectObject(hdc, _fontLabel);
@@ -690,6 +762,7 @@ public sealed class TaskbarWidget : IDisposable
             SetTextColor(hdc, ValueColor(it.Color, theme));
             TextOutW(hdc, x, yValue, it.Value, it.Value.Length);
             x += MeasureText(hdc, _fontBlockValue, it.Value);
+            AddHitRect(startX, rc.Top, x, rc.Bottom);
 
             if (i < items.Count - 1) x += ItemGap;
         }
@@ -706,6 +779,7 @@ public sealed class TaskbarWidget : IDisposable
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
+            int startX = x;
             SelectObject(hdc, _fontBlockSecond);
             if (it.Label.Length > 0)
             {
@@ -717,6 +791,7 @@ public sealed class TaskbarWidget : IDisposable
             SetTextColor(hdc, it.Emphasize ? ValueColor(it.Color, theme) : DIM[theme]);
             TextOutW(hdc, x, y, it.Value, it.Value.Length);
             x += MeasureText(hdc, _fontBlockSecond, it.Value);
+            AddHitRect(startX, rc.Top, x, rc.Bottom);
 
             if (i < items.Count - 1) x += SecondaryItemGap;
         }
@@ -733,6 +808,7 @@ public sealed class TaskbarWidget : IDisposable
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];
+            int startX = x;
             if (it.Label.Length > 0)
             {
                 SetTextColor(hdc, LABEL[theme]);
@@ -743,6 +819,7 @@ public sealed class TaskbarWidget : IDisposable
             SetTextColor(hdc, ValueColor(it.Color, theme));
             TextOutW(hdc, x, y, it.Value, it.Value.Length);
             x += MeasureText(hdc, _fontSecondary, it.Value);
+            AddHitRect(startX, rc.Top, x, rc.Bottom);
 
             if (i < items.Count - 1)
             {
@@ -757,6 +834,41 @@ public sealed class TaskbarWidget : IDisposable
     {
         int h = rc.Bottom - rc.Top;
         return rc.Top + Math.Max(0, (h - textHeight) / 2);
+    }
+
+    /// <summary>记录一段文字的命中区（客户区坐标）。</summary>
+    private void AddHitRect(int x1, int y1, int x2, int y2)
+    {
+        if (x2 - x1 < 2 || y2 - y1 < 2) return;
+        _pendingHitRects.Add(new RECT { Left = x1, Top = y1, Right = x2, Bottom = y2 });
+    }
+
+    /// <summary>把本次绘制的命中区换算为屏幕坐标并整表替换（供钩子线程读取）。</summary>
+    private void PublishHitRects(IntPtr hWnd)
+    {
+        if (!GetWindowRect(hWnd, out var wndRect)) return;
+        var snapshot = new List<RECT>(_pendingHitRects.Count);
+        foreach (var r in _pendingHitRects)
+        {
+            snapshot.Add(new RECT
+            {
+                Left = wndRect.Left + r.Left,
+                Top = wndRect.Top + r.Top,
+                Right = wndRect.Left + r.Right,
+                Bottom = wndRect.Top + r.Bottom
+            });
+        }
+
+        _hitRects = snapshot;
+
+        // 首次绘制完成后记一条，便于排查「点了没反应」是命中区缺失还是坐标错位
+        if (!_hitRectsLogged && snapshot.Count > 0)
+        {
+            _hitRectsLogged = true;
+            var f = snapshot[0];
+            Log.Information("任务栏小窗命中区就绪: {Count} 个区域，首个 ({L},{T})-({R},{B})",
+                snapshot.Count, f.Left, f.Top, f.Right, f.Bottom);
+        }
     }
 
     public void Dispose()

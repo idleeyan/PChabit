@@ -168,6 +168,8 @@ public partial class App : Microsoft.UI.Xaml.Application
                 {
                     // 悬浮窗由 UI 线程创建，DestroyWindow 必须同线程（步骤 2 已停 1s 定时器）
                     DisposeDesktopWidgetOnUiThread();
+                    // 进程网速浮窗同为 UI 线程创建的 WinUI 窗口，须在同线程关闭
+                    CloseNetworkProcessWindow();
                     _window.Close();
                     Log.Information("窗口已关闭");
                 }

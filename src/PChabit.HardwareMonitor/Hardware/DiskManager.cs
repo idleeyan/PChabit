@@ -12,6 +12,8 @@ namespace PChabit.HardwareMonitor.Hardware
         private Dictionary<IHardware, DateTime> _diskLastActiveTime = new Dictionary<IHardware, DateTime>();
         // 磁盘智能缓存
         private IHardware? _cachedDiskHw;
+        // 3.85.1：自动选优还没锁定时，先固定一块盘作为每拍刷新目标
+        private IHardware? _defaultTarget;
         private DateTime _lastDiskScan = DateTime.MinValue;
         // ★★★ [新增] 静态缓存：避免 DriveInfo 重复创建 ★★★
         private static readonly Dictionary<string, DriveInfo> _driveInfoCache = new();
@@ -20,6 +22,7 @@ namespace PChabit.HardwareMonitor.Hardware
         {
             _diskLastActiveTime.Clear();
             _cachedDiskHw = null;
+            _defaultTarget = null;
             // 可以选择清理 DriveInfo 缓存，也可以保留（因为它通常不变）
             _driveInfoCache.Clear();
         }
@@ -39,8 +42,19 @@ namespace PChabit.HardwareMonitor.Hardware
             // 初始化活跃时间记录
             if (!_diskLastActiveTime.ContainsKey(hw)) _diskLastActiveTime[hw] = DateTime.Now;
 
+            // 3.85.1：自动选优尚未缓存、用户也未指定磁盘时，仍要保证至少一块盘每拍
+            // Update，否则 LHM 传感器保留上一次速率，UI 表现为「读数一直不归零」。
+            if (_cachedDiskHw == null &&
+                string.IsNullOrEmpty(cfg.LastAutoDisk) &&
+                string.IsNullOrEmpty(cfg.PreferredDisk) &&
+                _defaultTarget == null)
+            {
+                _defaultTarget = hw;
+            }
+
             // 判断是否是当前 UI 上显示的那个盘
             bool isTarget = (_cachedDiskHw != null && hw == _cachedDiskHw) ||
+                            (_defaultTarget != null && hw == _defaultTarget) ||
                             (hw.Name == cfg.LastAutoDisk) ||
                             (hw.Name == cfg.PreferredDisk);
             
@@ -211,6 +225,8 @@ namespace PChabit.HardwareMonitor.Hardware
             // ★★★ [新增] 温度支持补漏 ★★★
             if (key == "DISK.Temp" && bestHw != null) return ReadDiskSensor(bestHw, key, lastValidMap, syncLock);
 
+            // 3.85.1：速率读数缺值归零；温度等状态量仍可沿用上一有效值
+            if (key == "DISK.Read" || key == "DISK.Write" || key == "DISK.Activity") return 0f;
             lock (syncLock) { if (lastValidMap.TryGetValue(key, out var last)) return last; }
             return null;
         }
@@ -260,6 +276,8 @@ namespace PChabit.HardwareMonitor.Hardware
                 lock (syncLock) lastValidMap[key] = v;
                 return v;
             }
+            // 3.85.1：速率读数缺值归零；温度等状态量仍可沿用上一有效值
+            if (key == "DISK.Read" || key == "DISK.Write" || key == "DISK.Activity") return 0f;
             lock (syncLock) { if (lastValidMap.TryGetValue(key, out var last)) return last; }
             return null;
         }

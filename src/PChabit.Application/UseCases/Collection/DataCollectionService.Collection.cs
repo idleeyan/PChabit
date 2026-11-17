@@ -23,6 +23,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
 
     // 已提交水位：Flush 只写「相对上次落库的增量」，避免同一批次两个快照把同一段按键重复 +=
     private int _kbCommittedTotal;
+    private int _kbCommittedRepeat;
     private int _kbCommittedBackspace;
     private int _kbCommittedDelete;
     private int _kbCommittedUndo;
@@ -38,6 +39,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
     private void ResetInputCommitWatermarks()
     {
         _kbCommittedTotal = 0;
+        _kbCommittedRepeat = 0;
         _kbCommittedBackspace = 0;
         _kbCommittedDelete = 0;
         _kbCommittedUndo = 0;
@@ -170,6 +172,14 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
             if (!string.IsNullOrEmpty(processName) && string.IsNullOrEmpty(session.ProcessName))
             {
                 session.ProcessName = processName;
+            }
+
+            // 长按产生的自动重复只单独累计：不计入按键总数/分布/速度/快捷键，
+            // 否则游戏里按住 W 一分钟就会被记成上千次按键（3.87.0 口径）。
+            if (e.IsAutoRepeat)
+            {
+                session.RepeatKeyPresses += e.KeyCount;
+                return;
             }
 
             session.TotalKeyPresses += e.KeyCount;
@@ -380,6 +390,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
             {
                 var live = _liveKeyboardSession;
                 var dTotal = live.TotalKeyPresses - _kbCommittedTotal;
+                var dRepeat = live.RepeatKeyPresses - _kbCommittedRepeat;
                 var dBack = live.BackspaceCount - _kbCommittedBackspace;
                 var dDel = live.DeleteCount - _kbCommittedDelete;
                 var dUndo = live.UndoCount - _kbCommittedUndo;
@@ -398,7 +409,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
                     if (delta > 0) dCat[kv.Key] = delta;
                 }
 
-                if (dTotal != 0 || dFreq.Count > 0 || dBack != 0 || dDel != 0 || dUndo != 0)
+                if (dTotal != 0 || dRepeat != 0 || dFreq.Count > 0 || dBack != 0 || dDel != 0 || dUndo != 0)
                 {
                     var snapshot = new KeyboardSession
                     {
@@ -408,6 +419,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
                         ProcessName = live.ProcessName,
                         // 存增量；Upsert 用 isDelta=true 做 +=
                         TotalKeyPresses = dTotal,
+                        RepeatKeyPresses = dRepeat,
                         KeyFrequency = dFreq,
                         KeyCategoryFrequency = dCat,
                         BackspaceCount = dBack,
@@ -421,6 +433,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
                     EnqueueOperation(db => UpsertKeyboardSessionAsync(db, snapshot, isDelta: true), "键盘会话周期落库(增量)");
 
                     _kbCommittedTotal = live.TotalKeyPresses;
+                    _kbCommittedRepeat = live.RepeatKeyPresses;
                     _kbCommittedBackspace = live.BackspaceCount;
                     _kbCommittedDelete = live.DeleteCount;
                     _kbCommittedUndo = live.UndoCount;
@@ -471,6 +484,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
         Hour = source.Hour,
         ProcessName = source.ProcessName,
         TotalKeyPresses = source.TotalKeyPresses,
+        RepeatKeyPresses = source.RepeatKeyPresses,
         KeyFrequency = new Dictionary<int, int>(source.KeyFrequency),
         KeyCategoryFrequency = new Dictionary<string, int>(source.KeyCategoryFrequency),
         AverageTypingSpeed = source.AverageTypingSpeed,
@@ -518,6 +532,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
         if (isDelta)
         {
             existing.TotalKeyPresses += Math.Max(0, live.TotalKeyPresses);
+            existing.RepeatKeyPresses += Math.Max(0, live.RepeatKeyPresses);
             existing.BackspaceCount += Math.Max(0, live.BackspaceCount);
             existing.DeleteCount += Math.Max(0, live.DeleteCount);
             existing.UndoCount += Math.Max(0, live.UndoCount);
@@ -543,6 +558,7 @@ public partial class DataCollectionService : IDataCollectionService, IDisposable
         if (existing.Id == live.Id || existing.Date == live.Date && existing.Hour == live.Hour)
         {
             existing.TotalKeyPresses = live.TotalKeyPresses;
+            existing.RepeatKeyPresses = live.RepeatKeyPresses;
             existing.KeyFrequency = new Dictionary<int, int>(live.KeyFrequency);
             existing.KeyCategoryFrequency = new Dictionary<string, int>(live.KeyCategoryFrequency);
             existing.AverageTypingSpeed = live.AverageTypingSpeed;

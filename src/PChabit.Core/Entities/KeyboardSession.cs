@@ -9,6 +9,11 @@ public class KeyboardSession : EntityBase, IAggregateRoot
     public string? ProcessName { get; set; }
     
     public int TotalKeyPresses { get; set; }
+    /// <summary>
+    /// 长按产生的自动重复次数（不算进 <see cref="TotalKeyPresses"/>）。
+    /// 旧数据该列为 0：历史行的口径是「每次 KEYDOWN 都算一次按键」，无法回溯拆分。
+    /// </summary>
+    public int RepeatKeyPresses { get; set; }
     public Dictionary<int, int> KeyFrequency { get; set; } = new();
     public Dictionary<string, int> KeyCategoryFrequency { get; set; } = new();
     

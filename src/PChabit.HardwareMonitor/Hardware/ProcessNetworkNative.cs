@@ -74,6 +74,33 @@ internal static class ProcessNetworkNative
         public uint OwningPid;
     }
 
+    /// <summary>MIB_TCP6ROW：52 字节（State+LocalAddr[16]+ScopeId+Port+RemoteAddr[16]+ScopeId+Port）。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MibTcp6Row
+    {
+        public uint State;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] LocalAddr;
+        public uint LocalScopeId;
+        public uint LocalPort;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] RemoteAddr;
+        public uint RemoteScopeId;
+        public uint RemotePort;
+    }
+
+    /// <summary>MIB_TCP6ROW_OWNER_PID：56 字节，OwningPid 位于偏移 52。</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MibTcp6RowOwnerPid
+    {
+        public uint State;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] LocalAddr;
+        public uint LocalScopeId;
+        public uint LocalPort;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] RemoteAddr;
+        public uint RemoteScopeId;
+        public uint RemotePort;
+        public uint OwningPid;
+    }
+
     // MIB_UDP6ROW_OWNER_PID：LocalAddr[16] + ScopeId + Port + OwningPid，共 28 字节
     // OwningPid 偏移 24；连接表按行读取时用 Marshal.ReadInt32。
 
@@ -124,19 +151,64 @@ internal static class ProcessNetworkNative
         UdpTableClass tableClass,
         uint reserved);
 
+    /// <summary>
+    /// 读取 IPv4 TCP 连接级扩展统计。
+    /// 参数必须严格按 Rw / Ros / Rod 三段传递（各 3 个参数）：
+    /// 只有 Rod 段才是要读回的统计，把缓冲区放错段会导致调用返回 NO_ERROR 但数据恒为 0。
+    /// </summary>
     [DllImport("iphlpapi.dll", SetLastError = true)]
     internal static extern uint GetPerTcpConnectionEStats(
         ref MibTcpRow row,
         TcpEstatsType estatsType,
+        IntPtr rw,
+        uint rwVersion,
+        uint rwSize,
         IntPtr ros,
         uint rosVersion,
         uint rosSize,
         out TcpEstatsDataRodV0 rod,
         uint rodVersion,
-        uint rodSize,
-        IntPtr raw,
-        uint rawVersion,
-        uint rawSize);
+        uint rodSize);
+
+    /// <summary>
+    /// 启用/关闭 IPv4 TCP 连接级统计。Windows 默认关闭采集，必须先用本函数
+    /// 打开 TCP_ESTATS_DATA，否则 <see cref="GetPerTcpConnectionEStats"/> 虽返回
+    /// NO_ERROR 但所有字节计数恒为 0。
+    /// 限制：仅 Administrators 组成员调用成功，否则返回 ERROR_ACCESS_DENIED(5)。
+    /// </summary>
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    internal static extern uint SetPerTcpConnectionEStats(
+        ref MibTcpRow row,
+        TcpEstatsType estatsType,
+        IntPtr rw,
+        uint rwVersion,
+        uint rwSize,
+        uint offset);
+
+    /// <summary>读取 IPv6 TCP 连接级扩展统计（参数分段规则同 IPv4）。</summary>
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    internal static extern uint GetPerTcp6ConnectionEStats(
+        ref MibTcp6Row row,
+        TcpEstatsType estatsType,
+        IntPtr rw,
+        uint rwVersion,
+        uint rwSize,
+        IntPtr ros,
+        uint rosVersion,
+        uint rosSize,
+        out TcpEstatsDataRodV0 rod,
+        uint rodVersion,
+        uint rodSize);
+
+    /// <summary>启用/关闭 IPv6 TCP 连接级统计（仅管理员可用）。</summary>
+    [DllImport("iphlpapi.dll", SetLastError = true)]
+    internal static extern uint SetPerTcp6ConnectionEStats(
+        ref MibTcp6Row row,
+        TcpEstatsType estatsType,
+        IntPtr rw,
+        uint rwVersion,
+        uint rwSize,
+        uint offset);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -151,4 +223,6 @@ internal static class ProcessNetworkNative
 
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     internal const uint NO_ERROR = 0;
+    /// <summary>ERROR_ACCESS_DENIED：非管理员调用 SetPerTcpConnectionEStats。</summary>
+    internal const uint ERROR_ACCESS_DENIED = 5;
 }

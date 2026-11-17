@@ -21,6 +21,11 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     
     [ObservableProperty]
     private string _totalKeyPresses = "0";
+    /// <summary>长按自动重复次数说明（3.87.0）：无重复时为空串，卡片不显示该行。</summary>
+    [ObservableProperty]
+    private string _repeatKeyPressesText = string.Empty;
+    [ObservableProperty]
+    private bool _hasRepeatKeyPresses;
     [ObservableProperty]
     private string _averageSpeed = "0";
     [ObservableProperty]
@@ -68,6 +73,7 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     public sealed class KeyboardPart
     {
         public int TotalPresses;
+        public int RepeatPresses;
         public double AvgSpeed;
         public int PeakSpeed;
         public int TotalShortcuts;
@@ -103,6 +109,7 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
 
         var k = stats.Keyboard;
         k.TotalPresses = keySessions.Sum(s => s.TotalKeyPresses);
+        k.RepeatPresses = keySessions.Sum(s => s.RepeatKeyPresses);
         k.AvgSpeed = keySessions.Count > 0 ? keySessions.Average(s => s.AverageTypingSpeed) : 0;
         k.PeakSpeed = keySessions.Count > 0 ? (int)keySessions.Max(s => s.PeakTypingSpeed) : 0;
         k.TotalShortcuts = keySessions.Sum(s => s.Shortcuts?.Count ?? 0);
@@ -138,6 +145,10 @@ public partial class KeyboardDetailsViewModel : DbSafeViewModel<KeyboardDetailsV
     {
         var k = stats.Keyboard;
         TotalKeyPresses = k.TotalPresses.ToString("N0");
+        HasRepeatKeyPresses = k.RepeatPresses > 0;
+        RepeatKeyPressesText = k.RepeatPresses > 0
+            ? $"长按重复 {k.RepeatPresses:N0} 次"
+            : string.Empty;
         AverageSpeed = $"{k.AvgSpeed:F1} 键/分钟";
         PeakSpeed = $"{k.PeakSpeed} 键/分钟";
         ShortcutsUsed = k.TotalShortcuts.ToString("N0");

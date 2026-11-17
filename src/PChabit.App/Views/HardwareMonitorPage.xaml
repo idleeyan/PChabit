@@ -582,12 +582,12 @@
                         <TextBlock
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="采集引擎移植自开源项目 LiteMonitor（LibreHardwareMonitor），数据每秒刷新。主指标与副指标（温度/显存/读写/网速）均带色条：绿正常、黄偏高、红过高；无读数时为灰色且进度条为空。CPU/内存/磁盘/GPU 卡片的「最大占用进程」为 2 秒级进程采样（CPU 时间差分 / 工作集 / IO Transfer / GPU Engine 计数器）；网络卡「最大占用进程 / 流量统计」基于 Windows IP Helper（连接表 + ESTATS）自采，口径接近任务管理器网络列。"
+                            Text="采集引擎移植自开源项目 LiteMonitor（LibreHardwareMonitor），数据每秒刷新。主指标与副指标（温度/显存/读写/网速）均带色条：绿正常、黄偏高、红过高；无读数时为灰色且进度条为空。CPU/内存/磁盘/GPU 卡片的「最大占用进程」为 2 秒级进程采样（CPU 时间差分 / 工作集 / IO Transfer / GPU Engine 计数器）。上下行速率与流量统计是整机网卡口径，不是 PChabit 自身产生的流量；网络卡「最大占用进程」只统计可归因的 TCP 连接级字节增量。"
                             TextWrapping="Wrap" />
                         <TextBlock
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                            Text="阈值：负载 70%/90%，CPU 温度 70/85°C，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。进程流量为用户态估算（ESTATS/连接 IO），可能略低于任务管理器内核口径。"
+                            Text="阈值：负载 70%/90%，CPU 温度 70/85°C，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。系统未启用连接级统计时，进程流量留空显示「暂无活跃网络进程」，不会按进程 IO 把整机流量推测分摊给某个程序。速率读数在传感器停更时归零。"
                             TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>

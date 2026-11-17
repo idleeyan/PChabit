@@ -99,9 +99,15 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
                 .Where(x => x.Date == today)
                 .ToListAsync();
 
+            var selfPath = Environment.ProcessPath;
+            var selfName = string.IsNullOrWhiteSpace(selfPath)
+                ? "PChabit"
+                : System.IO.Path.GetFileNameWithoutExtension(selfPath);
             var byName = new Dictionary<string, (long Up, long Down)>(StringComparer.OrdinalIgnoreCase);
             foreach (var r in procRows)
             {
+                // 3.85.1：自身进程的历史流量是分摊算法误记，不能回灌成种子
+                if (string.Equals(r.ProcessName, selfName, StringComparison.OrdinalIgnoreCase)) continue;
                 var key = r.ProcessName;
                 byName.TryGetValue(key, out var acc);
                 byName[key] = (acc.Up + r.BytesUp, acc.Down + r.BytesDown);
@@ -127,6 +133,22 @@ public sealed class NetworkTrafficPersistenceService : IDisposable
 
             Log.Information("网络流量历史种子加载完成: 进程 {ProcCount} 项, 系统今日 ↑{Up} ↓{Down}",
                 byName.Count, seedUp, seedDown);
+
+            // 3.85.1：清掉历史误记。旧版本把整机流量按 IO 权重摊给进程，本程序因
+            // 持续写库 + 本地监听权重最大，单日可被记入数十 GB。这些行不是真实流量，
+            // 留在库里会让流量页长期把 PChabit 显示为第一名。清理放在种子加载之后，
+            // 失败不影响本轮采样。
+            try
+            {
+                var deleted = await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"DELETE FROM ProcessNetworkUsages WHERE lower(ProcessName) = lower({selfName})");
+                if (deleted > 0)
+                    Log.Information("已清理自身进程流量误记 {Rows} 行", deleted);
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "清理自身进程流量误记失败，下次启动会重试");
+            }
         }
         catch (Exception ex)
         {

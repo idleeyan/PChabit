@@ -214,8 +214,14 @@ namespace PChabit.HardwareMonitor.Hardware
         // ===========================================================
         // ===================== 公共取值入口 =========================
         // ===========================================================
+        /// <summary>瞬时速率类读数：缺值必须归零，不能沿用历史值。</summary>
+        private static bool IsRateKey(string key)
+            => key is "NET.Up" or "NET.Down" or "DISK.Read" or "DISK.Write" or "DISK.Activity";
+
         public float? GetStartupValue(string key)
         {
+            // 3.85.1：速率读数沿用上一帧会让传感器停更时页面显示「一直有流量」
+            if (IsRateKey(key)) return 0f;
             if (_lastValidMap.TryGetValue(key, out float lastVal)) return lastVal;
 
             bool useCounter = _cfg.UseWinPerCounters && _perfManager.IsInitialized;
@@ -267,6 +273,7 @@ namespace PChabit.HardwareMonitor.Hardware
                     // 因为 _lastValidMap 仅在 GetValue 内部（即 UI 线程）写入，
                     // 而后台线程（UpdateAll/Reload）只读不写或完全不访问它，
                     // 所以此时读取是安全的（虽然没有锁，但没有并发写入）。
+                    if (IsRateKey(key)) return 0f;
                     if (_lastValidMap.TryGetValue(key, out float lastVal)) return lastVal;
                     return null;
                 }
@@ -497,6 +504,11 @@ namespace PChabit.HardwareMonitor.Hardware
                     { 
                         _lastValidMap[key] = val.Value; 
                         result = val.Value; 
+                    }
+                    else if (IsRateKey(key))
+                    {
+                        // 3.85.1：速率缺值归零，不返回上一帧
+                        result = 0f;
                     }
                     else if (_lastValidMap.TryGetValue(key, out var last))
                     {

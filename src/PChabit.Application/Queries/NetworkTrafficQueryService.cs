@@ -39,6 +39,14 @@ public sealed class NetworkTrafficQueryService
             .Where(x => string.Compare(x.Date, fromDate) >= 0 && string.Compare(x.Date, toDateInclusive) <= 0)
             .ToListAsync();
 
+        // 3.85.1：自身进程不是流量来源。启动清理完成前（或清理失败时）也不能把
+        // 旧版本分摊算法留下的误记行展示到流量榜上。
+        var selfPath = Environment.ProcessPath;
+        var selfName = string.IsNullOrWhiteSpace(selfPath)
+            ? "PChabit"
+            : System.IO.Path.GetFileNameWithoutExtension(selfPath);
+        procRows.RemoveAll(x => string.Equals(x.ProcessName, selfName, StringComparison.OrdinalIgnoreCase));
+
         // 分类映射复用 AppStatsEngine（设置-应用分类，进程名 → 分类名/颜色）
         IReadOnlyDictionary<string, (string Name, string ColorHex)> categoryMap;
         try

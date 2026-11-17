@@ -82,8 +82,14 @@
                         <!-- 行 0：键盘 4 项 + 鼠标总点击 -->
                         <Border Grid.Column="0" Padding="16" Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="12">
                             <StackPanel Spacing="4">
-                                <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="总按键次数" ToolTipService.ToolTip="当日累计按下的所有按键总数" />
+                                <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="总按键次数" ToolTipService.ToolTip="当日按下的按键次数（不含长按产生的自动重复）" />
                                 <TextBlock FontSize="20" FontWeight="SemiBold" Text="{x:Bind ViewModel.TotalKeyPresses, Mode=OneWay}" />
+                                <TextBlock
+                                    FontSize="11"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="{x:Bind ViewModel.RepeatKeyPressesText, Mode=OneWay}"
+                                    ToolTipService.ToolTip="按住不放产生的自动重复次数，未计入上方总数"
+                                    Visibility="{x:Bind ViewModel.HasRepeatKeyPresses, Mode=OneWay}" />
                             </StackPanel>
                         </Border>
 

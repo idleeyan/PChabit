@@ -17,6 +17,12 @@ public class KeyboardEventArgs : EventArgs
     public string? ActiveProcess { get; init; }
     public DateTime Timestamp { get; }
     public int KeyCount { get; set; } = 1;
+
+    /// <summary>
+    /// 是否为「按住不放」产生的自动重复（auto-repeat）。
+    /// 自动重复不计入按键总数与按键分布，只单独累计；否则游戏里长按 W 一分钟就会被记成上千次。
+    /// </summary>
+    public bool IsAutoRepeat { get; init; }
     
     public KeyboardEventArgs(int keyCode, string? keyName, bool isKeyDown, DateTime timestamp)
     {

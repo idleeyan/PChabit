@@ -133,11 +133,25 @@ public partial class HardwareMonitorViewModel : ViewModelBase
     /// <summary>温度进度条满刻度（°C）。</summary>
     public double TempBarMax => 100;
 
+    // 3.85.1：固定档位刻度。此前用「当前峰值 × 1.25」自适应，数值最大的那一条
+    // 永远画到 80%，即使空闲也像一直在占用带宽。改为按量级选固定档。
+    private static readonly double[] DiskSpeedSteps = { 10, 50, 150, 500 };
+    private static readonly double[] NetSpeedSteps = { 1, 5, 20, 125 };
+
+    private static double PickScale(double current, double[] steps)
+    {
+        foreach (var step in steps)
+        {
+            if (current <= step) return step;
+        }
+        return steps[steps.Length - 1];
+    }
+
     /// <summary>磁盘读写进度条参考满刻度（MB/s）；超过则条打满，颜色仍按阈值。</summary>
-    public double DiskSpeedBarMax => Math.Max(20, Math.Max(DiskReadMbps, DiskWriteMbps) * 1.25);
+    public double DiskSpeedBarMax => PickScale(Math.Max(DiskReadMbps, DiskWriteMbps), DiskSpeedSteps);
 
     /// <summary>网络上下行进度条参考满刻度（MB/s）。</summary>
-    public double NetSpeedBarMax => Math.Max(1, Math.Max(NetDownMbps, NetUpMbps) * 1.25);
+    public double NetSpeedBarMax => PickScale(Math.Max(NetDownMbps, NetUpMbps), NetSpeedSteps);
 
     public HardwareMonitorViewModel(HardwareMonitorService monitorService, ProcessNetworkMonitor processNetwork, ProcessResourceMonitor processResource)
     {

@@ -28,6 +28,8 @@ namespace PChabit.HardwareMonitor.Hardware
         
         // 网络智能缓存
         private IHardware? _cachedNetHw;
+        // 3.85.1：自动选优还没锁定时，先固定一块真实网卡作为每拍刷新目标
+        private IHardware? _defaultTarget;
         private DateTime _lastNetScan = DateTime.MinValue;
         private readonly DateTime _startTime = DateTime.Now; // 启动时间
         private static string _staticIPCache = "";// [修改] 增加IP静态缓存，切换主题/重启服务时不丢失，解决闪烁问题
@@ -54,6 +56,7 @@ namespace PChabit.HardwareMonitor.Hardware
         {
             _netStates.Clear();
             _cachedNetHw = null;
+            _defaultTarget = null;
         }
 
         // ===========================================================
@@ -61,7 +64,19 @@ namespace PChabit.HardwareMonitor.Hardware
         // ===========================================================
         public void ProcessUpdate(IHardware hw, HardwareMonitorOptions cfg, double timeDelta, bool isSlowScanTick)
         {
+            // 3.85.1：自动选优尚未缓存、用户也未指定网卡时，仍要保证至少一块真实网卡
+            // 每拍 Update。否则 LHM 传感器保留上一次的速率，UI 表现为「读数一直不归零」。
+            if (_cachedNetHw == null &&
+                string.IsNullOrEmpty(cfg.LastAutoNetwork) &&
+                string.IsNullOrEmpty(cfg.PreferredNetwork) &&
+                _defaultTarget == null &&
+                !IsVirtualNetwork(hw.Name))
+            {
+                _defaultTarget = hw;
+            }
+
             bool isTarget = (_cachedNetHw != null && hw == _cachedNetHw) ||
+                            (_defaultTarget != null && hw == _defaultTarget) ||
                             (hw.Name == cfg.LastAutoNetwork) ||
                             (hw.Name == cfg.PreferredNetwork);
 
@@ -307,8 +322,8 @@ namespace PChabit.HardwareMonitor.Hardware
                 lock (syncLock) lastValidMap[key] = v;
                 return v;
             }
-            lock (syncLock) { if (lastValidMap.TryGetValue(key, out var last)) return last; }
-            return null;
+            // 3.85.1：速率读数缺值归零，不再沿用 lastValidMap 的历史值
+            return 0f;
         }
 
         private float? ReadNetworkSensor(IHardware hw, string key, Dictionary<string, float> lastValidMap, object syncLock)
@@ -326,8 +341,8 @@ namespace PChabit.HardwareMonitor.Hardware
                 lock (syncLock) lastValidMap[key] = v;
                 return v;
             }
-            lock (syncLock) { if (lastValidMap.TryGetValue(key, out var last)) return last; }
-            return null;
+            // 3.85.1：速率读数缺值归零，不再沿用 lastValidMap 的历史值
+            return 0f;
         }
 
         // ===========================================================

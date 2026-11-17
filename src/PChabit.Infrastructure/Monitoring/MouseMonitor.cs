@@ -33,6 +33,12 @@ public class MouseMonitor : IMouseMonitor
 
     public event EventHandler<MouseTrailEventArgs>? OnTrailCompleted;
 
+    /// <summary>左键拦截（见 <see cref="IMouseMonitor.ClickInterceptor"/>）。</summary>
+    public Func<int, int, bool>? ClickInterceptor { get; set; }
+
+    /// <summary>按下被拦截后，与之配对的抬起也要吞掉，避免目标窗口收到孤立抬起。</summary>
+    private bool _swallowLeftUp;
+
     public void Start()
     {
         if (IsRunning) return;
@@ -102,8 +108,24 @@ public class MouseMonitor : IMouseMonitor
                 switch (wParamInt)
                 {
                     case Win32Helper.WM_LBUTTONDOWN:
+                        // UI 层拦截优先：命中任务栏小窗等自绘区域时，吞掉本次点击
+                        if (ClickInterceptor?.Invoke(hookStruct.pt.X, hookStruct.pt.Y) == true)
+                        {
+                            _swallowLeftUp = true;
+                            return (IntPtr)1;
+                        }
+
                         OnMouseClick?.Invoke(this, new MouseClickEventArgs(
                             MouseButtonType.Left, hookStruct.pt.X, hookStruct.pt.Y, now));
+                        break;
+
+                    case Win32Helper.WM_LBUTTONUP:
+                        if (_swallowLeftUp)
+                        {
+                            _swallowLeftUp = false;
+                            return (IntPtr)1;
+                        }
+
                         break;
 
                     case Win32Helper.WM_RBUTTONDOWN:

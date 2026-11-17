@@ -91,6 +91,8 @@ public static class DatabaseInitializer
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "KeyCategoryFrequency", "TEXT");
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "Shortcuts", "TEXT");
             await MigrateTableColumnsAsync(connection, "KeyboardSessions", "TypingBursts", "TEXT");
+            // 3.87.0：长按自动重复单独计数（旧行为 0，历史数据无法回溯拆分）
+            await MigrateTableColumnsAsync(connection, "KeyboardSessions", "RepeatKeyPresses", "INTEGER NOT NULL DEFAULT 0");
 
             // 跳过全表 UPDATE 修复（历史数据已处理过；与数据收集写锁竞争会导致启动假死）
 

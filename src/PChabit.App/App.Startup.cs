@@ -35,6 +35,23 @@ public partial class App : Microsoft.UI.Xaml.Application
                 _serviceProvider!.GetRequiredService<Core.Interfaces.IMouseMonitor>().IsRunning,
                 hookThread.IsRunning);
 
+            // 任务栏小窗点击（3.86.0）：小窗是 Shell_TrayWnd 子窗口，任务栏 XAML 层压在它上面，
+            // 真实点击/光标消息到不了它（实测 WM_SETCURSOR、WM_LBUTTONUP 均不触发）。
+            // 因此借已有的全局鼠标钩子拦「画了文字的区域」：命中即弹进程网速浮窗，并吞掉该次点击，
+            // 空白像素不拦，点击照常落到任务栏控件上。
+            try
+            {
+                var mouseMonitor = _serviceProvider!.GetRequiredService<Core.Interfaces.IMouseMonitor>();
+                mouseMonitor.ClickInterceptor = (x, y) =>
+                    _taskbarWidget != null
+                    && _taskbarWidget.HitTestScreenPoint(x, y)
+                    && OnTaskbarWidgetClicked();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "注册任务栏小窗点击拦截失败");
+            }
+
             _dataCollectionService.Start();
             Log.Information("数据收集服务已启动");
 

@@ -22,6 +22,18 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
     private bool _isAltPressed;
     private bool _isWinPressed;
 
+    /// <summary>当前处于按下状态的非修饰键：DOWN 加入、UP 移除，用于识别自动重复。</summary>
+    private readonly HashSet<int> _pressedKeys = new();
+    /// <summary>每个键最近一次 DOWN 的时间戳，用于兜底「UP 丢失」的键。</summary>
+    private readonly Dictionary<int, long> _lastDownTick = new();
+
+    /// <summary>
+    /// 自动重复的兜底阈值：正常自动重复间隔约 33ms（系统最快 30 次/秒），
+    /// 超过这个阈值仍收到 DOWN 且没有 UP，说明该键的 KEYUP 丢失（PrintScreen 等），
+    /// 按「新的按下」处理，避免整键被永久判成重复。
+    /// </summary>
+    private const long RepeatStaleMs = 1500;
+
     private string? _currentProcess;
 
     // 前台进程缓存：Process.GetProcessById 在钩子回调中代价过高，会引起输入卡顿
@@ -71,6 +83,8 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
             _hook = IntPtr.Zero;
         }
 
+        _pressedKeys.Clear();
+        _lastDownTick.Clear();
         IsRunning = false;
     }
 
@@ -94,8 +108,33 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
 
                 UpdateModifierState(vkCode, isKeyDown, isKeyUp);
 
+                // vkCode <= 0：无键名的合成/异常输入。计入总数会造成「总数与按键分布对不上」
+                // （历史库里就有 3395 次总数、分布只有 2 次的行），直接丢弃。
+                if (vkCode <= 0)
+                {
+                    return Win32Helper.CallNextHookEx(_hook, nCode, wParam, lParam);
+                }
+
+                if (isKeyUp)
+                {
+                    _pressedKeys.Remove(vkCode);
+                    _lastDownTick.Remove(vkCode);
+                }
+
                 if (isKeyDown && !ModifierVkCodes.Contains(vkCode))
                 {
+                    var now = Environment.TickCount64;
+                    var isAutoRepeat = !_pressedKeys.Add(vkCode);
+                    if (isAutoRepeat &&
+                        _lastDownTick.TryGetValue(vkCode, out var lastDown) &&
+                        now - lastDown > RepeatStaleMs)
+                    {
+                        // UP 丢了（该键只发 DOWN）：按新的按下处理
+                        isAutoRepeat = false;
+                    }
+
+                    _lastDownTick[vkCode] = now;
+
                     var keyName = GetKeyName(vkCode);
                     var activeProcess = ResolveForegroundProcessFast();
 
@@ -105,7 +144,8 @@ public class KeyboardMonitor : IKeyboardMonitor, IDisposable
                         IsCtrlPressed = _isCtrlPressed,
                         IsAltPressed = _isAltPressed,
                         IsWinPressed = _isWinPressed,
-                        ActiveProcess = activeProcess
+                        ActiveProcess = activeProcess,
+                        IsAutoRepeat = isAutoRepeat
                     };
 
                     OnDataCollected?.Invoke(this, args);

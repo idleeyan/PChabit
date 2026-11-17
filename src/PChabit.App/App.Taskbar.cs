@@ -63,12 +63,16 @@ public partial class App : Microsoft.UI.Xaml.Application
                     _taskbarWidget = null;
                     Log.Information("任务栏小窗已隐藏");
                 }
+                // 小窗消失后浮窗失去入口，一并收起
+                if (_networkProcessWindow != null) CloseNetworkProcessWindow();
                 return;
             }
 
             if (_taskbarWidget == null)
             {
                 _taskbarWidget = new TaskbarWidget();
+                // 消息回调兜底（真实点击到不了小窗，正常入口是全局鼠标钩子，见 App.Startup）
+                _taskbarWidget.Clicked += () => OnTaskbarWidgetClicked();
             }
             // Start 幂等：失效句柄会重建，父窗口变化会重挂载（Explorer 重启后可恢复）
             _taskbarWidget.Start();
