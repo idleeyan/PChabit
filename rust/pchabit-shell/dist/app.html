@@ -25,6 +25,10 @@
   header { height:40px; flex:none; display:flex; align-items:center; gap:12px;
     padding:0 14px; border-bottom:1px solid #1f2937; color:#94a3b8; font-size:12px; }
   header b { color:#e2e8f0; font-weight:600; font-size:13px; }
+  header .spacer { flex:1; }
+  header button { background:#182234; border:1px solid #263349; color:#cbd5e1;
+    border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+  header button:hover { background:#20304a; border-color:#3b82f6; color:#fff; }
   #frame { flex:1; border:0; width:100%; background:#0f172a; }
 </style>
 </head>
@@ -40,7 +44,11 @@
     <div class="foot" id="foot">—</div>
   </nav>
   <main>
-    <header><b id="title">硬件趋势</b><span id="meta"></span></header>
+    <header>
+      <b id="title">硬件趋势</b><span id="meta"></span>
+      <span class="spacer"></span>
+      <button id="refresh" title="重新查库并重算五页载荷">刷新</button>
+    </header>
     <iframe id="frame"></iframe>
   </main>
 </div>
@@ -122,9 +130,31 @@
   document.getElementById('foot').textContent =
     '数据：壳内 Rust 直读 SQLite · ' + Object.keys(pages).length + ' 页已注入';
 
-  // 命令行直开：app.html?p=sankey
+  // 刷新：重算全部载荷后重新加载当前页（load 事件会再喂一次数据）
+  function refresh() {
+    var meta = document.getElementById('meta');
+    meta.textContent = '刷新中…';
+    window.__TAURI__.core.invoke('pages_data').then(function (p) {
+      window.__PAGES__ = p;
+      var pagesNow = Object.keys(p).length;
+      document.getElementById('foot').textContent =
+        '数据：壳内 Rust 直读 SQLite · ' + pagesNow + ' 页 · 刷新于 ' +
+        new Date().toLocaleTimeString('zh-CN');
+      note('refresh 完成 ' + pagesNow + ' 页');
+      if (current) frame.src = ASSET[current];
+    }).catch(function (e) {
+      meta.textContent = '刷新失败：' + e;
+      note('refresh 失败：' + e);
+    });
+  }
+  document.getElementById('refresh').addEventListener('click', refresh);
+
+  // 命令行直开：app.html?p=sankey　自测刷新：再加 &auto=1
   var q = new URLSearchParams(location.search).get('p');
   load(ASSET[q] ? q : 'hardware');
+  if (new URLSearchParams(location.search).get('auto') === '1') {
+    setTimeout(refresh, 2500);
+  }
 </script>
 </body>
 </html>

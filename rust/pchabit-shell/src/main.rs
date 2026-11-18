@@ -276,13 +276,10 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
     Ok(data)
 }
 
-fn main() {
-    let start_page = std::env::args().nth(1).unwrap_or_default();
-
-    // 四页数据在窗口创建时一次算好，注入 window.__PAGES__：
-    // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
+/// 一次算好全部五页载荷：启动注入与手动刷新共用同一份逻辑。
+fn all_pages() -> serde_json::Value {
     let t0 = std::time::Instant::now();
-    let report = payload_analytics(); // 近 7 天 vs 前 7 天，硬件与分类都从这里取
+    let report = payload_analytics(); // 硬件与分类都从这份报告里取，避免重复计算
     let pages = serde_json::json!({
         "hardware": payload_hardware(&report),
         "activity": payload_activity(),
@@ -290,14 +287,32 @@ fn main() {
         "sankey": payload_sankey(),
         "analytics": report,
     });
-    let inject = format!("window.__PAGES__ = {pages};");
     log_line(&format!(
         "五页载荷就绪：{:.1} ms",
         t0.elapsed().as_secs_f64() * 1000.0
     ));
+    pages
+}
+
+/// 刷新：前端点按钮时重算全部载荷。
+#[tauri::command]
+fn pages_data() -> serde_json::Value {
+    all_pages()
+}
+
+fn main() {
+    // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]
+    let mut argv = std::env::args().skip(1);
+    let start_page = argv.next().unwrap_or_default();
+    let extra = argv.next().unwrap_or_default();
+
+    // 五页数据在窗口创建时一次算好，注入 window.__PAGES__：
+    // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
+    let pages = all_pages();
+    let inject = format!("window.__PAGES__ = {pages};");
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![page_data, note])
+        .invoke_handler(tauri::generate_handler![page_data, pages_data, note])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {
                 tauri::webview::PageLoadEvent::Started => "页面开始加载",
@@ -308,8 +323,10 @@ fn main() {
         .setup(move |app| {
             let url = if start_page.is_empty() {
                 "app.html".to_string()
-            } else {
+            } else if extra.is_empty() {
                 format!("app.html?p={start_page}")
+            } else {
+                format!("app.html?p={start_page}&{extra}")
             };
 
             tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
