@@ -36,6 +36,7 @@
     <button data-page="activity">每小时活动</button>
     <button data-page="category">分类构成</button>
     <button data-page="sankey">应用切换关系</button>
+    <button data-page="analytics">活动分析</button>
     <div class="foot" id="foot">—</div>
   </nav>
   <main>
@@ -45,8 +46,10 @@
 </div>
 <script>
   var ASSET = { hardware:'pages/hardware-trend.html', activity:'pages/activity-trend.html',
-                category:'pages/piechart.html', sankey:'pages/sankey.html' };
-  var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成', sankey:'应用切换关系' };
+                category:'pages/piechart.html', sankey:'pages/sankey.html',
+                analytics:'pages/analytics.html' };
+  var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
+                sankey:'应用切换关系', analytics:'活动分析' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -73,6 +76,9 @@
       if (w.renderPieChart) w.renderPieChart(d);
     } else if (page === 'sankey') {
       if (w.renderSankey) w.renderSankey(d);
+    } else if (page === 'analytics') {
+      w.__ANA_DATA__ = d;
+      if (w.renderAnalytics) w.__ANA_RESULT__ = w.renderAnalytics(d);
     }
   }
 
@@ -99,7 +105,9 @@
       var d = dataFor(page);
       feed(page, frame.contentWindow, d);
       meta.textContent = (d && d.summary) ? d.summary : '已加载';
-      note(page + ' 已渲染');
+      var extra = (page === 'analytics' && frame.contentWindow.__ANA_RESULT__)
+        ? ' ' + frame.contentWindow.__ANA_RESULT__ : '';
+      note(page + ' 已渲染' + extra);
     } catch (e) {
       meta.textContent = '渲染失败：' + e.message;
       note(page + ' 渲染失败：' + e.message);

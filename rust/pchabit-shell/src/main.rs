@@ -52,26 +52,56 @@ fn current_hour() -> i64 {
 }
 
 fn analytics_for(start: &str, end: &str) -> Result<serde_json::Value, String> {
+    analytics_period(start, end, start, end)
+}
+
+fn analytics_period(
+    start: &str,
+    end: &str,
+    prev_start: &str,
+    prev_end: &str,
+) -> Result<serde_json::Value, String> {
     let db = pchabit_datad::default_db();
     let req = serde_json::json!({
         "curStart": format!("{start} 00:00:00.0000000"),
         "curEnd": format!("{end} 23:59:59.9999999"),
-        "prevStart": format!("{start} 00:00:00.0000000"),
-        "prevEnd": format!("{end} 23:59:59.9999999"),
+        "prevStart": format!("{prev_start} 00:00:00.0000000"),
+        "prevEnd": format!("{prev_end} 23:59:59.9999999"),
         "label": "区间",
-        "prevLabel": "区间",
+        "prevLabel": "上一区间",
     });
     pchabit_datad::analytics_json(&db, &req)
 }
 
-/// 硬件趋势：`__HW_DATA__ = { hours:[{label,cpu,gpu,temp,n}], summary }`
-fn payload_hardware() -> serde_json::Value {
+/// 分析页：完整 `analytics` 报告（近 7 天 vs 前 7 天）。
+fn payload_analytics() -> serde_json::Value {
     let today = pchabit_datad::today_local();
-    let start = pchabit_datad::date_shift(&today, -6);
-    let report = match analytics_for(&start, &today) {
-        Ok(v) => v,
-        Err(e) => return serde_json::json!({ "hours": [], "summary": format!("数据不可用：{e}") }),
-    };
+    let cur_start = pchabit_datad::date_shift(&today, -6);
+    let prev_end = pchabit_datad::date_shift(&today, -7);
+    let prev_start = pchabit_datad::date_shift(&today, -13);
+    match analytics_period(&cur_start, &today, &prev_start, &prev_end) {
+        Ok(mut v) => {
+            v["period"]["label"] = serde_json::json!("近 7 天");
+            v["previous"]["label"] = serde_json::json!("前 7 天");
+            log_line(&format!(
+                "analytics: {} KPI / {} 洞察 / {} 天有数据",
+                v["kpis"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["insights"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["dayCountWithData"].as_i64().unwrap_or(0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("analytics: 计算失败 {e}"));
+            serde_json::json!({ "kpis": [], "insights": [], "period": {}, "previous": {} })
+        }
+    }
+}
+
+/// 硬件趋势：`__HW_DATA__ = { hours:[{label,cpu,gpu,temp,n}], summary }`
+///
+/// 直接从分析报告里取（`hardware.hours`），不再单独跑一次 analytics。
+fn payload_hardware(report: &serde_json::Value) -> serde_json::Value {
     let hw = report.get("hardware").cloned().unwrap_or(serde_json::Value::Null);
     let hours: Vec<serde_json::Value> = hw["hours"]
         .as_array()
@@ -160,14 +190,8 @@ fn payload_activity() -> serde_json::Value {
     serde_json::json!({ "bars": bars, "summary": summary })
 }
 
-/// 分类构成（饼图吃 `renderPieChart([{name,value,color}])`）
-fn payload_category() -> serde_json::Value {
-    let today = pchabit_datad::today_local();
-    let start = pchabit_datad::date_shift(&today, -6);
-    let report = match analytics_for(&start, &today) {
-        Ok(v) => v,
-        Err(e) => return serde_json::json!([]),
-    };
+/// 分类构成（饼图吃 `renderPieChart([{name,value,color}])`）：同样复用报告里的 `categoryShares`。
+fn payload_category(report: &serde_json::Value) -> serde_json::Value {
     let colors =
         pchabit_datad::category_colors(&pchabit_datad::default_db()).unwrap_or_default();
     let items: Vec<serde_json::Value> = report["categoryShares"]
@@ -221,6 +245,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "activity" => "activity-trend.html",
         "category" => "piechart.html",
         "sankey" => "sankey.html",
+        "analytics" => "analytics.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -233,10 +258,16 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
 
     let t0 = std::time::Instant::now();
     let data = match page.as_str() {
-        "hardware" => payload_hardware(),
         "activity" => payload_activity(),
-        "category" => payload_category(),
-        _ => payload_sankey(),
+        "sankey" => payload_sankey(),
+        _ => {
+            let report = payload_analytics();
+            match page.as_str() {
+                "hardware" => payload_hardware(&report),
+                "category" => payload_category(&report),
+                _ => report,
+            }
+        }
     };
     log_line(&format!(
         "page_data {page}: {:.1} ms",
@@ -251,15 +282,17 @@ fn main() {
     // 四页数据在窗口创建时一次算好，注入 window.__PAGES__：
     // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
     let t0 = std::time::Instant::now();
+    let report = payload_analytics(); // 近 7 天 vs 前 7 天，硬件与分类都从这里取
     let pages = serde_json::json!({
-        "hardware": payload_hardware(),
+        "hardware": payload_hardware(&report),
         "activity": payload_activity(),
-        "category": payload_category(),
+        "category": payload_category(&report),
         "sankey": payload_sankey(),
+        "analytics": report,
     });
     let inject = format!("window.__PAGES__ = {pages};");
     log_line(&format!(
-        "四页载荷就绪：{:.1} ms",
+        "五页载荷就绪：{:.1} ms",
         t0.elapsed().as_secs_f64() * 1000.0
     ));
 

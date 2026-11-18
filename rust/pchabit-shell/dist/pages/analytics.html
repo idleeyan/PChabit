@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 分析</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
+  #wrap { padding:14px 16px 24px; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
+  .sub { color:#94a3b8; font-size:11px; margin-bottom:14px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill, minmax(132px, 1fr)); gap:8px; margin-bottom:16px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:10px; padding:9px 11px; }
+  .kpi .n { color:#94a3b8; font-size:11px; }
+  .kpi .v { font-size:17px; font-weight:600; margin:2px 0 1px; }
+  .kpi .d { font-size:11px; }
+  .up { color:#34d399; } .down { color:#f87171; } .flat { color:#94a3b8; }
+
+  .row { display:grid; grid-template-columns: 1.15fr .85fr; gap:14px; }
+  @media (max-width: 900px) { .row { grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 10px; color:#cbd5e1; }
+
+  .cal { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; }
+  .cal .day { border-radius:4px; height:40px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; font-size:10px; color:#475569; background:#182234; }
+  .cal .day.in { color:#e2e8f0; }
+  .cal .day .h { font-size:11px; font-weight:600; }
+  .cal .day .l { font-size:9px; opacity:.8; }
+
+  .heat { display:grid; grid-template-columns:repeat(24, 1fr); gap:2px; margin-top:12px; }
+  .heat div { height:26px; border-radius:3px; background:#182234; font-size:9px; color:#64748b;
+    display:flex; align-items:center; justify-content:center; }
+  .heat div.m { color:#e2e8f0; }
+
+  ul { list-style:none; margin:0; padding:0; }
+  li { padding:6px 0; border-bottom:1px solid #1b2436; }
+  li:last-child { border-bottom:0; }
+  .line { display:flex; justify-content:space-between; gap:8px; }
+  .muted { color:#94a3b8; }
+
+  .share { margin-bottom:7px; }
+  .share .bar { height:6px; background:#1b2436; border-radius:3px; overflow:hidden; margin-top:3px; }
+  .share .bar i { display:block; height:100%; background:#3b82f6; }
+
+  .insight { padding:7px 9px; border-radius:8px; margin-bottom:6px; background:#16233a; border-left:3px solid #3b82f6; }
+  .insight.warning { border-left-color:#f59e0b; }
+  .insight.critical { border-left-color:#ef4444; }
+  .insight b { display:block; font-size:11px; margin-bottom:2px; }
+  .insight span { color:#94a3b8; font-size:11px; }
+  .empty { color:#64748b; padding:12px 0; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>活动分析</h1>
+  <div class="sub" id="period">等待数据…</div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="row">
+    <section>
+      <h2>近两周每日活跃</h2>
+      <div class="cal" id="cal"></div>
+      <h2 style="margin-top:14px">24 小时分布（当前周期）</h2>
+      <div class="heat" id="heat"></div>
+    </section>
+    <section>
+      <h2>分类构成</h2>
+      <div id="shares"></div>
+      <h2 style="margin-top:14px">Top 变化</h2>
+      <ul id="changes"></ul>
+    </section>
+  </div>
+
+  <section style="margin-top:14px">
+    <h2>洞察</h2>
+    <div id="insights"></div>
+  </section>
+</div>
+<script>
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function fmtMins(v) {
+    var m = Math.round(v || 0);
+    return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+  }
+
+  // 日历/热力用一个 5 档色阶，和应用里"强度"语义一致
+  var LEVEL = ['#182234', '#1e3a5f', '#1d4d7a', '#2563a8', '#3b82f6'];
+
+  function dirClass(d) {
+    return d === 'up' ? 'up' : (d === 'down' ? 'down' : 'flat');
+  }
+
+  function render(data) {
+    if (!data) return 'error: no data';
+
+    var period = data.period || {};
+    document.getElementById('period').textContent =
+      (period.label || '') + '　' + (period.start || '') + ' ~ ' + (period.endExclusive || '') +
+      '　对比 ' + (data.previous && data.previous.label ? data.previous.label : '上一周期') +
+      '　有数据 ' + (data.dayCountWithData || 0) + ' 天';
+
+    // KPI
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    (data.kpis || []).forEach(function (k) {
+      var box = el('div', 'kpi');
+      box.appendChild(el('div', 'n', k.name));
+      box.appendChild(el('div', 'v', k.value));
+      box.appendChild(el('div', 'd ' + dirClass(k.deltaDirection), k.deltaText));
+      box.title = k.hint || '';
+      kp.appendChild(box);
+    });
+
+    // 14 天日历
+    var cal = document.getElementById('cal');
+    cal.innerHTML = '';
+    (data.calendarDays || []).forEach(function (d) {
+      var c = el('div', 'day' + (d.inPeriod ? ' in' : ''));
+      c.style.background = d.inPeriod ? LEVEL[Math.min(4, d.intensityLevel || 0)] : '#141c2b';
+      c.style.opacity = d.inPeriod ? 1 : 0.45;
+      c.appendChild(el('div', 'h', fmtMins((d.hours || 0) * 60)));
+      c.appendChild(el('div', 'l', d.dateLabel || ''));
+      c.title = d.date + ' 周' + (d.dayLabel || '');
+      cal.appendChild(c);
+    });
+
+    // 24h 热力
+    var heat = document.getElementById('heat');
+    heat.innerHTML = '';
+    (data.hourHeat || []).forEach(function (h) {
+      var cell = el('div', (h.minutes || 0) > 0 ? 'm' : '', h.label);
+      cell.style.background = LEVEL[Math.min(4, h.intensityLevel || 0)];
+      cell.title = h.label + ' 点 · ' + Math.round(h.minutes || 0) + ' 分钟';
+      heat.appendChild(cell);
+    });
+
+    // 分类构成
+    var sh = document.getElementById('shares');
+    sh.innerHTML = '';
+    var shares = (data.categoryShares || []);
+    if (!shares.length) sh.appendChild(el('div', 'empty', '暂无分类数据'));
+    var maxPct = shares.reduce(function (a, b) { return Math.max(a, b.percentage || 0); }, 1);
+    shares.forEach(function (s) {
+      var box = el('div', 'share');
+      var line = el('div', 'line');
+      line.appendChild(el('span', null, s.category));
+      line.appendChild(el('span', 'muted', (s.percentage || 0).toFixed(1) + '% · ' + fmtMins(s.minutes)));
+      box.appendChild(line);
+      var bar = el('div', 'bar');
+      var fill = el('i');
+      fill.style.width = Math.max(2, (s.percentage || 0) / maxPct * 100) + '%';
+      bar.appendChild(fill);
+      box.appendChild(bar);
+      sh.appendChild(box);
+    });
+
+    // Top 变化
+    var ch = document.getElementById('changes');
+    ch.innerHTML = '';
+    var changes = (data.topChanges || []);
+    if (!changes.length) ch.appendChild(el('li', 'empty', '暂无显著变化'));
+    changes.forEach(function (c) {
+      var li = el('li');
+      var line = el('div', 'line');
+      line.appendChild(el('span', null, c.name));
+      line.appendChild(el('span', dirClass(c.direction), c.deltaText));
+      li.appendChild(line);
+      li.appendChild(el('div', 'muted', fmtMins(c.previousMinutes) + ' → ' + fmtMins(c.currentMinutes)));
+      ch.appendChild(li);
+    });
+
+    // 洞察
+    var ins = document.getElementById('insights');
+    ins.innerHTML = '';
+    (data.insights || []).forEach(function (i) {
+      var box = el('div', 'insight ' + (i.severity || ''));
+      box.appendChild(el('b', null, i.title));
+      box.appendChild(el('span', null, i.message));
+      ins.appendChild(box);
+    });
+    if (!(data.insights || []).length) ins.appendChild(el('div', 'empty', '暂无洞察'));
+
+    return 'ok: ' + (data.kpis || []).length + ' KPI / ' + (data.insights || []).length + ' 洞察';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var d = window.__ANA_DATA__;
+    if (d) { try { window.__ANA_RESULT__ = render(d); } catch (e) { window.__ANA_RESULT__ = 'error: ' + e.message; } }
+  });
+
+  window.renderAnalytics = function (d) { window.__ANA_DATA__ = d; return render(d); };
+</script>
+</body>
+</html>
