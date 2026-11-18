@@ -302,6 +302,14 @@ fn payload_sankey() -> serde_json::Value {
     }
 }
 
+/// 时间线换天：offset = -1 昨天 / 0 今天 / 1 明天，返回与启动注入同构的载荷。
+#[tauri::command]
+fn timeline_day(offset: i64) -> serde_json::Value {
+    let today = pchabit_datad::today_local();
+    let date = pchabit_datad::date_shift(&today, offset);
+    payload_timeline(&date, offset)
+}
+
 #[tauri::command]
 fn note(msg: String) {
     log_line(&format!("[页面] {msg}"));
@@ -320,6 +328,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "detail" => "detail.html",
         "notes" => "notes.html",
         "web" => "web.html",
+        "timeline" => "timeline.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -342,6 +351,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "settings" => serde_json::json!({ "settings": payload_settings() }),
         "notes" => payload_notes(),
         "web" => payload_web(),
+        "timeline" => payload_timeline(&pchabit_datad::today_local(), 0),
         "detail" => serde_json::json!({
             "apps": pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
                 .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }))
@@ -383,6 +393,7 @@ fn all_pages() -> serde_json::Value {
         "settings": payload_settings(),
         "notes": payload_notes(),
         "web": payload_web(),
+        "timeline": payload_timeline(&pchabit_datad::today_local(), 0),
     });
     log_line(&format!(
         "全部载荷就绪（{} 页）：{:.1} ms",
@@ -462,6 +473,31 @@ fn payload_web() -> serde_json::Value {
             serde_json::json!({
                 "ok": false, "error": e, "summary": {}, "domains": [], "hourly": [],
                 "daily": [], "recent": []
+            })
+        }
+    }
+}
+
+/// 时间线（只读）：某一天的「应用 × 时段」块，供 24 小时甘特图。
+fn payload_timeline(date: &str, offset: i64) -> serde_json::Value {
+    match pchabit_datad::timeline_json(&pchabit_datad::default_db(), date) {
+        Ok(mut v) => {
+            v["offset"] = serde_json::json!(offset);
+            v["isToday"] = serde_json::json!(date == pchabit_datad::today_local());
+            log_line(&format!(
+                "timeline: {} {} / {} 个应用 / {} 段 / {:.1} ms",
+                date,
+                v["weekday"].as_str().unwrap_or(""),
+                v["appCount"].as_i64().unwrap_or(0),
+                v["segments"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("timeline: 读取失败 {e}"));
+            serde_json::json!({
+                "ok": false, "error": e, "date": date, "apps": [], "segments": []
             })
         }
     }
@@ -619,7 +655,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.0.0";
+const VERSION: &str = "4.1.0";
 
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]
@@ -643,7 +679,8 @@ fn main() {
             create_category,
             set_category_active,
             app_detail,
-            categories
+            categories,
+            timeline_day
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {

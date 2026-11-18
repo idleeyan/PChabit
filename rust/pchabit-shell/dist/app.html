@@ -39,6 +39,7 @@
     <div class="brand">PChabit<span>Tauri 壳 · P4</span></div>
     <button data-page="hardware">硬件趋势</button>
     <button data-page="activity">每小时活动</button>
+    <button data-page="timeline">时间线</button>
     <button data-page="category">分类构成</button>
     <button data-page="sankey">应用切换关系</button>
     <button data-page="analytics">活动分析</button>
@@ -64,11 +65,12 @@
                 category:'pages/piechart.html', sankey:'pages/sankey.html',
                 analytics:'pages/analytics.html', admin:'pages/categories.html',
                 detail:'pages/detail.html', settings:'pages/settings.html',
-                notes:'pages/notes.html', web:'pages/web.html' };
+                notes:'pages/notes.html', web:'pages/web.html',
+                timeline:'pages/timeline.html' };
   var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
                 sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
                 detail:'应用详情', settings:'设置概览',
-                notes:'便签', web:'网页访问' };
+                notes:'便签', web:'网页访问', timeline:'时间线' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -113,6 +115,12 @@
     } else if (page === 'notes') {
       w.__NOTES_DATA__ = d;
       if (w.renderNotes) w.__NOTES_RESULT__ = w.renderNotes(d);
+    } else if (page === 'timeline') {
+      w.__TL_DATA__ = d;
+      if (w.renderTimeline) {
+        try { w.__TL_RESULT__ = w.renderTimeline(d); }
+        catch (e) { w.__TL_RESULT__ = 'error: ' + e.message; }
+      }
     } else if (page === 'web') {
       w.__WEB_DATA__ = d;
       if (w.renderWeb) {
@@ -227,6 +235,10 @@
         var notesN = (d && d.items) || [];
         meta.textContent = notesN.length + ' 条便签（只读，编辑请在 PChabit 里进行）';
         extra = ' ' + ((frame.contentWindow.__NOTES_RESULT__) || '');
+      } else if (page === 'timeline') {
+        meta.textContent = (d && d.label ? d.label : '') + (d && d.weekday ? '　' + d.weekday : '') +
+          ' · ' + ((d && d.appCount) || 0) + ' 个应用（只读）';
+        extra = ' ' + ((frame.contentWindow.__TL_RESULT__) || '');
       } else if (page === 'web') {
         var ws = (d && d.summary) || {};
         meta.textContent = (ws.totalVisits || 0) + ' 次访问 · ' + (ws.uniqueDomains || 0) +
@@ -272,6 +284,22 @@
           note('wtest 载荷重算完成 ' + Object.keys(p).length + ' 页');
         })
         .catch(function (e) { note('wtest 失败：' + e); });
+      }
+
+      // 自测钩子：?tltest=-1 验证换天命令（时间线页专用）
+      var tltest = new URLSearchParams(location.search).get('tltest');
+      if (page === 'timeline' && tltest) {
+        window.__TAURI__.core.invoke('timeline_day', { offset: parseInt(tltest, 10) })
+          .then(function (d) {
+            note('tltest 结果 ' + (d.label || d.date) + ' ' + (d.weekday || '') +
+              ' / ' + (d.appCount || 0) + ' 应用 / ' +
+              ((d.segments || []).length) + ' 块 / offset=' + d.offset +
+              ' / ' + ((d.ms || 0).toFixed(1)) + ' ms');
+            frame.contentWindow.__TL_DATA__ = d;
+            var r = frame.contentWindow.renderTimeline(d);
+            note('tltest 重绘 ' + r);
+          })
+          .catch(function (e) { note('tltest 失败：' + e); });
       }
     } catch (e) {
       meta.textContent = '渲染失败：' + e.message;

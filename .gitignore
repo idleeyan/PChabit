@@ -224,3 +224,4 @@ rust/pchabit-shell/dist/pages/*
 !rust/pchabit-shell/dist/pages/detail.html
 !rust/pchabit-shell/dist/pages/notes.html
 !rust/pchabit-shell/dist/pages/web.html
+!rust/pchabit-shell/dist/pages/timeline.html

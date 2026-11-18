@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 时间线</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 30px; }
+  header { display:flex; align-items:baseline; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .day { font-size:13px; color:#cbd5e1; }
+  .sub { color:#94a3b8; font-size:11px; }
+  .nav button { background:#16233a; color:#cbd5e1; border:1px solid #223049;
+    border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer; margin-right:4px; }
+  .nav button:hover { background:#1e3a5f; }
+  .nav button:disabled { opacity:.4; cursor:default; }
+
+  .wrap { overflow-x:auto; }
+  .grid { position:relative; min-width:900px; }
+  .axis { position:relative; height:18px; margin-left:150px;
+    border-bottom:1px solid #223049; }
+  .axis span { position:absolute; top:1px; font-size:9px; color:#64748b; }
+  .lanes { position:relative; margin-left:150px; }
+  .lane { position:relative; height:19px; border-bottom:1px solid #16223a; }
+  .lane:hover { background:#121b2b; }
+  .lane .b { position:absolute; top:2px; height:14px; border-radius:2px; opacity:.92; }
+  .lane .b:hover { opacity:1; outline:1px solid #93c5fd; }
+  .names { position:absolute; left:0; top:18px; width:150px; }
+  .names .n { height:19px; line-height:19px; font-size:11px; color:#94a3b8;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;
+    border-bottom:1px solid #16223a; }
+  .names .n b { color:#e2e8f0; font-weight:500; }
+  .names .n i { font-style:normal; color:#64748b; font-size:10px; }
+  .vline { position:absolute; top:18px; bottom:0; width:1px; background:#1a2740; }
+  .now { position:absolute; top:18px; bottom:0; width:1px; background:#f59e0b; opacity:.7; }
+
+  .kpis { display:flex; gap:8px; margin:12px 0 0; flex-wrap:wrap; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:8px; padding:6px 10px; min-width:110px; }
+  .kpi .n { font-size:10px; color:#94a3b8; }
+  .kpi .v { font-size:14px; font-weight:600; }
+  .empty { color:#64748b; padding:24px 0; }
+  .legend { margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; font-size:10px; color:#94a3b8; }
+  .legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>时间线</h1>
+  <span class="day" id="day">加载中…</span>
+  <span class="nav">
+    <button id="prev" title="前一天">◀ 前一天</button>
+    <button id="today" title="回到今天">今天</button>
+    <button id="next" title="后一天">后一天 ▶</button>
+  </span>
+  <span class="sub" id="meta"></span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+<div class="wrap">
+  <div class="grid" id="grid">
+    <div class="axis" id="axis"></div>
+    <div class="names" id="names"></div>
+    <div class="lanes" id="lanes"></div>
+  </div>
+</div>
+<div class="legend" id="legend"></div>
+
+<script>
+  function fmtMins(v) {
+    var m = Math.round(v || 0);
+    if (m < 60) return m + ' 分钟';
+    return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+  }
+
+  function hhmm(min) {
+    var m = Math.round(min || 0);
+    var h = Math.floor(m / 60), mm = m % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
+  }
+
+  var MAX_LANES = 22;
+
+  // 返回渲染摘要字符串（壳里只认字符串，别回传对象）
+  function renderTimeline(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('day').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    var segs = d.segments || [];
+    var apps = d.apps || [];
+
+    document.getElementById('day').textContent =
+      (d.label || d.date) + (d.weekday ? '　' + d.weekday : '');
+    document.getElementById('meta').textContent =
+      (d.ms ? d.ms.toFixed(1) + ' ms · ' : '') + (d.rawSessions || 0) + ' 段原始会话 → ' +
+      segs.length + ' 块';
+
+    // KPI
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    [
+      ['活跃时长', fmtMins(d.totalMinutes), '当天合计'],
+      ['应用数', apps.length, '个'],
+      ['块数', segs.length, '合并后'],
+      ['最早', segs.length ? hhmm(segs[0].start) : '-', '开始'],
+      ['最晚', segs.length ? hhmm(Math.max.apply(null, segs.map(function (s) { return s.end; }))) : '-', '结束'],
+    ].forEach(function (k) {
+      var b = document.createElement('div'); b.className = 'kpi';
+      var n = document.createElement('div'); n.className = 'n'; n.textContent = k[0]; b.appendChild(n);
+      var v = document.createElement('div'); v.className = 'v'; v.textContent = k[1]; b.appendChild(v);
+      var u = document.createElement('div'); u.className = 'n'; u.textContent = k[2]; b.appendChild(u);
+      kp.appendChild(b);
+    });
+
+    // 轴
+    var axis = document.getElementById('axis');
+    axis.innerHTML = '';
+    for (var h = 0; h <= 24; h += 2) {
+      var s = document.createElement('span');
+      s.style.left = (h / 24 * 100) + '%';
+      s.textContent = h === 24 ? '24' : (h < 10 ? '0' + h : h);
+      if (h === 24) { s.style.transform = 'translateX(-100%)'; }
+      axis.appendChild(s);
+    }
+
+    // 取前 MAX_LANES 个应用（按时长倒序），其余归 "其他 N 个"
+    var lanes = apps.slice(0, MAX_LANES);
+    var rest = apps.slice(MAX_LANES);
+    var restNames = rest.map(function (a) { return a.name; });
+    var colorOf = {};
+    apps.forEach(function (a) { colorOf[a.name] = a.color; });
+    var catOf = {};
+    apps.forEach(function (a) { catOf[a.name] = a.category; });
+
+    // 每段归到泳道；不在前 N 的应用并成一条 "其他"
+    var laneIdx = {};
+    lanes.forEach(function (a, i) { laneIdx[a.name] = i; });
+    var rows = lanes.map(function () { return []; });
+    var otherRow = [];
+    segs.forEach(function (s) {
+      if (laneIdx[s.app] != null) {
+        rows[laneIdx[s.app]].push(s);
+      } else if (rest.length) {
+        otherRow.push(s);
+      }
+    });
+    if (otherRow.length) {
+      rows.push(otherRow);
+      lanes.push({ name: '其他 ' + rest.length + ' 个应用', minutes: 0, category: '' });
+      otherRow.forEach(function (s) { colorOf[lanes[lanes.length - 1].name] = '#475569'; });
+      // 其他行的每段颜色仍按原应用
+    }
+
+    // 名字列
+    var names = document.getElementById('names');
+    names.innerHTML = '';
+    lanes.forEach(function (a) {
+      var n = document.createElement('div'); n.className = 'n';
+      var b = document.createElement('b');
+      b.textContent = a.name.length > 14 ? a.name.slice(0, 14) + '…' : a.name;
+      n.appendChild(b);
+      var i = document.createElement('i');
+      i.textContent = ' ' + fmtMins(a.minutes);
+      n.appendChild(i);
+      n.title = a.name + (a.category ? ' · ' + a.category : '');
+      names.appendChild(n);
+    });
+
+    // 泳道
+    var box = document.getElementById('lanes');
+    box.innerHTML = '';
+    rows.forEach(function (blocks, idx) {
+      var lane = document.createElement('div'); lane.className = 'lane';
+      var laneName = lanes[idx].name;
+      blocks.forEach(function (s) {
+        var b = document.createElement('div'); b.className = 'b';
+        var left = Math.max(0, Math.min(100, s.start / 1440 * 100));
+        var w = Math.max(0.12, (s.end - s.start) / 1440 * 100);
+        b.style.left = left + '%';
+        b.style.width = w + '%';
+        b.style.background = (idx === rows.length - 1 && laneName.indexOf('其他') === 0)
+          ? (colorOf[s.app] || '#475569')
+          : (lanes[idx].color || '#475569');
+        b.title = s.app + '　' + hhmm(s.start) + ' – ' + hhmm(s.end) +
+          '（' + fmtMins(s.minutes) + '）' + (catOf[s.app] ? ' · ' + catOf[s.app] : '');
+        lane.appendChild(b);
+      });
+      box.appendChild(lane);
+    });
+
+    // 整点竖线（淡淡的）
+    var grid = document.getElementById('grid');
+    Array.prototype.slice.call(grid.querySelectorAll('.vline,.now')).forEach(function (e) { e.remove(); });
+    for (var hh = 3; hh < 24; hh += 3) {
+      var v = document.createElement('div'); v.className = 'vline';
+      v.style.left = 'calc(150px + ' + (hh / 24 * 100) + '% - ' + (hh / 24 * 150) + 'px)';
+      grid.appendChild(v);
+    }
+    // 今天的当前时刻
+    if (d.isToday) {
+      var now = new Date();
+      var mins = now.getHours() * 60 + now.getMinutes();
+      var n2 = document.createElement('div'); n2.className = 'now';
+      n2.style.left = 'calc(150px + ' + (mins / 1440 * 100) + '% - ' + (mins / 1440 * 150) + 'px)';
+      n2.title = '现在 ' + hhmm(mins);
+      grid.appendChild(n2);
+    }
+
+    // 图例（分类）
+    var legend = document.getElementById('legend');
+    legend.innerHTML = '';
+    var byCat = {};
+    apps.forEach(function (a) {
+      if (!byCat[a.category]) byCat[a.category] = a.color;
+    });
+    Object.keys(byCat).forEach(function (c) {
+      var e = document.createElement('span');
+      var i = document.createElement('i');
+      i.style.background = byCat[c];
+      e.appendChild(i);
+      var t = document.createElement('span'); t.textContent = c;
+      e.appendChild(t);
+      legend.appendChild(e);
+    });
+
+    return apps.length + ' 应用 / ' + segs.length + ' 块 / ' + fmtMins(d.totalMinutes);
+  }
+
+  var CUR = 0;
+  function drawFrom(d) {
+    window.__TL_DATA__ = d;
+    CUR = d.offset || 0;
+    document.getElementById('next').disabled = CUR >= 0;
+    try { window.__TL_RESULT__ = renderTimeline(d); }
+    catch (e) { window.__TL_RESULT__ = 'error: ' + e.message; }
+  }
+
+  function go(offset) {
+    if (offset > 0) return;
+    if (window.__TAURI__ && window.__TAURI__.core) {
+      window.__TAURI__.core.invoke('timeline_day', { offset: offset })
+        .then(function (d) { drawFrom(d); })
+        .catch(function (e) { document.getElementById('meta').textContent = '换天失败：' + e; });
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('prev').onclick = function () { go(CUR - 1); };
+    document.getElementById('today').onclick = function () { go(0); };
+    document.getElementById('next').onclick = function () { go(CUR + 1); };
+    if (window.__TL_DATA__) {
+      try { window.__TL_RESULT__ = renderTimeline(window.__TL_DATA__); }
+      catch (e) { window.__TL_RESULT__ = 'error: ' + e.message; }
+      CUR = window.__TL_DATA__.offset || 0;
+      document.getElementById('next').disabled = CUR >= 0;
+    }
+  });
+</script>
+</body>
+</html>

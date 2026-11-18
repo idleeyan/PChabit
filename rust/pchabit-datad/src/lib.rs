@@ -36,6 +36,7 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "activecat" => run_activecat(db),
         "notes" => run_notes(db),
         "web" => run_web(db, date),
+        "timeline" => run_timeline(db, date),
         _ => run_probe(db, date),
     }
 }
@@ -55,6 +56,13 @@ fn run_web(db: &Path, range: &str) -> Result<(), String> {
         None => (date_shift(&today, -6), today.clone()),
     };
     let v = web_json(db, &start, &end)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+/// `timeline` 子命令：`--date` 传 `2026-11-18`，缺省今天。
+fn run_timeline(db: &Path, date: &str) -> Result<(), String> {
+    let v = timeline_json(db, date)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
 }
@@ -1949,6 +1957,207 @@ fn run_activecat(db: &Path) -> Result<(), String> {
     let v = set_category_active(db, &req)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
+}
+
+// ==================== 时间线（某一天的会话甘特） ====================
+//
+// 只读 `AppSessions`，把一天的会话压成「应用 × 时段」的块，供壳里画 24 小时甘特图。
+// 相邻且间隔 ≤ 60 秒的同应用会话合并成一段（否则一次切窗口就碎成几百段），
+// 跨零点的会话按当日边界裁剪；时长一律由起止时间算，不读 `Duration` 列。
+
+/// 时间线：`{ok, date, label, apps[], segments[], totalMinutes, rawSessions, ms}`
+pub fn timeline_json(db: &Path, date: &str) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let date = if date.trim().is_empty() {
+        today_local()
+    } else {
+        date.trim().to_string()
+    };
+    let day_start = parse_dt(&format!("{date} 00:00:00.0000000"))
+        .ok_or_else(|| format!("日期解析失败：{date}"))?;
+    let next = date_shift(&date, 1);
+    let start_ts = format!("{date} 00:00:00.0000000");
+    let end_ts = format!("{next} 00:00:00.0000000");
+
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+
+    // 分类色板（启用分类）
+    let mut colors: BTreeMap<String, String> = BTreeMap::new();
+    {
+        let mut stmt = conn
+            .prepare("SELECT Name, Color FROM ProgramCategories WHERE IsActive = 1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows.flatten() {
+            if !row.0.trim().is_empty() && !row.1.trim().is_empty() {
+                colors.insert(row.0, row.1);
+            }
+        }
+    }
+    // 进程 → 分类（映射表口径）
+    let cat_map = load_category_map(&conn)?;
+
+    let mut lanes: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
+    let mut app_cat: HashMap<String, String> = HashMap::new();
+    let mut raw_count: usize = 0;
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT ProcessName, AppName, Category, StartTime, EndTime FROM AppSessions \
+                 WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([&start_ts, &end_ts]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let proc: String = row.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+            let app_name: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
+            let cat: String = row.get::<_, Option<String>>(2).unwrap_or(None).unwrap_or_default();
+            let st: String = row.get::<_, Option<String>>(3).unwrap_or(None).unwrap_or_default();
+            let et: Option<String> = row.get::<_, Option<String>>(4).unwrap_or(None);
+
+            let Some(s) = parse_dt(&st) else { continue };
+            let e = et
+                .as_deref()
+                .and_then(parse_dt)
+                .map(|d| d.secs)
+                .unwrap_or(s.secs + 60.0);
+            let s_min = ((s.secs - day_start.secs) / 60.0).clamp(0.0, 1440.0);
+            let e_min = ((e - day_start.secs) / 60.0).clamp(0.0, 1440.0);
+            if e_min <= s_min {
+                continue;
+            }
+            raw_count += 1;
+
+            let key = if app_name.trim().is_empty() {
+                let n = normalize_process_name(&proc);
+                if n.is_empty() { "未知应用".to_string() } else { n }
+            } else {
+                app_name.trim().to_string()
+            };
+
+            if !app_cat.contains_key(&key) {
+                let fallback = cat_map
+                    .get(&normalize_process_name(&proc))
+                    .map(|v| v.0.clone())
+                    .unwrap_or_default();
+                let resolved = if cat.trim().is_empty() { fallback } else { cat.trim().to_string() };
+                app_cat.insert(key.clone(), resolved);
+            }
+
+            let list = lanes.entry(key).or_default();
+            match list.last_mut() {
+                Some(last) if s_min - last.1 <= 1.0 => {
+                    if e_min > last.1 {
+                        last.1 = e_min;
+                    }
+                }
+                _ => list.push((s_min, e_min)),
+            }
+        }
+    }
+
+    // 应用汇总（按总时长倒序）
+    let mut apps: Vec<serde_json::Value> = Vec::new();
+    let mut segments: Vec<serde_json::Value> = Vec::new();
+    let mut total: f64 = 0.0;
+    for (name, blocks) in &lanes {
+        let mut mins: f64 = 0.0;
+        for (a, b) in blocks {
+            mins += b - a;
+            segments.push(serde_json::json!({
+                "app": name,
+                "start": round1(*a),
+                "end": round1(*b),
+                "minutes": round1(b - a),
+            }));
+        }
+        total += mins;
+        let cat = app_cat.get(name).cloned().unwrap_or_default();
+        let color = colors
+            .get(&cat)
+            .cloned()
+            .unwrap_or_else(|| category_fallback_color(&cat).to_string());
+        apps.push(serde_json::json!({
+            "name": name,
+            "category": if cat.is_empty() { "未分类".to_string() } else { cat },
+            "color": color,
+            "minutes": round1(mins),
+            "blocks": blocks.len(),
+        }));
+    }
+    apps.sort_by(|a, b| {
+        b["minutes"].as_f64().unwrap_or(0.0)
+            .partial_cmp(&a["minutes"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    segments.sort_by(|a, b| {
+        a["start"].as_f64().unwrap_or(0.0)
+            .partial_cmp(&b["start"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let hour = date.get(11..13).unwrap_or("00");
+    Ok(serde_json::json!({
+        "ok": true,
+        "date": date,
+        "label": format!("{}月{}日",
+            date.get(5..7).unwrap_or("?").trim_start_matches('0'),
+            date.get(8..10).unwrap_or("?").trim_start_matches('0')),
+        "weekday": weekday_label(&date),
+        "apps": apps,
+        "segments": segments,
+        "totalMinutes": round1(total),
+        "appCount": apps.len(),
+        "rawSessions": raw_count,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+        // hour 只用来占位，壳里按本地时间选默认日期
+        "hourHint": hour,
+    }))
+}
+
+/// 分类色兜底：没有配置颜色时按分类名给一个稳定色。
+fn category_fallback_color(cat: &str) -> &'static str {
+    match cat {
+        "开发" => "#3B82F6",
+        "浏览" => "#06B6D4",
+        "沟通" => "#10B981",
+        "办公" => "#F59E0B",
+        "娱乐" => "#EF4444",
+        "设计" => "#8B5CF6",
+        "媒体创作" => "#EC4899",
+        "云盘下载" => "#14B8A6",
+        "系统工具" => "#64748B",
+        "学习" => "#84CC16",
+        _ => "#475569",
+    }
+}
+
+fn weekday_label(date: &str) -> &'static str {
+    let Some(d) = parse_dt(&format!("{date} 00:00:00.0000000")) else {
+        return "";
+    };
+    let days = (d.secs / 86_400.0).round() as i64;
+    // 1970-01-01 是周四
+    match (days + 4).rem_euclid(7) {
+        0 => "周日",
+        1 => "周一",
+        2 => "周二",
+        3 => "周三",
+        4 => "周四",
+        5 => "周五",
+        _ => "周六",
+    }
 }
 
 // ==================== 便签（只读） ====================
