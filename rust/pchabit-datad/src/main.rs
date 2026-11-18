@@ -10,6 +10,8 @@
 //! stats 口径必须与 `AppStatsEngine.Compute` 逐条对齐：归一化、分类解析优先级、
 //! 专注判定、环比文案、饼图 Top8 + 其他、小时分布。差异即 bug。
 
+mod analytics;
+
 use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -37,6 +39,7 @@ fn main() {
         "stats" => run_stats(&db),
         "detail" => run_detail(&db),
         "xlsx" => run_xlsx(),
+        "analytics" => run_analytics(&db),
         _ => run_probe(&db, &date),
     };
 
@@ -137,13 +140,13 @@ fn run_probe(db: &Path, date: &str) -> Result<(), String> {
 
 // ==================== 应用统计 ====================
 
-struct Session {
-    proc_name: String,
-    app_name: Option<String>,
-    category: Option<String>,
-    start: f64, // 距 1970-01-01 的秒
-    end: Option<f64>,
-    hour: u32,
+pub(crate) struct Session {
+    pub(crate) proc_name: String,
+    pub(crate) app_name: Option<String>,
+    pub(crate) category: Option<String>,
+    pub(crate) start: f64, // 距 1970-01-01 的秒
+    pub(crate) end: Option<f64>,
+    pub(crate) hour: u32,
 }
 
 impl Session {
@@ -213,6 +216,30 @@ fn run_stats(db: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn run_analytics(db: &Path) -> Result<(), String> {
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let req: serde_json::Value =
+        serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
+
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+    let mut report = analytics::run(&conn, &req)?;
+    report["ms"] = serde_json::json!(t0.elapsed().as_secs_f64() * 1000.0);
+
+    println!(
+        "{}",
+        serde_json::to_string(&report).map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
 fn load_sessions(conn: &Connection, start: &str, end: &str) -> Result<Vec<Session>, String> {
     let mut stmt = conn
         .prepare(
@@ -242,7 +269,7 @@ fn load_sessions(conn: &Connection, start: &str, end: &str) -> Result<Vec<Sessio
 }
 
 /// 分类映射：ProgramCategoryMappings × 启用中的 ProgramCategories。
-fn load_category_map(conn: &Connection) -> Result<HashMap<String, (String, String)>, String> {
+pub(crate) fn load_category_map(conn: &Connection) -> Result<HashMap<String, (String, String)>, String> {
     let mut stmt = conn
         .prepare(
             "SELECT c.Name, c.Color, m.ProcessName FROM ProgramCategoryMappings m \
@@ -969,7 +996,7 @@ fn truncate_title(title: &str, max: usize) -> String {
     }
 }
 
-fn round1(v: f64) -> f64 {
+pub(crate) fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
 }
 
@@ -1170,7 +1197,7 @@ fn write_cell(
 // ==================== 口径工具 ====================
 
 /// 归一化进程名：去空白、去 .exe 后缀、小写。
-fn normalize_process_name(process_name: &str) -> String {
+pub(crate) fn normalize_process_name(process_name: &str) -> String {
     let p = process_name.trim();
     let p = if p.len() >= 4 && p[p.len() - 4..].eq_ignore_ascii_case(".exe") {
         &p[..p.len() - 4]
@@ -1181,7 +1208,7 @@ fn normalize_process_name(process_name: &str) -> String {
 }
 
 /// 分类兜底色（与 C# DefaultPalette 一致）。
-fn default_color_for(category: &str) -> String {
+pub(crate) fn default_color_for(category: &str) -> String {
     const PALETTE: &[(&[&str], &str)] = &[
         (&["开发", "开发工具"], "#512BD4"),
         (&["浏览", "浏览器"], "#0078D4"),
@@ -1200,13 +1227,13 @@ fn default_color_for(category: &str) -> String {
 }
 
 /// 生产力分类判定（与 C# AnalyticsEngine.IsProductiveCategory 一致）。
-fn is_productive(category: &str) -> bool {
+pub(crate) fn is_productive(category: &str) -> bool {
     const PRODUCTIVE: &[&str] = &["开发", "开发工具", "办公", "办公软件", "AI 助手", "生产力"];
     !category.is_empty() && PRODUCTIVE.iter().any(|p| contains_ignore_case(category, p))
 }
 
 /// 分类解析唯一入口：映射表命中 → 会话快照 → 未分类。
-fn resolve_category(s: &Session, cat_map: &HashMap<String, (String, String)>) -> (String, String) {
+pub(crate) fn resolve_category(s: &Session, cat_map: &HashMap<String, (String, String)>) -> (String, String) {
     let normalized = normalize_process_name(&s.proc_name);
     if !normalized.is_empty() {
         if let Some((name, color)) = cat_map.get(&normalized) {
@@ -1226,20 +1253,20 @@ fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
 }
 
 /// .NET `F0` 口径（四舍五入远离零）。
-fn fmt_f0(v: f64) -> i64 {
+pub(crate) fn fmt_f0(v: f64) -> i64 {
     v.round() as i64
 }
 
 // ==================== 日期与开库 ====================
 
-struct Dt {
-    secs: f64,
-    hour: u32,
+pub(crate) struct Dt {
+    pub(crate) secs: f64,
+    pub(crate) hour: u32,
 }
 
 /// "YYYY-MM-DD HH:MM[:SS[.fffffff]]" → 距 1970 的秒 + 小时。
 /// 注意：HardwareSamples.Timestamp 是分钟粒度（`2026-11-18 20:14`），必须兼容无秒的写法。
-fn parse_dt(s: &str) -> Option<Dt> {
+pub(crate) fn parse_dt(s: &str) -> Option<Dt> {
     let bytes = s.as_bytes();
     if bytes.len() < 16 {
         return None;
@@ -1322,7 +1349,7 @@ fn day_bounds(date: &str) -> (String, String) {
     )
 }
 
-fn civil_from_days(z: i64) -> String {
+pub(crate) fn civil_from_days(z: i64) -> String {
     let z = z + 719_468;
     let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
     let doe = z - era * 146_097;

@@ -177,6 +177,10 @@ public static class AnalyticsEngine
     {
         var prev = period.Previous();
 
+        // P3 收口：整段查询 + 聚合优先交给 Rust 数据面（pchabit-datad analytics）
+        var rust = await RustAnalyticsProvider.TryBuildAsync(period, ct);
+        if (rust != null) return rust;
+
         List<AppSession> sessions;
         List<AppSession> prevSessions;
         List<DailySummary> daily;
@@ -284,6 +288,8 @@ public static class AnalyticsEngine
             {
                 Id = s.Id,
                 ProcessName = s.ProcessName,
+                // 硬件画像按 AppName 显示友好名；此前漏查导致只能退回进程名（game.exe 这类）
+                AppName = s.AppName,
                 Category = s.Category,
                 StartTime = s.StartTime,
                 EndTime = s.EndTime,

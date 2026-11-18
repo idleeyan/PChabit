@@ -2,6 +2,40 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.94.0] - 2026-11-18
+
+### 变更：分析页计算层搬到 Rust（P3 数据面收口）
+
+`AnalyticsEngine` 是 P3 最后一块：724 行，把 5 张表（AppSessions / DailySummaries /
+HardwareSamples / WebSessions / ProcessNetworkUsages）的查询与全部聚合（KPI、日历、
+小时热力、Top 变化、分类构成、洞察、多源指标、硬件画像）都做成纯计算。
+
+- **`pchabit-datad analytics` 子命令**：自己只读查库，算完整份报告回一行 JSON（实测 180~200 ms，
+  含 19.9 万行 AppSessions 的 7 天窗口）。宿主 `RustAnalyticsProvider` 只做 DTO 映射。
+- **口径逐条对齐**：KPI 环比文案（`▲ 12%` / `新增` / `—`）、25 分钟专注、24 小时热力
+  （`ceil(min/max*4)`）、14 天日历四档强度、Top 变化（两期字典各自大小写敏感、键并集大小写不敏感、
+  ≥15 分钟、取前 5）、分类构成（≥5 分钟、前 8）、洞察全部分支与中文文案、多源指标合并、
+  硬件「最长重叠会话归属」（前 12 应用）。
+- **开关** `PCHABIT_RUST_ANALYTICS=0`；失败回退 C# 引擎（日志 Warn 一次）。
+
+### 对账过程中查出的四个真问题
+
+1. **浮点格式化不等于四舍五入**：C# `$"{x:F0}"` 自 .NET Core 3.0 起是银行家舍入（round-half-to-even），
+   Rust `f64::round()` 远离零。42.5 会得到 43 而 C# 给 42。Rust 侧改用 `round_ties_even()`。
+2. **TimeSpan 单位写错**：WebSessions 的 `Duration`/`ActiveDuration` 是 100ns ticks，1 分钟 = 6e8，
+   第一版按 6e6 算，网页时长整体放大 100 倍（`webCategoryShares` 直接跑到 1.8 万分钟）。
+3. **专注下降阈值精度**：`curFocus < prevFocus * 0.5` 是浮点比较，我第一版写成 `(prev*0.5) as i64`，
+   整数截断后边界差一次。
+4. **C# 侧漏查 AppName**（既有缺陷，顺带修掉）：`QuerySessionsAsync` 没选 `AppName`，
+   硬件画像只能显示 `game.exe` 这类进程名。补上后与 Rust 一致，UI 显示友好名。
+
+### 验证
+
+新增 `AnalyticsParityTests`：同一个临时库、同一周期，分别跑 C# 引擎与 Rust 数据面，逐项对账 ——
+KPI（id/展示值/环比文案/方向/说明）、分类构成、Top 变化、24 小时热力、14 天日历、
+洞察 id 与完整文案、多源指标、硬件应用画像与小时桶、时段画像、数据天数。
+找不到 datad 时**强制失败**，不允许静默回退。全量 **212 项通过**。
+
 ## [3.93.0] - 2026-11-18
 
 ### 变更：EPPlus 彻底退出产品依赖（P3 第三块收尾）
