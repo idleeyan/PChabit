@@ -78,16 +78,25 @@ internal sealed class RustGpuProbe
                 return;
             }
 
+            var vramUsed = ReadF(root, "vramUsed");
+            var vramTotal = ReadF(root, "vramTotal");
+
             lock (_gate)
             {
                 _values["GPU.Load"] = ReadF(root, "load");
                 _values["GPU.Temp"] = ReadF(root, "temp");
-                _values["GPU.VRAM"] = ReadF(root, "vramUsed");
+                // 口径对齐：LHM 的 GPU.VRAM 是「已用/总量 × 100」的百分比，不是 MB
+                _values["GPU.VRAM"] = vramTotal > 0 ? vramUsed / vramTotal * 100f : 0f;
                 _values["GPU.Fan"] = ReadF(root, "fan");
                 _values["GPU.Clock"] = ReadF(root, "clock");
                 _values["GPU.Power"] = ReadF(root, "power");
                 _active = true;
                 _lastReplyUtc = DateTime.UtcNow;
+            }
+
+            if (vramTotal > 0 && HardwareMonitorOptions.DetectedGpuVramTotalGB <= 0)
+            {
+                HardwareMonitorOptions.DetectedGpuVramTotalGB = vramTotal / 1024f;
             }
         }
         catch (Exception ex)
