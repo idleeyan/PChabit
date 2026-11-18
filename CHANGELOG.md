@@ -2,6 +2,28 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.89.0] - 2026-11-18
+
+### 变更：前台窗口监控切分至 Rust 内核（P2 第一块）
+
+**问题**：宿主 `AppMonitor` 用 `SetWinEventHook` 监听 `EVENT_SYSTEM_FOREGROUND` 与
+`EVENT_OBJECT_NAMECHANGE`，回调跑在 C# 的 STA 消息循环里——UI 线程一卡，前台切换就漏记，
+表现为「应用使用时长少算」。
+
+- **Rust 侧**（`rust/pchabit-netd/src/appmon.rs`）：独立线程按 1 Hz 轮询
+  `GetForegroundWindow`，平时只有一次系统调用；只在窗口/标题变化时解析进程名、
+  窗口标题、类名、矩形、是否最大化。协议新增 `APP` 命令。
+- **宿主侧**（`AppMonitor`）：`PCHABIT_RUST_APPMON`（默认启用）走 Rust 通道，
+  每秒拉快照、比对进程名与标题后派生事件，事件语义与钩子路径完全一致；
+  内核不可用时自动回退 `SetWinEventHook`。
+- **结构前置**：管道客户端从 `PChabit.HardwareMonitor` 下沉到 `PChabit.Core`
+  （`DaemonPipe`）。原因是内核从网络采样扩到 GPU、前台窗口后两个程序集都要用它，
+  而服务端同一时刻只服务一个客户端，必须全进程共用一条连接。
+
+**取舍**：键鼠低层钩子不迁——每次按键都经 IPC 反而更慢，且会引入跨进程计数的
+一致性风险；`WebMonitor`（浏览器历史）与 `AppInfoResolver`（版本信息/分类）暂留 C#，
+前者与库表强耦合，后者依赖分类配置。
+
 ## [3.88.0] - 2026-11-18
 
 ### 变更：GPU 传感器采集切分至 Rust 内核（NVML 直读，默认启用）

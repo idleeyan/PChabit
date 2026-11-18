@@ -13,6 +13,7 @@
 
 #![windows_subsystem = "console"]
 
+mod appmon;
 mod gpu;
 mod iphelper;
 mod json;
@@ -32,6 +33,7 @@ fn main() {
     match mode.as_str() {
         "probe" => probe::run(),
         "nvml-probe" => gpu::run_probe(),
+        "app-probe" => appmon::run_probe(),
         "daemon" => run_daemon(args.collect()),
         other => {
             eprintln!("未知模式：{other}（可用：probe / nvml-probe / daemon）");
@@ -116,8 +118,25 @@ fn run_daemon(argv: Vec<String>) {
         }
     });
 
+    // 前台窗口采样线程：1 Hz 轮询，平时只有一次 GetForegroundWindow
+    let app_state: pipe::AppShare = Arc::new(Mutex::new(appmon::AppSnapshot::default()));
+    let app_pub = Arc::clone(&app_state);
+    std::thread::spawn(move || {
+        let mut prev = appmon::AppSnapshot::default();
+        loop {
+            let snap = appmon::sample(&prev);
+            let changed = snap.hwnd != prev.hwnd || snap.title != prev.title;
+            if verbose && changed {
+                eprintln!("[netd] app {} -> {}", prev.pid, snap.pid);
+            }
+            prev = snap.clone();
+            *app_pub.lock().unwrap() = snap;
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    });
+
     // IPC 主线程（阻塞等待宿主连接）
-    pipe::serve(state, gpu_state);
+    pipe::serve(state, gpu_state, app_state);
     std::process::exit(0);
 }
 

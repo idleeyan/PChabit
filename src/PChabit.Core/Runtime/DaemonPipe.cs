@@ -1,28 +1,28 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
-using Serilog;
 
-namespace PChabit.HardwareMonitor.Hardware;
+namespace PChabit.Core.Runtime;
 
 /// <summary>
 /// 与 Rust 采样内核（pchabit-netd）之间的命名管道客户端。
 /// 协议为行式文本：一行命令 → 一行 JSON 应答；见 rust\pchabit-netd\src\pipe.rs。
+///
+/// 为什么放在 Core：内核从「只做网络采样」扩到 GPU 与前台窗口后，HardwareMonitor 与
+/// Infrastructure 两个程序集都要用它，而管道服务端同一时刻只服务一个客户端
+/// （serve 循环逐个 accept），全进程必须共用同一条连接。
 /// </summary>
-internal sealed class RustNetClient : IDisposable
+public sealed class DaemonPipe : IDisposable
 {
-    private const string PipeName = "pchabit-netd-v1";
+    public const string PipeName = "pchabit-netd-v1";
     private const int ReadTimeoutMs = 2000;
 
     /// <summary>
-    /// 进程内共享的单一连接。管道服务端同一时刻只服务一个客户端（见 pipe.rs 的 serve 循环），
-    /// 因此网络采样与 GPU 探针必须共用同一条连接，不能各自新建。
-    /// 生命周期跟随进程；内核自带 90 秒空闲退出，无需宿主显式 STOP。
+    /// 进程内共享的单一连接。生命周期跟随进程；内核自带空闲退出，无需宿主显式 STOP。
     /// </summary>
-    internal static RustNetClient Shared { get; } = new RustNetClient();
+    public static DaemonPipe Shared { get; } = new DaemonPipe();
 
     private readonly object _gate = new();
-    private readonly Queue<string> _pending = new();
     private NamedPipeClientStream? _pipe;
     private StreamWriter? _writer;
     private StreamReader? _reader;
@@ -46,7 +46,6 @@ internal sealed class RustNetClient : IDisposable
                 try
                 {
                     if (!EnsureConnected()) return null;
-                    FlushPending();
 
                     _writer!.WriteLine(command);
                     _writer.Flush();
@@ -54,14 +53,9 @@ internal sealed class RustNetClient : IDisposable
                     if (reply == null) throw new IOException("管道对端已关闭");
                     return reply;
                 }
-                catch (TimeoutException)
+                catch
                 {
-                    Log.Debug("Rust 采样内核应答超时，重建连接");
-                    DropConnection();
-                }
-                catch (Exception ex)
-                {
-                    Log.Debug(ex, "Rust 采样内核通信失败，重建连接");
+                    // 超时/管道断开/对端退出：重建连接后重试一次，仍失败由调用方回退
                     DropConnection();
                 }
             }
@@ -69,28 +63,10 @@ internal sealed class RustNetClient : IDisposable
         }
     }
 
-    /// <summary>连接建立后先回放（例如启动期写入的种子命令）。</summary>
-    public void Enqueue(string command)
-    {
-        lock (_gate)
-        {
-            if (!_disposed) _pending.Enqueue(command);
-        }
-    }
-
-    private void FlushPending()
-    {
-        while (_pending.Count > 0)
-        {
-            _writer!.WriteLine(_pending.Dequeue());
-        }
-        _writer!.Flush();
-    }
-
     private string? ReadLineWithTimeout()
     {
         var reader = _reader!;
-        var task = Task.Run(reader.ReadLine);
+        var task = Task.Run(() => reader.ReadLine());
         if (!task.Wait(ReadTimeoutMs)) throw new TimeoutException();
         return task.Result;
     }
@@ -118,7 +94,6 @@ internal sealed class RustNetClient : IDisposable
         _pipe = client;
         _writer = new StreamWriter(client, new UTF8Encoding(false)) { AutoFlush = false, NewLine = "\n" };
         _reader = new StreamReader(client, new UTF8Encoding(false));
-        Log.Debug("已连接 Rust 采样内核");
         return true;
     }
 
@@ -137,11 +112,7 @@ internal sealed class RustNetClient : IDisposable
         if (_owned is { HasExited: false }) return true;
 
         var exe = ResolveDaemonPath();
-        if (exe == null)
-        {
-            Log.Warning("未找到 pchabit-netd.exe，Rust 采样内核不可用");
-            return false;
-        }
+        if (exe == null) return false;
 
         try
         {
@@ -156,12 +127,10 @@ internal sealed class RustNetClient : IDisposable
             psi.ArgumentList.Add("--exclude-name");
             psi.ArgumentList.Add(Process.GetCurrentProcess().ProcessName);
             _owned = Process.Start(psi);
-            Log.Debug("已拉起 Rust 采样内核：{Path}", exe);
             return _owned != null;
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Warning(ex, "拉起 Rust 采样内核失败");
             return false;
         }
     }
@@ -185,7 +154,6 @@ internal sealed class RustNetClient : IDisposable
             if (File.Exists(candidate)) return candidate;
         }
 
-        // 开发期：从程序目录往上找 rust\pchabit-netd\target\release
         var dir = new DirectoryInfo(baseDir);
         for (var depth = 0; depth < 6 && dir != null; depth++, dir = dir.Parent)
         {
@@ -226,9 +194,9 @@ internal sealed class RustNetClient : IDisposable
             }
             _owned?.Dispose();
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Debug(ex, "回收 Rust 采样内核进程失败");
+            // 回收失败不影响退出
         }
     }
 }

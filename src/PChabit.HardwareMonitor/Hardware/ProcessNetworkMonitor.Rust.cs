@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PChabit.Core.Runtime;
 using Serilog;
 
 namespace PChabit.HardwareMonitor.Hardware;
@@ -18,7 +19,7 @@ public sealed partial class ProcessNetworkMonitor
 {
     private const string RustEnvVar = "PCHABIT_RUST_NETSAMPLER";
 
-    private RustNetClient? _rust;
+    private DaemonPipe? _rust;
     private bool _rustChecked;
 
     private long _remoteSessionUp;
@@ -63,7 +64,7 @@ public sealed partial class ProcessNetworkMonitor
         if (!RustSamplerEnabled) return;
 
         // 与 GPU 探针共用同一条管道连接（服务端同一时刻只服务一个客户端）
-        var client = RustNetClient.Shared;
+        var client = DaemonPipe.Shared;
         var health = client.Send("PING");
         if (health == null)
         {
@@ -80,7 +81,7 @@ public sealed partial class ProcessNetworkMonitor
 
     private void StopRustSampler()
     {
-        RustNetClient? client;
+        DaemonPipe? client;
         lock (_sync)
         {
             client = _rust;
@@ -108,7 +109,7 @@ public sealed partial class ProcessNetworkMonitor
     /// <summary>Rust 通道下的一拍：推系统速率 → 取快照 → 刷新缓存。</summary>
     private void SampleRemote()
     {
-        RustNetClient? client;
+        DaemonPipe? client;
         lock (_sync) client = _rust;
         if (client == null) return;
 

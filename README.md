@@ -18,7 +18,7 @@
 - **趋势视图**：硬件趋势图与历史对照
 - **应用 × 硬件融合画像**：查看某个应用运行期间的硬件占用情况
 - **进程级流量排行**：点击任务栏网速小窗弹出浮窗，按进程实时 ↓/↑ 排序并给出今日累计（按进程归因需管理员权限）
-- **Rust 采样内核**：进程网络采样与 GPU 传感器读取由独立 Rust 进程（`rust/pchabit-netd`）承担；可用 `PCHABIT_RUST_NETSAMPLER=0` / `PCHABIT_RUST_GPU=0` 分别关闭
+- **Rust 采样内核**：进程网络采样、GPU 传感器读取、前台窗口监控由独立 Rust 进程（`rust/pchabit-netd`）承担；可用 `PCHABIT_RUST_NETSAMPLER=0` / `PCHABIT_RUST_GPU=0` / `PCHABIT_RUST_APPMON=0` 分别关闭
 
 ### 数据分析与复盘
 

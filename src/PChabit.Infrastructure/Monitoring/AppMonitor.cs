@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Text.Json;
 using PChabit.Core.Interfaces;
+using PChabit.Core.Runtime;
 using PChabit.Infrastructure.Helpers;
 using PChabit.Infrastructure.Services;
 using Serilog;
@@ -24,6 +26,13 @@ public class AppMonitor : IAppMonitor
     
     private AppInfo? _currentApp;
     private readonly object _lock = new();
+
+    // ---- Rust 前台窗口监控（P2） ----
+    private const string RustEnvVar = "PCHABIT_RUST_APPMON";
+    private System.Threading.Timer? _rustTimer;
+    private int _rustBusy;
+    private string? _rustLastProc;
+    private string? _rustLastTitle;
     
     private readonly System.Threading.Channels.Channel<IntPtr> _windowChangeChannel;
     private readonly CancellationTokenSource _cts;
@@ -46,6 +55,9 @@ public class AppMonitor : IAppMonitor
     public void Start()
     {
         if (IsRunning) return;
+
+        // 优先走 Rust 内核：1 Hz 轮询前台窗口，钩子不再依赖本进程的消息循环
+        if (TryStartRustPath()) return;
         
         _foregroundDelegate = ForegroundEventCallback;
         _titleChangeDelegate = TitleChangeEventCallback;
@@ -72,6 +84,9 @@ public class AppMonitor : IAppMonitor
     public void Stop()
     {
         if (!IsRunning) return;
+
+        _rustTimer?.Dispose();
+        _rustTimer = null;
         
         _cts.Cancel();
         _windowChangeChannel.Writer.TryComplete();
@@ -154,6 +169,72 @@ public class AppMonitor : IAppMonitor
         }
     }
     
+    /// <summary>
+    /// 启用 Rust 前台窗口监控：内核按 1 Hz 轮询 GetForegroundWindow，本类只做比对与派发，
+    /// 事件语义与 WinEvent 钩子路径完全一致（进程名变化 → OnDataCollected，标题变化 → OnWindowTitleChanged）。
+    /// </summary>
+    private bool TryStartRustPath()
+    {
+        if (!RustEnabled) return false;
+        if (DaemonPipe.Shared.Send("APP") == null)
+        {
+            Log.Warning("Rust 内核不可用，前台窗口监控回退到 WinEvent 钩子");
+            return false;
+        }
+
+        _rustTimer = new System.Threading.Timer(_ => PollRust(), null, 1000, 1000);
+        IsRunning = true;
+        LastActivityTime = DateTime.Now;
+        Log.Information("已启用 Rust 前台窗口监控（{Var}=1）", RustEnvVar);
+        return true;
+    }
+
+    private static bool RustEnabled
+    {
+        get
+        {
+            var v = Environment.GetEnvironmentVariable(RustEnvVar);
+            if (string.IsNullOrWhiteSpace(v)) return true;
+            return !(v.Trim() == "0"
+                     || v.Trim().Equals("false", StringComparison.OrdinalIgnoreCase)
+                     || v.Trim().Equals("off", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>拉一次快照；只有进程名或标题变化才触发解析与派发。</summary>
+    private void PollRust()
+    {
+        if (Interlocked.Exchange(ref _rustBusy, 1) == 1) return;
+        try
+        {
+            var reply = DaemonPipe.Shared.Send("APP");
+            if (reply == null) return;
+
+            using var doc = JsonDocument.Parse(reply);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.True) return;
+
+            var hwnd = new IntPtr(root.GetProperty("hwnd").GetInt64());
+            var proc = root.TryGetProperty("proc", out var p) ? p.GetString() ?? "" : "";
+            var title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+
+            if (proc == _rustLastProc && title == _rustLastTitle) return;
+
+            _rustLastProc = proc;
+            _rustLastTitle = title;
+            LastActivityTime = DateTime.Now;
+            HandleWindow(hwnd);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "解析 Rust 前台窗口快照失败，本拍跳过");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _rustBusy, 0);
+        }
+    }
+
     private void HandleWindow(IntPtr hwnd)
     {
         AppInfo? appInfo;

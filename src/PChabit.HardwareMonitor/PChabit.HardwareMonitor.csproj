@@ -31,4 +31,9 @@
     <None Include="NOTICE.md" Pack="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- 管道客户端下沉到 Core：GPU 探针与前台窗口监控需要共用同一条连接 -->
+    <ProjectReference Include="..\PChabit.Core\PChabit.Core.csproj" />
+  </ItemGroup>
+
 </Project>

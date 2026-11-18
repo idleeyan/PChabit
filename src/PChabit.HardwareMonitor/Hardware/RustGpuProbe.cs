@@ -1,4 +1,5 @@
 using System.Text.Json;
+using PChabit.Core.Runtime;
 using Serilog;
 namespace PChabit.HardwareMonitor.Hardware;
 
@@ -55,7 +56,7 @@ internal sealed class RustGpuProbe
             return;
         }
 
-        var reply = RustNetClient.Shared.Send("GPU");
+        var reply = DaemonPipe.Shared.Send("GPU");
         if (reply == null)
         {
             // 内核不在线：本拍失效，让调用方退回 LHM。内核恢复后会自动重新接管。

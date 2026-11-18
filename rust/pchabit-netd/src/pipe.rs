@@ -9,6 +9,7 @@
 //!   TOTALS                     → {"su":n,"sd":n,"tu":n,"td":n}
 //!   ALLTODAY                   → [{"n":"..","u":n,"d":n},...]
 //!   SNAP <top>                 → {"sys":{...},"rate":[...],"today":[...]}
+//!   APP                        → {"ok":bool,"hwnd":n,"pid":n,"proc":..,"title":..,"class":..,"x":n,"y":n,"w":n,"h":n,"max":bool,"ticks":n}
 //!   GPU                        → {"avail":bool,"n":..,"load":..,"temp":..,"vramUsed":..,"vramTotal":..,"fan":..,"clock":..,"power":..,"sampleMs":..}
 //!   STOP                       → {"ok":true} 并退出进程
 
@@ -17,12 +18,16 @@ use std::os::raw::c_int;
 use std::ptr;
 use std::sync::{Arc, Mutex};
 
+use crate::appmon::AppSnapshot;
 use crate::gpu::GpuSnapshot;
 use crate::json::{self, Obj};
 use crate::netstate::NetState;
 
 /// GPU 快照的共享句柄：采样线程写、IPC 线程读。
 pub type GpuShare = Arc<Mutex<GpuSnapshot>>;
+
+/// 前台窗口快照的共享句柄：采样线程写、IPC 线程读。
+pub type AppShare = Arc<Mutex<AppSnapshot>>;
 
 pub const PIPE_NAME: &str = r"\\.\pipe\pchabit-netd-v1";
 
@@ -72,7 +77,7 @@ pub enum ServeOutcome {
 }
 
 /// 常驻服务：反复接受连接、逐行处理，直到收到 STOP。
-pub fn serve(state: Arc<Mutex<NetState>>, gpu: GpuShare) {
+pub fn serve(state: Arc<Mutex<NetState>>, gpu: GpuShare, app: AppShare) {
     let name_utf16 = to_wide(PIPE_NAME);
     loop {
         let handle = unsafe {
@@ -99,7 +104,7 @@ pub fn serve(state: Arc<Mutex<NetState>>, gpu: GpuShare) {
             continue;
         }
 
-        let outcome = pump(handle, &state, &gpu);
+        let outcome = pump(handle, &state, &gpu, &app);
         unsafe {
             FlushFileBuffers(handle);
             DisconnectNamedPipe(handle);
@@ -112,7 +117,7 @@ pub fn serve(state: Arc<Mutex<NetState>>, gpu: GpuShare) {
     }
 }
 
-fn pump(handle: *mut c_void, state: &Arc<Mutex<NetState>>, gpu: &GpuShare) -> ServeOutcome {
+fn pump(handle: *mut c_void, state: &Arc<Mutex<NetState>>, gpu: &GpuShare, app: &AppShare) -> ServeOutcome {
     let mut acc: Vec<u8> = Vec::with_capacity(256);
     let mut chunk = [0u8; 4096];
 
@@ -147,7 +152,7 @@ fn pump(handle: *mut c_void, state: &Arc<Mutex<NetState>>, gpu: &GpuShare) -> Se
                 continue;
             }
 
-            let (reply, stop) = dispatch(cmd, state, gpu);
+            let (reply, stop) = dispatch(cmd, state, gpu, app);
             if !write_line(handle, &reply) {
                 return ServeOutcome::Continue;
             }
@@ -183,7 +188,7 @@ fn write_line(handle: *mut c_void, text: &str) -> bool {
     true
 }
 
-fn dispatch(cmd: &str, state: &Arc<Mutex<NetState>>, gpu: &GpuShare) -> (String, bool) {
+fn dispatch(cmd: &str, state: &Arc<Mutex<NetState>>, gpu: &GpuShare, app: &AppShare) -> (String, bool) {
     state.lock().unwrap().touch_client();
     let mut parts = cmd.splitn(4, ' ');
     let verb = parts.next().unwrap_or("").to_ascii_uppercase();
@@ -308,6 +313,10 @@ fn dispatch(cmd: &str, state: &Arc<Mutex<NetState>>, gpu: &GpuShare) -> (String,
             o.raw("rate", &json::array(&rate_items));
             o.raw("today", &json::array(&today_items));
             (o.finish(), false)
+        }
+        "APP" => {
+            let snap = app.lock().unwrap();
+            (snap.to_json(), false)
         }
         "GPU" => {
             let snap = gpu.lock().unwrap();
