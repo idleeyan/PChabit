@@ -66,6 +66,29 @@ pub fn date_shift(date: &str, days: i64) -> String {
     civil_from_days(days_from_civil(y, m, d) + days)
 }
 
+/// 分类配色表（`ProgramCategories.Name -> Color`），供图表复用应用自身的色板。
+pub fn category_colors(db: &Path) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let conn = open_readonly(db)?;
+    let mut stmt = conn
+        .prepare("SELECT Name, Color FROM ProgramCategories")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut map = std::collections::BTreeMap::new();
+    for row in rows.flatten() {
+        if !row.0.trim().is_empty() && !row.1.trim().is_empty() {
+            map.insert(row.0, row.1);
+        }
+    }
+    Ok(map)
+}
+
 // ==================== 探针 ====================
 
 fn run_probe(db: &Path, date: &str) -> Result<(), String> {

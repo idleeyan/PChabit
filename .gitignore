@@ -215,3 +215,6 @@ goals
 target/
 rust/pchabit-dbcore/target/
 rust/pchabit-datad/target/
+
+# Tauri 壳：build.rs 从 WPF 工程复制的页面资产（生成物，不入库）
+rust/pchabit-shell/dist/pages/
