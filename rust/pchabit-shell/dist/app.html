@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; height:100%; background:#0f172a; color:#e2e8f0;
+    font:13px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; overflow:hidden; }
+  #app { display:flex; height:100%; }
+
+  nav { width:188px; flex:none; background:#0b1220; border-right:1px solid #1f2937;
+    display:flex; flex-direction:column; padding:14px 10px; gap:4px; box-sizing:border-box; }
+  nav .brand { font-size:13px; font-weight:600; padding:4px 8px 12px; color:#e2e8f0; }
+  nav .brand span { display:block; font-size:11px; font-weight:400; color:#64748b; margin-top:2px; }
+  nav button {
+    text-align:left; padding:9px 10px; border-radius:8px; cursor:pointer; border:1px solid transparent;
+    background:transparent; color:#cbd5e1; font-size:13px;
+  }
+  nav button:hover { background:#16233a; }
+  nav button.active { background:#1d2f4d; border-color:#3b82f6; color:#fff; }
+  nav .foot { margin-top:auto; font-size:11px; color:#475569; padding:8px; }
+
+  main { flex:1; min-width:0; display:flex; flex-direction:column; }
+  header { height:40px; flex:none; display:flex; align-items:center; gap:12px;
+    padding:0 14px; border-bottom:1px solid #1f2937; color:#94a3b8; font-size:12px; }
+  header b { color:#e2e8f0; font-weight:600; font-size:13px; }
+  #frame { flex:1; border:0; width:100%; background:#0f172a; }
+</style>
+</head>
+<body>
+<div id="app">
+  <nav>
+    <div class="brand">PChabit<span>Tauri 壳 · P4</span></div>
+    <button data-page="hardware">硬件趋势</button>
+    <button data-page="activity">每小时活动</button>
+    <button data-page="category">分类构成</button>
+    <button data-page="sankey">应用切换关系</button>
+    <div class="foot" id="foot">—</div>
+  </nav>
+  <main>
+    <header><b id="title">硬件趋势</b><span id="meta"></span></header>
+    <iframe id="frame"></iframe>
+  </main>
+</div>
+<script>
+  var ASSET = { hardware:'pages/hardware-trend.html', activity:'pages/activity-trend.html',
+                category:'pages/piechart.html', sankey:'pages/sankey.html' };
+  var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成', sankey:'应用切换关系' };
+
+  var frame = document.getElementById('frame');
+  var current = null;
+
+  function note(msg) {
+    try {
+      if (window.__TAURI__) window.__TAURI__.core.invoke('note', { msg: msg });
+    } catch (e) { /* 记日志失败不影响页面 */ }
+  }
+
+  // 数据在窗口创建时由壳一次算好注入（window.__PAGES__），渲染阶段完全不走 IPC
+  function dataFor(page) { return (window.__PAGES__ || {})[page]; }
+
+  // 每页自己的"喂数据 + 触发绘制"（函数由页面自身导出，壳只调用）
+  function feed(page, w, d) {
+    if (!d) throw new Error('没有拿到 ' + page + ' 的数据');
+    if (page === 'hardware') {
+      w.__HW_DATA__ = d;
+      if (w.draw) w.draw(d);
+    } else if (page === 'activity') {
+      w.__ACT_DATA__ = d;
+      if (w.draw) w.draw(d);        // 只传 data，不传 dark：页面里 draw/applyTheme 会互相递归
+    } else if (page === 'category') {
+      if (w.renderPieChart) w.renderPieChart(d);
+    } else if (page === 'sankey') {
+      if (w.renderSankey) w.renderSankey(d);
+    }
+  }
+
+  function setActive(page) {
+    document.querySelectorAll('nav button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.page === page);
+    });
+    document.getElementById('title').textContent = TITLE[page] || page;
+  }
+
+  function load(page) {
+    if (!ASSET[page]) { document.getElementById('meta').textContent = '未知页面'; return; }
+    current = page;
+    setActive(page);
+    document.getElementById('meta').textContent = '加载中…';
+    frame.src = ASSET[page];
+  }
+
+  frame.addEventListener('load', function () {
+    var page = current;
+    if (!page) return;
+    var meta = document.getElementById('meta');
+    try {
+      var d = dataFor(page);
+      feed(page, frame.contentWindow, d);
+      meta.textContent = (d && d.summary) ? d.summary : '已加载';
+      note(page + ' 已渲染');
+    } catch (e) {
+      meta.textContent = '渲染失败：' + e.message;
+      note(page + ' 渲染失败：' + e.message);
+    }
+  });
+
+  document.querySelectorAll('nav button').forEach(function (b) {
+    b.addEventListener('click', function () { load(b.dataset.page); });
+  });
+
+  var pages = window.__PAGES__ || {};
+  document.getElementById('foot').textContent =
+    '数据：壳内 Rust 直读 SQLite · ' + Object.keys(pages).length + ' 页已注入';
+
+  // 命令行直开：app.html?p=sankey
+  var q = new URLSearchParams(location.search).get('p');
+  load(ASSET[q] ? q : 'hardware');
+</script>
+</body>
+</html>

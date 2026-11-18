@@ -1,53 +1,43 @@
-//! P4-1：Tauri 壳 —— 只读页逐页迁移。
+//! P4-1：Tauri 壳 —— 单窗口 + 侧边导航，四个只读页嵌在同源 iframe 里。
 //!
 //! 三条硬约束（都来自 P4 盘点的结论）：
-//! 1. **图表资产一行不改**：四个页面本来就是 HTML，壳只负责把数据喂进去；
-//! 2. **数据不绕 IPC**：壳直接 `use pchabit_datad`（datad 的 lib），在进程内查库；
-//! 3. **验证靠日志不靠截屏**：本环境截屏桌面与进程桌面不一致，所以每次注入都写日志。
+//! 1. **图表资产一行不改**：页面本来就是 HTML，壳只负责把数据喂进去；
+//! 2. **数据不绕 IPC 子进程**：壳直接 `use pchabit_datad`（datad 的 lib），进程内查库；
+//! 3. **验证靠回写不靠截屏**：本环境截屏桌面与进程桌面不一致，页面绘制完成后
+//!    用 `invoke('note')` 写日志，作为"真的画出来了"的证据。
+//!
+//! 页面必须从 asset 协议加载（`WebviewUrl::App`），`file://` 外部源拿不到 IPC。
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
-
-use tauri::Manager;
-
-static SEQ: AtomicU32 = AtomicU32::new(0);
 
 /// 找壳自己的 `dist` 目录（页面资产由 build.rs 从 WPF 工程原样复制进来）。
 fn dist_dir() -> PathBuf {
     let mut bases: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            bases.push(dir.to_path_buf()); // target/debug
+            bases.push(dir.to_path_buf());
             if let Some(up2) = dir.parent().and_then(|p| p.parent()) {
-                bases.push(up2.to_path_buf()); // crate 根
+                bases.push(up2.to_path_buf());
             }
         }
     }
     bases.push(PathBuf::from("."));
 
     for b in &bases {
-        let cand = b.join("dist").join("pages");
-        if cand.exists() {
+        if b.join("dist").join("pages").exists() {
             return b.join("dist");
         }
     }
     PathBuf::from("dist")
 }
 
-fn log_path() -> PathBuf {
-    let base = std::env::var("TEMP").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(base).join("pchabit-shell.log")
-}
-
 fn log_line(msg: &str) {
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path())
-    {
+    let base = std::env::var("TEMP").unwrap_or_else(|_| ".".to_string());
+    let path = PathBuf::from(base).join("pchabit-shell.log");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(f, "[{}] {msg}", pchabit_datad::today_local());
     }
 }
@@ -119,8 +109,6 @@ fn payload_hardware() -> serde_json::Value {
     if minutes == 0 {
         summary = "暂无硬件样本".into();
     }
-
-    log_line(&format!("hardware: {} 小时桶 / {} 分钟样本", hours.len(), minutes));
     serde_json::json!({ "hours": hours, "summary": summary })
 }
 
@@ -153,7 +141,6 @@ fn payload_activity() -> serde_json::Value {
                         "label": h["label"].clone(),
                         "value": mins.round(),
                         "level": grade,
-                        // 没到的小时给灰底占位，与"真的是 0"区分开
                         "future": hour > now_h,
                     })
                 })
@@ -167,25 +154,22 @@ fn payload_activity() -> serde_json::Value {
     } else {
         let h = (total / 60.0).floor() as i64;
         let m = (total % 60.0).round() as i64;
-        format!("今日累计 {h}小时{m}分 · 峰值 {:.0} 分/小时", bars.iter().filter_map(|b| b["value"].as_f64()).fold(0.0, f64::max))
+        let peak = bars.iter().filter_map(|b| b["value"].as_f64()).fold(0.0, f64::max);
+        format!("今日累计 {h}小时{m}分 · 峰值 {peak:.0} 分/小时")
     };
-
-    log_line(&format!("activity: 24 桶 / 合计 {total:.0} 分钟"));
     serde_json::json!({ "bars": bars, "summary": summary })
 }
 
-/// 分类构成（饼图页面吃 `renderPieChart([{name,value,color}])`）。
-fn payload_category() -> Vec<serde_json::Value> {
+/// 分类构成（饼图吃 `renderPieChart([{name,value,color}])`）
+fn payload_category() -> serde_json::Value {
     let today = pchabit_datad::today_local();
     let start = pchabit_datad::date_shift(&today, -6);
     let report = match analytics_for(&start, &today) {
         Ok(v) => v,
-        Err(e) => {
-            log_line(&format!("category: 计算失败 {e}"));
-            return Vec::new();
-        }
+        Err(e) => return serde_json::json!([]),
     };
-    let colors = pchabit_datad::category_colors(&pchabit_datad::default_db()).unwrap_or_default();
+    let colors =
+        pchabit_datad::category_colors(&pchabit_datad::default_db()).unwrap_or_default();
     let items: Vec<serde_json::Value> = report["categoryShares"]
         .as_array()
         .map(|arr| {
@@ -202,8 +186,13 @@ fn payload_category() -> Vec<serde_json::Value> {
                 .collect()
         })
         .unwrap_or_default();
-    log_line(&format!("category: {} 个分类", items.len()));
-    items
+    let total: f64 = items.iter().filter_map(|i| i["value"].as_f64()).sum();
+    log_line(&format!(
+        "category: {} 个分类 / 合计 {:.0} 分钟",
+        items.len(),
+        total
+    ));
+    serde_json::Value::Array(items)
 }
 
 /// 桑基图：`{ nodes:[{name,value,category}], links:[{source,target,value}] }`
@@ -211,14 +200,7 @@ fn payload_sankey() -> serde_json::Value {
     let today = pchabit_datad::today_local();
     let start = pchabit_datad::date_shift(&today, -6);
     match pchabit_datad::sankey_json(&pchabit_datad::default_db(), &start, &today, 15) {
-        Ok(v) => {
-            log_line(&format!(
-                "sankey: {} 节点 / {} 流向",
-                v["nodes"].as_array().map(|a| a.len()).unwrap_or(0),
-                v["links"].as_array().map(|a| a.len()).unwrap_or(0)
-            ));
-            v
-        }
+        Ok(v) => v,
         Err(e) => {
             log_line(&format!("sankey: 计算失败 {e}"));
             serde_json::json!({ "nodes": [], "links": [] })
@@ -226,94 +208,63 @@ fn payload_sankey() -> serde_json::Value {
     }
 }
 
-/// 页面定义：`dist/pages` 下的资产文件名 + 注入的 JS（数据落到页面约定的全局变量）。
-fn build_page(page: &str) -> Result<(String, String, String), String> {
-    let (asset, title, script) = match page {
-        "hardware" => (
-            "hardware-trend.html",
-            "硬件趋势",
-            format!(
-                "(function(d){{ window.__HW_DATA__ = d; \
-                  document.addEventListener('DOMContentLoaded', function(){{ \
-                    try {{ if (window.draw) draw(d); \
-                      __TAURI__.core.invoke('note', {{msg: 'hardware 绘制 hours=' + (d.hours||[]).length}}); \
-                    }} catch (e) {{ __TAURI__.core.invoke('note', {{msg: 'hardware 报错 ' + e.message}}); }} \
-                  }}); }})({});",
-                serde_json::to_string(&payload_hardware()).unwrap_or_else(|_| "null".into())
-            ),
-        ),
-        "activity" => (
-            "activity-trend.html",
-            "每小时活动",
-            format!(
-                "(function(d){{ window.__ACT_DATA__ = d; \
-                  document.addEventListener('DOMContentLoaded', function(){{ \
-                    try {{ if (window.draw) draw(d); \
-                      __TAURI__.core.invoke('note', {{msg: 'activity 绘制 bars=' + (d.bars||[]).length}}); \
-                    }} catch (e) {{ __TAURI__.core.invoke('note', {{msg: 'activity 报错 ' + e.message}}); }} \
-                  }}); }})({});",
-                serde_json::to_string(&payload_activity()).unwrap_or_else(|_| "null".into())
-            ),
-        ),
-        "category" => (
-            "piechart.html",
-            "分类构成",
-            format!(
-                "(function(d){{ document.addEventListener('DOMContentLoaded', function(){{ \
-                    setTimeout(function(){{ try {{ var r = renderPieChart(d); \
-                      __TAURI__.core.invoke('note', {{msg: 'category ' + r}}); \
-                    }} catch (e) {{ __TAURI__.core.invoke('note', {{msg: 'category 报错 ' + e.message}}); }} }}, 0); }}); }})({});",
-                serde_json::to_string(&payload_category()).unwrap_or_else(|_| "[]".into())
-            ),
-        ),
-        "sankey" => (
-            "sankey.html",
-            "应用切换关系",
-            format!(
-                "(function(d){{ document.addEventListener('DOMContentLoaded', function(){{ \
-                    setTimeout(function(){{ try {{ var r = renderSankey(d); \
-                      __TAURI__.core.invoke('note', {{msg: 'sankey ' + r}}); \
-                    }} catch (e) {{ __TAURI__.core.invoke('note', {{msg: 'sankey 报错 ' + e.message}}); }} }}, 0); }}); }})({});",
-                serde_json::to_string(&payload_sankey()).unwrap_or_else(|_| "{\"nodes\":[],\"links\":[]}".into())
-            ),
-        ),
-        other => return Err(format!("未知页面：{other}")),
-    };
-
-    let asset_path = dist_dir().join("pages").join(asset);
-    let rel = format!("pages/{}", asset);
-    if !asset_path.exists() {
-        return Err(format!("缺少页面资产：{}（请先构建，build.rs 会复制）", asset_path.display()));
-    }
-    Ok((rel, title.to_string(), script))
-}
-
 #[tauri::command]
 fn note(msg: String) {
     log_line(&format!("[页面] {msg}"));
 }
 
+/// 前端要数据：一次同步查库 + 聚合，返回该页面需要的那份 JSON。
 #[tauri::command]
-fn open_page(app: tauri::AppHandle, page: String) -> Result<String, String> {
-    let (rel, title, script) = build_page(&page)?;
-    let label = format!("view-{}", SEQ.fetch_add(1, Ordering::SeqCst));
+fn page_data(page: String) -> Result<serde_json::Value, String> {
+    let file = match page.as_str() {
+        "hardware" => "hardware-trend.html",
+        "activity" => "activity-trend.html",
+        "category" => "piechart.html",
+        "sankey" => "sankey.html",
+        other => return Err(format!("未知页面：{other}")),
+    };
+    let asset = dist_dir().join("pages").join(file);
+    if !asset.exists() {
+        return Err(format!(
+            "缺少页面资产：{}（构建时 build.rs 会从 WPF 工程复制）",
+            asset.display()
+        ));
+    }
 
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App(rel.into()))
-        .title(format!("PChabit · {title}"))
-        .inner_size(1000.0, 620.0)
-        .center()
-        .visible(true)
-        .initialization_script(&script)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    log_line(&format!("已打开页面 {page} -> {label}"));
-    Ok(format!("已打开：{title}"))
+    let t0 = std::time::Instant::now();
+    let data = match page.as_str() {
+        "hardware" => payload_hardware(),
+        "activity" => payload_activity(),
+        "category" => payload_category(),
+        _ => payload_sankey(),
+    };
+    log_line(&format!(
+        "page_data {page}: {:.1} ms",
+        t0.elapsed().as_secs_f64() * 1000.0
+    ));
+    Ok(data)
 }
 
 fn main() {
+    let start_page = std::env::args().nth(1).unwrap_or_default();
+
+    // 四页数据在窗口创建时一次算好，注入 window.__PAGES__：
+    // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
+    let t0 = std::time::Instant::now();
+    let pages = serde_json::json!({
+        "hardware": payload_hardware(),
+        "activity": payload_activity(),
+        "category": payload_category(),
+        "sankey": payload_sankey(),
+    });
+    let inject = format!("window.__PAGES__ = {pages};");
+    log_line(&format!(
+        "四页载荷就绪：{:.1} ms",
+        t0.elapsed().as_secs_f64() * 1000.0
+    ));
+
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![open_page, note])
+        .invoke_handler(tauri::generate_handler![page_data, note])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {
                 tauri::webview::PageLoadEvent::Started => "页面开始加载",
@@ -321,20 +272,20 @@ fn main() {
             };
             log_line(&format!("{stage} [{}]", webview.label()));
         })
-        .setup(|app| {
-            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("launcher.html".into()))
-                .title("PChabit Shell（P4-1）")
-                .inner_size(760.0, 520.0)
-                .center()
-                .build()?;
+        .setup(move |app| {
+            let url = if start_page.is_empty() {
+                "app.html".to_string()
+            } else {
+                format!("app.html?p={start_page}")
+            };
 
-            // 命令行直开某页，方便不点鼠标就验收：`pchabit-shell.exe hardware`
-            if let Some(page) = std::env::args().nth(1) {
-                let handle = app.handle().clone();
-                if let Err(e) = open_page(handle, page) {
-                    log_line(&format!("命令行开页失败：{e}"));
-                }
-            }
+            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
+                .title("PChabit（P4-1 壳）")
+                .inner_size(1180.0, 720.0)
+                .min_inner_size(900.0, 560.0)
+                .center()
+                .initialization_script(&inject)
+                .build()?;
 
             Ok(())
         })
