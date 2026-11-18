@@ -35,6 +35,7 @@ fn main() {
 
     let result = match mode.as_str() {
         "stats" => run_stats(&db),
+        "detail" => run_detail(&db),
         _ => run_probe(&db, &date),
     };
 
@@ -485,6 +486,506 @@ fn compute(
     })
 }
 
+// ==================== 单应用详情 ====================
+
+struct DetailSession {
+    proc_name: String,
+    title: Option<String>,
+    start: f64,
+    end: Option<f64>,
+    hour: u32,
+    day: i64, // 距 1970 的天数
+}
+
+impl DetailSession {
+    fn minutes(&self) -> f64 {
+        match self.end {
+            Some(e) if e > self.start => (e - self.start) / 60.0,
+            _ => 0.0,
+        }
+    }
+}
+
+fn run_detail(db: &Path) -> Result<(), String> {
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let req: serde_json::Value =
+        serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
+
+    let get = |k: &str| -> Result<String, String> {
+        req.get(k)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .ok_or_else(|| format!("缺少字段 {k}"))
+    };
+
+    let cur_start = get("curStart")?;
+    let cur_end = get("curEnd")?;
+    let prev_start = get("prevStart")?;
+    let prev_end = get("prevEnd")?;
+    let day_start = get("dayStart")?;
+    let day_end = get("dayEnd")?;
+    let hw_start = get("hwStart")?;
+    let hw_end = get("hwEnd")?;
+    let process_name = get("processName")?;
+    let app_name = req
+        .get("appName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let category = req
+        .get("category")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let cat_for_focus = req
+        .get("catForFocus")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&category)
+        .to_string();
+
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+    let norm = normalize_process_name(&process_name);
+
+    let cur = load_process_sessions(&conn, &cur_start, &cur_end, &process_name, &norm)?;
+    let prev = load_process_sessions(&conn, &prev_start, &prev_end, &process_name, &norm)?;
+    let key_presses = sum_key_presses(&conn, &process_name, &norm, &day_start, &day_end)?;
+    let (clicks, distance, scrolls) =
+        sum_mouse(&conn, &process_name, &norm, &day_start, &day_end)?;
+    let hw = collect_process_samples(&conn, &cur, &norm, &process_name, &hw_start, &hw_end)?;
+
+    let mut report = compute_detail(
+        &cur, &prev, &process_name, &app_name, &category, &cat_for_focus, key_presses,
+        &hw, clicks, distance, scrolls,
+        &cur_start, &cur_end,
+    );
+    report["ms"] = serde_json::json!(t0.elapsed().as_secs_f64() * 1000.0);
+
+    println!(
+        "{}",
+        serde_json::to_string(&report).map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
+fn load_process_sessions(
+    conn: &Connection,
+    start: &str,
+    end: &str,
+    process_name: &str,
+    norm: &str,
+) -> Result<Vec<DetailSession>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT ProcessName, WindowTitle, StartTime, EndTime FROM AppSessions \
+             WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows: Vec<DetailSession> = stmt
+        .query_map([start, end], |r| {
+            let p = r.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+            let start_ts: String = r
+                .get::<_, Option<String>>(2)
+                .unwrap_or(None)
+                .unwrap_or_default();
+            let end_ts: Option<String> = r.get::<_, Option<String>>(3).unwrap_or(None);
+            let parsed = parse_dt(&start_ts);
+            Ok(DetailSession {
+                proc_name: p,
+                title: r.get::<_, Option<String>>(1).unwrap_or(None),
+                start: parsed.as_ref().map(|p| p.secs).unwrap_or(0.0),
+                hour: parsed.as_ref().map(|p| p.hour).unwrap_or(0),
+                day: parsed
+                    .as_ref()
+                    .map(|p| (p.secs / 86_400.0).floor() as i64)
+                    .unwrap_or(0),
+                end: end_ts.and_then(|s| parse_dt(&s)).map(|p| p.secs),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // 与 C# 一致：进程名忽略大小写相等，或归一化后相等
+    Ok(rows
+        .into_iter()
+        .filter(|s| {
+            s.proc_name.eq_ignore_ascii_case(process_name)
+                || normalize_process_name(&s.proc_name) == norm
+        })
+        .collect())
+}
+
+fn sum_key_presses(
+    conn: &Connection,
+    process_name: &str,
+    norm: &str,
+    day_start: &str,
+    day_end: &str,
+) -> Result<i64, String> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(TotalKeyPresses), 0) FROM KeyboardSessions \
+         WHERE ProcessName IS NOT NULL AND (ProcessName = ?1 OR lower(ProcessName) = ?2) \
+           AND Date >= ?3 AND Date < ?4",
+        rusqlite::params![process_name, norm, day_start, day_end],
+        |r| r.get::<_, i64>(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn sum_mouse(
+    conn: &Connection,
+    process_name: &str,
+    norm: &str,
+    day_start: &str,
+    day_end: &str,
+) -> Result<(f64, f64, f64), String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT COALESCE(LeftClickCount,0) + COALESCE(RightClickCount,0) + COALESCE(MiddleClickCount,0), \
+                    COALESCE(TotalMoveDistance,0), COALESCE(ScrollCount,0) FROM MouseSessions \
+             WHERE ProcessName IS NOT NULL AND (ProcessName = ?1 OR lower(ProcessName) = ?2) \
+               AND Date >= ?3 AND Date < ?4",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![process_name, norm, day_start, day_end], |r| {
+            Ok((
+                r.get::<_, f64>(0).unwrap_or(0.0),
+                r.get::<_, f64>(1).unwrap_or(0.0),
+                r.get::<_, f64>(2).unwrap_or(0.0),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut sum = (0.0, 0.0, 0.0);
+    for row in rows.filter_map(|r| r.ok()) {
+        sum.0 += row.0;
+        sum.1 += row.1;
+        sum.2 += row.2;
+    }
+    Ok(sum)
+}
+
+/// 按分钟样本最长重叠归属该进程会话（与 C# CollectProcessSamples 一致）。
+fn collect_process_samples(
+    conn: &Connection,
+    sessions: &[DetailSession],
+    norm: &str,
+    process_name: &str,
+    hw_start: &str,
+    hw_end: &str,
+) -> Result<Vec<(f64, f64, Option<f64>)>, String> {
+    let closed: Vec<&DetailSession> = sessions.iter().filter(|s| s.minutes() > 0.0).collect();
+    if closed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT Timestamp, CpuLoadAvg, GpuLoadAvg, GpuTempMax FROM HardwareSamples \
+             WHERE Timestamp >= ?1 AND Timestamp < ?2 ORDER BY Timestamp",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let samples: Vec<(f64, Option<f64>, Option<f64>, Option<f64>)> = stmt
+        .query_map([hw_start, hw_end], |r| {
+            let ts: String = r.get::<_, String>(0).unwrap_or_default();
+            Ok((
+                parse_dt(&ts).map(|p| p.secs).unwrap_or(f64::NAN),
+                r.get::<_, Option<f64>>(1).unwrap_or(None),
+                r.get::<_, Option<f64>>(2).unwrap_or(None),
+                r.get::<_, Option<f64>>(3).unwrap_or(None),
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .filter(|s| !s.0.is_nan())
+        .collect();
+
+    let mut result = Vec::new();
+    for (ts, cpu, gpu, temp) in samples {
+        let s_start = ts;
+        let s_end = ts + 60.0;
+        let mut best: Option<&DetailSession> = None;
+        let mut best_overlap = 0.0f64;
+
+        for s in &closed {
+            // 未结束的会话不参与归属（C# 只取 EndTime 有值的 closed 集合）
+            let Some(s_end_ts) = s.end else { continue };
+            let overlap_start = s.start.max(s_start);
+            let overlap_end = s_end_ts.min(s_end);
+            let overlap = (overlap_end - overlap_start) / 60.0;
+            if overlap <= 0.0 {
+                continue;
+            }
+            if overlap > best_overlap {
+                best_overlap = overlap;
+                best = Some(s);
+            }
+        }
+
+        let Some(best) = best else { continue };
+        let is_target = best.proc_name.eq_ignore_ascii_case(process_name)
+            || normalize_process_name(&best.proc_name) == norm;
+        if !is_target {
+            continue;
+        }
+        if cpu.is_some() || gpu.is_some() || temp.is_some() {
+            result.push((cpu.unwrap_or(0.0), gpu.unwrap_or(0.0), temp));
+        }
+    }
+    Ok(result)
+}
+
+fn compute_detail(
+    cur: &[DetailSession],
+    prev: &[DetailSession],
+    process_name: &str,
+    app_name: &str,
+    category: &str,
+    cat_for_focus: &str,
+    key_presses: i64,
+    hw: &[(f64, f64, Option<f64>)],
+    mouse_clicks: f64,
+    mouse_distance: f64,
+    mouse_scrolls: f64,
+    cur_start: &str,
+    cur_end: &str,
+) -> serde_json::Value {
+    let total: f64 = cur.iter().map(|s| s.minutes()).sum();
+    let prev_total: f64 = prev.iter().map(|s| s.minutes()).sum();
+    let session_count = cur.len();
+    let avg = if session_count > 0 {
+        total / session_count as f64
+    } else {
+        0.0
+    };
+
+    let focus_min: f64 = if is_productive(cat_for_focus) {
+        cur.iter()
+            .filter(|s| s.minutes() >= 25.0)
+            .map(|s| s.minutes())
+            .sum()
+    } else {
+        0.0
+    };
+    let focus_count = if is_productive(cat_for_focus) {
+        cur.iter().filter(|s| s.minutes() >= 25.0).count()
+    } else {
+        0
+    };
+    let longest = cur.iter().map(|s| s.minutes()).fold(0.0f64, f64::max);
+
+    let (direction, delta_text) = if (total - prev_total).abs() < 5.0 {
+        ("flat", "—".to_string())
+    } else if prev_total <= 0.0 {
+        ("up", "新增".to_string())
+    } else {
+        let pct = fmt_f0((total - prev_total) / prev_total * 100.0);
+        if total > prev_total {
+            ("up", format!("+{pct}%"))
+        } else {
+            ("down", format!("{pct}%"))
+        }
+    };
+
+    // 窗口标题 Top5（按去空白标题分组，忽略大小写）
+    let mut title_order: Vec<String> = Vec::new();
+    let mut title_minutes: HashMap<String, f64> = HashMap::new();
+    for s in cur {
+        let Some(t) = s.title.as_deref() else { continue };
+        let trimmed = t.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = trimmed.to_lowercase();
+        if !title_minutes.contains_key(&key) {
+            title_order.push(key.clone());
+        }
+        *title_minutes.entry(key).or_insert(0.0) += s.minutes();
+    }
+    let mut titles: Vec<(String, f64)> = title_order
+        .into_iter()
+        .map(|k| {
+            let minutes = title_minutes[&k];
+            (k, minutes)
+        })
+        .collect();
+    titles.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    let top_titles: Vec<String> = titles
+        .iter()
+        .take(5)
+        .map(|(t, _)| truncate_title(t, 48))
+        .collect();
+
+    // 小时分布（标签是两位小时数，与 C# AppDetailEngine 一致，不带 ":00"）
+    let mut hour_mins = [0.0f64; 24];
+    for s in cur {
+        if s.end.is_none() {
+            continue;
+        }
+        hour_mins[s.hour as usize % 24] += s.minutes();
+    }
+    let mut hourly = Vec::with_capacity(24);
+    for h in 0..24usize {
+        hourly.push(serde_json::json!({
+            "hour": h,
+            "label": format!("{h:02}"),
+            "minutes": hour_mins[h],
+        }));
+    }
+
+    // 日趋势：周期内逐日（标签 M/d，强度按最大日四档）
+    let start_day = parse_dt(cur_start).map(|p| (p.secs / 86_400.0).floor() as i64).unwrap_or(0);
+    let end_day = parse_dt(cur_end).map(|p| (p.secs / 86_400.0).floor() as i64).unwrap_or(start_day);
+    let mut day_minutes: HashMap<i64, f64> = HashMap::new();
+    for s in cur {
+        if s.end.is_none() {
+            continue;
+        }
+        *day_minutes.entry(s.day).or_insert(0.0) += s.minutes();
+    }
+    let max_day = day_minutes
+        .values()
+        .cloned()
+        .fold(0.0f64, f64::max)
+        .max(1.0);
+
+    let mut daily = Vec::new();
+    let mut d = start_day;
+    while d < end_day {
+        let mins = *day_minutes.get(&d).unwrap_or(&0.0);
+        let level = if mins <= 0.0 {
+            0
+        } else if mins < max_day * 0.25 {
+            1
+        } else if mins < max_day * 0.5 {
+            2
+        } else if mins < max_day * 0.75 {
+            3
+        } else {
+            4
+        };
+        let (y, m, dd) = ymd_from_days(d);
+        let _ = y;
+        daily.push(serde_json::json!({
+            "dateLabel": format!("{m}/{dd}"),
+            "minutes": mins,
+            "intensityLevel": level,
+        }));
+        d += 1;
+    }
+
+    // 硬件均值：只取三项中至少一项有值的样本
+    let hw_rows: Vec<&(f64, f64, Option<f64>)> = hw
+        .iter()
+        .filter(|(c, g, t)| *c > 0.0 || *g > 0.0 || t.is_some())
+        .collect();
+    let cpu = if hw_rows.is_empty() {
+        None
+    } else {
+        Some(round1(hw_rows.iter().map(|x| x.0).sum::<f64>() / hw_rows.len() as f64))
+    };
+    let gpu = if hw_rows.is_empty() {
+        None
+    } else {
+        Some(round1(hw_rows.iter().map(|x| x.1).sum::<f64>() / hw_rows.len() as f64))
+    };
+    let temp = if hw.is_empty() {
+        None
+    } else {
+        hw.iter()
+            .filter_map(|x| x.2)
+            .fold(None::<f64>, |acc, v| Some(acc.map_or(v, |a| a.max(v))))
+            .map(round1)
+    };
+
+    let keys_per_hour = if key_presses > 0 && total > 0.0 {
+        Some(round1(key_presses as f64 / (total / 60.0)))
+    } else {
+        None
+    };
+
+    let has_key_mouse = key_presses > 0
+        || mouse_clicks > 0.0
+        || mouse_distance > 0.0
+        || mouse_scrolls > 0.0;
+
+    serde_json::json!({
+        "ok": true,
+        "processName": process_name,
+        "appName": if app_name.trim().is_empty() { process_name.to_string() } else { app_name.to_string() },
+        "category": if category.trim().is_empty() { "未分类".to_string() } else { category.to_string() },
+        "totalMinutes": total,
+        "sessions": session_count,
+        "avgMinutes": avg,
+        "focusMinutes": focus_min.max(0.0),
+        "focusCount": focus_count,
+        "deltaText": delta_text,
+        "deltaDirection": direction,
+        "longestSessionMinutes": longest,
+        "topWindowTitles": top_titles,
+        "hourly": hourly,
+        "dailyTrend": daily,
+        "keyPresses": if key_presses > 0 { serde_json::json!(key_presses) } else { serde_json::Value::Null },
+        "keysPerHour": keys_per_hour,
+        "mouseClicks": if mouse_clicks > 0.0 { serde_json::json!(mouse_clicks) } else { serde_json::Value::Null },
+        "mouseMoveDistance": if mouse_distance > 0.0 { serde_json::json!(mouse_distance) } else { serde_json::Value::Null },
+        "mouseScrolls": if mouse_scrolls > 0.0 { serde_json::json!(mouse_scrolls) } else { serde_json::Value::Null },
+        "cpuLoadAvg": cpu,
+        "gpuLoadAvg": gpu,
+        "gpuTempMax": temp,
+        "hasInput": key_presses > 0,
+        "hasKeyMouse": has_key_mouse,
+        "hasHardware": !hw.is_empty() && (cpu.is_some() || gpu.is_some() || temp.is_some()),
+        "hasData": session_count > 0,
+    })
+}
+
+fn truncate_title(title: &str, max: usize) -> String {
+    let chars: Vec<char> = title.chars().collect();
+    if chars.len() <= max {
+        title.to_string()
+    } else {
+        let mut s: String = chars[..max].iter().collect();
+        s.push('…');
+        s
+    }
+}
+
+fn round1(v: f64) -> f64 {
+    (v * 10.0).round() / 10.0
+}
+
+fn ymd_from_days(z: i64) -> (i64, i64, i64) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    (year, m, d)
+}
+
 // ==================== 口径工具 ====================
 
 /// 归一化进程名：去空白、去 .exe 后缀、小写。
@@ -555,10 +1056,11 @@ struct Dt {
     hour: u32,
 }
 
-/// "YYYY-MM-DD HH:MM:SS[.fffffff]" → 距 1970 的秒 + 小时。
+/// "YYYY-MM-DD HH:MM[:SS[.fffffff]]" → 距 1970 的秒 + 小时。
+/// 注意：HardwareSamples.Timestamp 是分钟粒度（`2026-11-18 20:14`），必须兼容无秒的写法。
 fn parse_dt(s: &str) -> Option<Dt> {
     let bytes = s.as_bytes();
-    if bytes.len() < 19 {
+    if bytes.len() < 16 {
         return None;
     }
     let num = |from: usize, to: usize| -> Option<i64> { s.get(from..to)?.parse::<i64>().ok() };
@@ -567,7 +1069,7 @@ fn parse_dt(s: &str) -> Option<Dt> {
     let d = num(8, 10)?;
     let h = num(11, 13)?;
     let mi = num(14, 16)?;
-    let sec = num(17, 19)?;
+    let sec = if bytes.len() >= 19 { num(17, 19)? } else { 0 };
     let frac = if bytes.len() > 20 && bytes[19] == b'.' {
         let digits = (bytes.len() - 20).min(7);
         let v: f64 = s.get(20..20 + digits)?.parse::<f64>().ok()?;

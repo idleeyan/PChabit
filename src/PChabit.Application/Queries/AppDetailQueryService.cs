@@ -18,13 +18,23 @@ public sealed class AppDetailQueryService
         _dbFactory = dbFactory;
     }
 
-    /// <summary>构建应用详情报告（后台线程执行，透传引擎）。</summary>
-    public Task<AppDetailReport> BuildReportAsync(
+    /// <summary>
+    /// 构建应用详情报告。
+    /// 优先走 Rust 数据面（<see cref="RustDetailProvider"/>，P3 第二块），失败回退 C# 引擎；
+    /// 会话、键鼠切片、硬件归属三项口径两条路径完全一致。
+    /// </summary>
+    public async Task<AppDetailReport> BuildReportAsync(
         AnalyticsPeriod period,
         string processName,
         string appName,
         string category,
         string categoryColorHex)
-        => Task.Run(() => AppDetailEngine.BuildAsync(
+    {
+        var rust = await RustDetailProvider.TryBuildAsync(
+            period, processName, appName, category, categoryColorHex);
+        if (rust != null) return rust;
+
+        return await Task.Run(() => AppDetailEngine.BuildAsync(
             _dbFactory, period, processName, appName, category, categoryColorHex));
+    }
 }
