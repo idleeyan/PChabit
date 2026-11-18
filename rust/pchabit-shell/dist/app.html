@@ -81,13 +81,65 @@
       w.__ACT_DATA__ = d;
       if (w.draw) w.draw(d);        // 只传 data，不传 dark：页面里 draw/applyTheme 会互相递归
     } else if (page === 'category') {
-      if (w.renderPieChart) w.renderPieChart(d);
+      // 两种口径：按分类（全部）/ 按应用（Top8 + 其他）——对齐 WPF 的 PieMode
+      var mode = w.__PIE_MODE__ || 'byCategory';
+      pieToggle(w, d);
+      renderPie(w, d, mode);
     } else if (page === 'sankey') {
       if (w.renderSankey) w.renderSankey(d);
     } else if (page === 'analytics') {
       w.__ANA_DATA__ = d;
       if (w.renderAnalytics) w.__ANA_RESULT__ = w.renderAnalytics(d);
     }
+  }
+
+  function renderPie(w, d, mode) {
+    var arr = (mode === 'byApp' ? d.byApp : d.byCategory) || [];
+    w.document.getElementById('meta-note') &&
+      (w.document.getElementById('meta-note').textContent =
+        (mode === 'byApp' ? '按应用' : '按分类') + ' · ' + arr.length + ' 项');
+    if (w.renderPieChart) w.renderPieChart(arr);
+    w.__PIE_MODE__ = mode;
+    return arr.length;
+  }
+
+  // 饼图页自身没有模式切换（WPF 是外部按钮），这里由壳在 iframe 里挂一个浮层
+  function pieToggle(w, d) {
+    var doc = w.document;
+    if (!doc || !doc.body) return;
+    var bar = doc.getElementById('__pie_toggle');
+    if (!bar) {
+      bar = doc.createElement('div');
+      bar.id = '__pie_toggle';
+      bar.style.cssText = 'position:fixed;top:6px;right:8px;z-index:9;display:flex;' +
+        'gap:4px;font:12px "Microsoft YaHei",sans-serif;';
+      function mk(mode, text) {
+        var b = doc.createElement('button');
+        b.dataset.mode = mode;
+        b.textContent = text;
+        b.style.cssText = 'background:#182234;border:1px solid #263349;color:#cbd5e1;' +
+          'border-radius:6px;padding:3px 9px;cursor:pointer;';
+        b.addEventListener('click', function () {
+          renderPie(w, window.__PAGES__.category, mode);
+          paint();
+        });
+        return b;
+      }
+      bar.appendChild(mk('byCategory', '按分类'));
+      bar.appendChild(mk('byApp', '按应用'));
+      doc.body.appendChild(bar);
+      function paint() {
+        var cur = w.__PIE_MODE__ || 'byCategory';
+        Array.prototype.forEach.call(bar.querySelectorAll('button'), function (b) {
+          var on = b.dataset.mode === cur;
+          b.style.background = on ? '#2563eb' : '#182234';
+          b.style.borderColor = on ? '#3b82f6' : '#263349';
+          b.style.color = on ? '#fff' : '#cbd5e1';
+        });
+      }
+      bar.__paint = paint;
+    }
+    if (bar.__paint) bar.__paint();
   }
 
   function setActive(page) {
@@ -111,10 +163,27 @@
     var meta = document.getElementById('meta');
     try {
       var d = dataFor(page);
+      // 自测钩子：?pie=byApp 强制以"按应用"口径渲染
+      var forcePie = new URLSearchParams(location.search).get('pie');
+      if (page === 'category' && forcePie) frame.contentWindow.__PIE_MODE__ = forcePie;
       feed(page, frame.contentWindow, d);
-      meta.textContent = (d && d.summary) ? d.summary : '已加载';
-      var extra = (page === 'analytics' && frame.contentWindow.__ANA_RESULT__)
-        ? ' ' + frame.contentWindow.__ANA_RESULT__ : '';
+      if (page === 'category') {
+        var mode = frame.contentWindow.__PIE_MODE__ || 'byCategory';
+        var arr = (mode === 'byApp' ? d.byApp : d.byCategory) || [];
+        meta.textContent = (mode === 'byApp' ? '按应用' : '按分类') + ' · ' + arr.length + ' 项' +
+          '　（另一口径：' + (mode === 'byApp' ? ((d.byCategory || []).length + ' 分类')
+            : ((d.byApp || []).length + ' 应用')) + '）';
+      } else {
+        meta.textContent = (d && d.summary) ? d.summary : '已加载';
+      }
+      var extra = '';
+      if (page === 'analytics' && frame.contentWindow.__ANA_RESULT__) {
+        extra = ' ' + frame.contentWindow.__ANA_RESULT__;
+      } else if (page === 'category') {
+        var pieMode = frame.contentWindow.__PIE_MODE__ || 'byCategory';
+        var pieArr = (pieMode === 'byApp' ? d.byApp : d.byCategory) || [];
+        extra = ' ' + (pieMode === 'byApp' ? '按应用 ' : '按分类 ') + pieArr.length + ' 项';
+      }
       note(page + ' 已渲染' + extra);
     } catch (e) {
       meta.textContent = '渲染失败：' + e.message;

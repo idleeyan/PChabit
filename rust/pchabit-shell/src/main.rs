@@ -190,33 +190,103 @@ fn payload_activity() -> serde_json::Value {
     serde_json::json!({ "bars": bars, "summary": summary })
 }
 
-/// 分类构成（饼图吃 `renderPieChart([{name,value,color}])`）：同样复用报告里的 `categoryShares`。
+/// 饼图两种模式，对齐 C# `AppStatsViewModel.BuildPieChartData`：
+/// - `byCategory`：**全部**分类，不截断（C# 就是把 CategoryShares 原样传过去）
+/// - `byApp`：Top 8 应用 + 「其他」（C# 里叫 PieSlices）
+///
+/// 分钟数保留 1 位小数，与 C# 的 `Math.Round(minutes, 1)` 一致。
+fn round1(v: f64) -> f64 {
+    (v * 10.0).round() / 10.0
+}
+
 fn payload_category(report: &serde_json::Value) -> serde_json::Value {
-    let colors =
-        pchabit_datad::category_colors(&pchabit_datad::default_db()).unwrap_or_default();
-    let items: Vec<serde_json::Value> = report["categoryShares"]
+    const OTHER_COLOR: &str = "#8B5CF6";
+
+    let fallback = |report: &serde_json::Value| -> Vec<serde_json::Value> {
+        let colors = pchabit_datad::category_colors(&pchabit_datad::default_db())
+            .unwrap_or_default();
+        report["categoryShares"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .map(|c| {
+                        let name = c["category"].as_str().unwrap_or("未分类").to_string();
+                        serde_json::json!({
+                            "name": name.clone(),
+                            "value": c["minutes"].as_f64().unwrap_or(0.0),
+                            "color": colors.get(&name).cloned().unwrap_or_default(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let today = pchabit_datad::today_local();
+    let start = pchabit_datad::date_shift(&today, -6);
+    let req = serde_json::json!({
+        "curStart": format!("{start} 00:00:00.0000000"),
+        "curEnd": format!("{today} 23:59:59.9999999"),
+        "prevStart": format!("{start} 00:00:00.0000000"),
+        "prevEnd": format!("{today} 23:59:59.9999999"),
+    });
+    let stats = match pchabit_datad::stats_json(&pchabit_datad::default_db(), &req) {
+        Ok(v) => v,
+        Err(e) => {
+            log_line(&format!("category: stats 失败 {e}，退回报告 Top8"));
+            let cats = fallback(report);
+            return serde_json::json!({ "byCategory": cats, "byApp": cats });
+        }
+    };
+
+    // 按分类：全部保留，只滤掉 0 分钟的
+    let mut by_category: Vec<serde_json::Value> = stats["categoryShares"]
         .as_array()
         .map(|arr| {
             arr.iter()
+                .filter(|c| c["minutes"].as_f64().unwrap_or(0.0) > 0.0)
                 .map(|c| {
-                    let name = c["category"].as_str().unwrap_or("未分类").to_string();
-                    let color = colors.get(&name).cloned().unwrap_or_default();
                     serde_json::json!({
-                        "name": name,
-                        "value": c["minutes"].as_f64().unwrap_or(0.0).round(),
-                        "color": color,
+                        "name": c["category"],
+                        "value": round1(c["minutes"].as_f64().unwrap_or(0.0)),
+                        "color": c["colorHex"],
                     })
                 })
                 .collect()
         })
         .unwrap_or_default();
-    let total: f64 = items.iter().filter_map(|i| i["value"].as_f64()).sum();
+    by_category.sort_by(|a, b| {
+        b["value"].as_f64().unwrap_or(0.0)
+            .partial_cmp(&a["value"].as_f64().unwrap_or(0.0))
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // 按应用：数据层已经给了 Top8+其他（pieSlices）
+    let by_app: Vec<serde_json::Value> = stats["pieSlices"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .map(|s| {
+                    serde_json::json!({
+                        "name": s["name"],
+                        "value": round1(s["minutes"].as_f64().unwrap_or(0.0)),
+                        "color": if s["name"].as_str() == Some("其他") {
+                            OTHER_COLOR.to_string()
+                        } else {
+                            s["colorHex"].as_str().unwrap_or("").to_string()
+                        },
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     log_line(&format!(
-        "category: {} 个分类 / 合计 {:.0} 分钟",
-        items.len(),
-        total
+        "category: 分类 {} 个 / 应用 {} 个（含其他）",
+        by_category.len(),
+        by_app.len()
     ));
-    serde_json::Value::Array(items)
+    serde_json::json!({ "byCategory": by_category, "byApp": by_app })
 }
 
 /// 桑基图：`{ nodes:[{name,value,category}], links:[{source,target,value}] }`

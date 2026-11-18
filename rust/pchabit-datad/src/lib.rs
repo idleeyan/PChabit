@@ -381,6 +381,16 @@ pub fn run_stats(db: &Path) -> Result<(), String> {
     let req: serde_json::Value =
         serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
 
+    let report = stats_json(db, &req)?;
+    println!(
+        "{}",
+        serde_json::to_string(&report).map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
+/// 应用统计报告（`stats` 子命令的计算体，壳也直接调它）。
+pub fn stats_json(db: &Path, req: &serde_json::Value) -> Result<serde_json::Value, String> {
     let get = |k: &str| -> Result<String, String> {
         req.get(k)
             .and_then(|v| v.as_str())
@@ -415,12 +425,7 @@ pub fn run_stats(db: &Path) -> Result<(), String> {
 
     let mut report = compute(cur, prev, &cat_map, cat_filter.as_deref(), search.as_deref());
     report["ms"] = serde_json::json!(t0.elapsed().as_secs_f64() * 1000.0);
-
-    println!(
-        "{}",
-        serde_json::to_string(&report).map_err(|e| e.to_string())?
-    );
-    Ok(())
+    Ok(report)
 }
 
 pub fn run_analytics(db: &Path) -> Result<(), String> {
