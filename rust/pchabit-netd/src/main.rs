@@ -118,7 +118,9 @@ fn run_daemon(argv: Vec<String>) {
         }
     });
 
-    // 前台窗口采样线程：1 Hz 轮询，平时只有一次 GetForegroundWindow
+    // 前台窗口采样线程：500 ms 轮询，平时只有一次 GetForegroundWindow。
+    // 1 Hz 会把 <1 秒的切换整段并掉（切到某应用瞄一眼再切回，记录里根本看不到），
+    // 500 ms 是「不漏掉绝大多数短暂切换」与「采样开销仍可忽略」的折中。
     let app_state: pipe::AppShare = Arc::new(Mutex::new(appmon::AppSnapshot::default()));
     let app_pub = Arc::clone(&app_state);
     std::thread::spawn(move || {
@@ -131,7 +133,7 @@ fn run_daemon(argv: Vec<String>) {
             }
             prev = snap.clone();
             *app_pub.lock().unwrap() = snap;
-            std::thread::sleep(Duration::from_secs(1));
+            std::thread::sleep(Duration::from_millis(500));
         }
     });
 

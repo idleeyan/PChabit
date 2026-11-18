@@ -182,7 +182,8 @@ public class AppMonitor : IAppMonitor
             return false;
         }
 
-        _rustTimer = new System.Threading.Timer(_ => PollRust(), null, 1000, 1000);
+        // 与 netd 采样同频（500 ms）：宿主读得比内核慢，内核采得再细也会在被读之前合并掉
+        _rustTimer = new System.Threading.Timer(_ => PollRust(), null, 500, 500);
         IsRunning = true;
         LastActivityTime = DateTime.Now;
         Log.Information("已启用 Rust 前台窗口监控（{Var}=1）", RustEnvVar);
