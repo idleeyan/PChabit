@@ -18,7 +18,7 @@
 - **趋势视图**：硬件趋势图与历史对照
 - **应用 × 硬件融合画像**：查看某个应用运行期间的硬件占用情况
 - **进程级流量排行**：点击任务栏网速小窗弹出浮窗，按进程实时 ↓/↑ 排序并给出今日累计（按进程归因需管理员权限）
-- **Rust 采样内核**：进程网络采样由独立 Rust 进程（`rust/pchabit-netd`）承担，可用环境变量 `PCHABIT_RUST_NETSAMPLER=0` 关闭
+- **Rust 采样内核**：进程网络采样与 GPU 传感器读取由独立 Rust 进程（`rust/pchabit-netd`）承担；可用 `PCHABIT_RUST_NETSAMPLER=0` / `PCHABIT_RUST_GPU=0` 分别关闭
 
 ### 数据分析与复盘
 
@@ -190,6 +190,8 @@ PChabit/
 | CPU 占用（空闲） | 约 50–94 ms/s（0.5–0.9% 单核） | 硬件传感器每秒轮询是主要开销 |
 | Rust 采样内核 | 常驻 5.6–6.0 MB，CPU 约 1.9 ms/s | 独立进程，`PCHABIT_RUST_NETSAMPLER=0` 可关闭 |
 | 进程网络采样耗时 | C# 5.208 ms/拍 → Rust 0.444 ms/拍 | `tools/SamplingBench` 同机对照 |
+| GPU 传感器耗时 | LHM 85.73 ms/拍 → Rust NVML 1.90~2.70 ms/拍 | `pchabit-netd nvml-probe` 与 `SamplingBench lhm-detail` |
+| App 总 CPU | 约 9% 单核 → 1.56% 单核 | 3.88.0 部署后稳态实测 |
 
 > 上表为本机（i5-12490F / 32G 内存 / Windows 11）Release 自包含构建的实测值，不同机器与使用状态下会有差异。
 

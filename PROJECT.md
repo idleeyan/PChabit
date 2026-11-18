@@ -1,6 +1,6 @@
 # PChabit 项目记录
 
-> **最后更新**：2026-11-17
+> **最后更新**：2026-11-18
 > **文档定位**：**索引层**，不重复造轮子。深度内容一律查 `AI_MAINTENANCE.md`（3000+ 行，55 条陷阱）与 `CHANGELOG.md`。
 > **同步说明**：本目录位于 Verysync 同步盘 `E:\SYNC` 内，会自动同步到其他终端。**本地文件即权威源，云端文档非必需。**
 
@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.87.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
+| 当前版本 | **3.88.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 
@@ -71,11 +71,13 @@
 | **Rust 侧系统速率与 C# 对不上（#54）** | A/B 对比系统累计低约 15%，进程榜本身正常 | 宿主推「本拍增量」而不是「速率」，让内核累加；两套 1 秒时钟各自积分必然错拍 |
 
 ---
+| **56. 命名管道服务端同时只服务一个客户端（Rust 内核共享连接）** | 第二次 `new RustNetClient()` 连接会一直挡在 `Connect`，GPU 探针与网络采样各自建连接时表现为「一方永久超时」且不报错（`Send` 返回 null 被当作内核不可用静默回退）| `serve` 循环是 `CreateNamedPipe → ConnectNamedPipe → pump → Disconnect` 逐个 accept，不存在并发实例；宿主侧一律走 `RustNetClient.Shared` 单例，组件只持有引用、不 `Dispose`（内核自带 90 秒空闲退出）。排查判据：`Send` 返回 null 而 `Get-Process pchabit-netd` 明明活着，就是连接被另一个客户端占着 |
 
 ## 4. 历史记录（时间倒序）
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-18 | 3.88.0 | **GPU 传感器采集切分至 Rust（NVML 直读）+ 确定长期迁移路线**。用户拍板「逐步转纯 Rust，UI 最终换 Tauri 2」，路线分 P1 GPU 探针 → P2 监控钩子 → P3 数据面收口 → P4 UI 换壳。本轮做 P1：先逐节点分解 86.5 ms 的构成，实测 **GPU 单节点 85.73 ms（99%）**，CPU 3.13、网络 0.06、主板/内存合计 0.03、本机未枚举出 Storage 节点；对照组 NVML 直读 6 指标：利用率 1.30、温度 0.78、显存 0.07、风扇 0.53、功耗 2.19、频率 3.72 ms。落地 `rust/pchabit-netd/src/gpu.rs`（运行期 LoadLibrary 装 nvml.dll、零新增 crate，热指标每拍 / 冷指标每 5 拍）+ 协议 `GPU` 命令 + `RustGpuProbe` 接管 6 个键并跳过 LHM 的 GPU Update，`PCHABIT_RUST_GPU` 可关。`RustNetClient` 改进程级共享（管道服务端逐个 accept，只服务一个客户端）。口径坑：`GPU.VRAM` 是 used/total×100 的百分比，第一版误填 MB。实测 **85.73 → 1.90~2.70 ms/拍**；线上稳态 App CPU 由约 9% 单核降至 **1.56%**，`HardwareSamples` 照常落库且 GPU 读数与 NVML 一致。发布 3.88.0.0（473 文件）部署 `D:\Tool\PChabit`。新增陷阱 56 |
 | 2026-11-17 | 3.87.0 | **进程网络采样内核切分至 Rust（用户拍板：不整体重写，只切适合的部分）**。先评估整体重写：10–15 人月，且 UI 2.6 万行无法移植（Rust 侧 WinUI3 绑定仅 `winio-winui3` 0.7.0-alpha「subset」），结论不推荐；改为只切最贵的一段。实测定位：LHM `UpdateAll()` 86.477 ms/拍占 App CPU 约 92%、`ProcessNetworkMonitor.SampleOnce()` 5.208 ms/拍占 5.5%，键盘/鼠标/应用/网页四个钩子全亚毫秒且有节流，不切。落地：新增 `rust/pchabit-netd`（8 文件 1,934 行，手写 iphlpapi FFI + 命名管道 + 行式协议），C# 侧增 `ProcessNetworkMonitor.Rust.cs`(289 行) 与 `RustNetClient`(227 行) 退化为缓存层，公开 API / UI / DI 零改动，`PCHABIT_RUST_NETSAMPLER=0` 可整体回退。系统口径改由宿主推「本拍增量」（双 1 秒时钟各自积分实测差 15%）。实测 **5.208 → 0.444 ms/拍**。踩坑：`unsafe { GetLastError() } != CONST` 在 Rust 里是语法错；`Stop()` 提前 return 导致 bench 路径内核不回收；XML 注释含 `--` 触发 MSB4025。发布 3.87.0.0（473 文件 / 255 MB，含 `pchabit-netd.exe`）并部署 `D:\Tool\PChabit`，冒烟 PASS（0 ERR/FTL），内核常驻 5.6–6.0 MB、180s 累计 CPU 0.34s，端到端落库连续。另：`.gitignore` 误用 Edit 造成 CRLF→LF 整文件重写，已回滚改字节级追加。新增陷阱 54/55 |
 | 2026-11-16 | 3.87.0 | **键盘统计过滤长按 auto-repeat**。空格/W 按键数虚高（08 时 W 3678 次/小时、Space 2530），根因是每次 KEYDOWN 都计数，而按住时系统按约 30 次/秒持续发 DOWN。改为维护「当前按下键集合」判重 + 1500ms 兜底（PrintScreen 等只发 DOWN 的键）；`KeyboardSession` 新增 `RepeatKeyPresses` 列（启动迁移自动补列），重复只累加该列，不进总数/频率/打字速度；顺带在钩子入口丢弃 `vkCode <= 0` 的合成输入（此前只进总数不进分布，造成「总数 3395、Top 键合计 2」的穿帮行）。限制：历史数据无原始事件流，无法回溯拆分 |
 | 2026-11-16 | 3.86.1 | **修复进程排行恒为空**。根因一：`GetPerTcpConnectionEStats` 的 P/Invoke 声明参数错位——`out rod` 放在第 6 位（Ros 段），真正的 Rod 段传的是 `IntPtr.Zero/0/0`，调用返回 NO_ERROR 但 ROD 恒为全 0。根因二：`NormalizeRatesToSystem` 在系统读数为 0 时把进程速率乘成 0，传感器缺值的拍次实时条目整片消失。顺带补 IPv6 TCP 归因（`GetPerTcp6ConnectionEStats` / `MIB_TCP6ROW`）、归因健康度自证日志、空态文案分层（未提权 / 启用中 / 已启用但近 60 秒无可归因流量 / 确实无传输） |

@@ -2,6 +2,39 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.88.0] - 2026-11-18
+
+### 变更：GPU 传感器采集切分至 Rust 内核（NVML 直读，默认启用）
+
+**问题**：硬件监控 `UpdateAll()` 实测 86.5 ms/拍，占 App 全部 CPU 的 92%；逐节点分解后
+**GPU 一个节点就占 85.73 ms（99%）**，CPU 3.13 ms、网络 0.06 ms、主板/内存合计 0.03 ms。
+也就是说这一整块开销几乎全来自 LHM 的驱动级 GPU 全量采样，而 PChabit 实际只用
+6 个指标（占用/温度/显存/风扇/频率/功耗）。
+
+- **Rust 侧**（`rust/pchabit-netd/src/gpu.rs`）：运行期 `LoadLibraryW` 装 `nvml.dll`，
+  `GetProcAddress` 取函数指针，零新增 crate 依赖；`Nvml` 持会话与 0 号设备，
+  热指标（利用率/温度/显存）每拍读，冷指标（风扇/频率/功耗）每 5 拍读一次并沿用缓存。
+  协议新增 `GPU` 命令（一行 JSON），无 `nvml.dll`/无 N 卡时 `avail=false`。
+- **宿主侧**（`RustGpuProbe`）：每拍取快照，命中 `GPU.Load/Temp/VRAM/Fan/Clock/Power`
+  时直接返回内核值，`HardwareMonitor.UpdateAll()` 跳过 LHM 的 `hw.Update()`；
+  距上次应答超 3 秒或内核报不可用即整体失效，原样退回 LHM（不做半截数据）。
+- **连接模型**：`RustNetClient` 改为进程级共享——管道服务端同一时刻只服务一个客户端
+  （`serve` 循环逐个 accept），网络采样与 GPU 探针必须复用同一条连接，各建一条会互相挡住。
+- **口径对齐**：`GPU.VRAM` 在 LHM 侧是「已用/总量 × 100」的百分比而非 MB，
+  第一版误填 MB 会导致 UI 显示 1400% 之类，已修正为百分比并回填 `DetectedGpuVramTotalGB`。
+- **开关**：`PCHABIT_RUST_GPU`（默认启用，`0`/`false`/`off` 关闭）。
+
+**实测**（本机 i5-12490F + RTX 2060 SUPER，60 拍）：
+
+| 路径 | 每拍耗时 |
+| --- | --- |
+| LHM `GpuNvidia.Update()` | 85.73 ms（p50 86.8 / max 123.4） |
+| Rust NVML 探针（热/冷分级） | 1.90 ~ 2.70 ms（p50 0.61 ~ 0.87） |
+
+**线上验证**（3.88.0 部署后稳态）：App CPU 由约 9% 单核降至 **1.56%**；
+`HardwareSamples` 每分钟照常落库，GPU 负载/温度/显存与 NVML 直读一致
+（19:39 行：负载均值 29.5%、温度 34℃、显存 1433/8192 MB）。
+
 ## [3.87.0] - 2026-11-16
 
 ### 变更：键盘统计过滤长按自动重复（口径修正）
