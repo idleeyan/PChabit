@@ -318,6 +318,8 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "analytics" => "analytics.html",
         "admin" => "categories.html",
         "detail" => "detail.html",
+        "notes" => "notes.html",
+        "insights" => "insights.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -337,6 +339,13 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
                 .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }));
             payload_admin(apps)
         }
+        "settings" => serde_json::json!({ "settings": payload_settings() }),
+        "notes" => payload_notes(),
+        "insights" => payload_insights(),
+        "detail" => serde_json::json!({
+            "apps": pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
+                .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }))
+        }),
         _ => {
             let report = payload_analytics();
             match page.as_str() {
@@ -372,6 +381,8 @@ fn all_pages() -> serde_json::Value {
         "admin": payload_admin(apps.clone()),
         "detail": serde_json::json!({ "apps": apps }),
         "settings": payload_settings(),
+        "notes": payload_notes(),
+        "insights": payload_insights(),
     });
     log_line(&format!(
         "全部载荷就绪（{} 页）：{:.1} ms",
@@ -417,6 +428,32 @@ fn app_detail(process: String, app_name: String, category: String) -> Result<ser
         v["sessions"].as_i64().unwrap_or(0)
     ));
     Ok(v)
+}
+
+/// 便签（只读）：WPF 负责增删改，壳只展示，避免两处分头写。
+fn payload_notes() -> serde_json::Value {
+    let v = pchabit_datad::notes_json(&pchabit_datad::default_db()).unwrap_or_else(|e| {
+        log_line(&format!("notes: 读取失败 {e}"));
+        serde_json::json!({ "count": 0, "items": [] })
+    });
+    log_line(&format!(
+        "notes: {} 条便签",
+        v["count"].as_i64().unwrap_or(0)
+    ));
+    v
+}
+
+/// AI 洞察快照（只读）：库里已有 WPF 调完模型落下的结果，壳不调 API、不碰 Key。
+fn payload_insights() -> serde_json::Value {
+    let v = pchabit_datad::insights_json(&pchabit_datad::default_db()).unwrap_or_else(|e| {
+        log_line(&format!("insights: 读取失败 {e}"));
+        serde_json::json!({ "count": 0, "items": [] })
+    });
+    log_line(&format!(
+        "insights: {} 份快照",
+        v["count"].as_i64().unwrap_or(0)
+    ));
+    v
 }
 
 /// 分类管理：分类清单（含停用项）+ 近 7 天出现过的进程及其当前分类。
@@ -571,7 +608,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "3.97.0";
+const VERSION: &str = "3.98.0";
 
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]

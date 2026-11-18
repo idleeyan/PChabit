@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit AI 洞察</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.55 "Segoe UI","Microsoft YaHei",sans-serif; }
+  #app { display:flex; height:100vh; }
+  aside { width:220px; flex:none; background:#0b1220; border-right:1px solid #1f2937;
+    display:flex; flex-direction:column; }
+  aside .top { padding:10px; color:#94a3b8; font-size:11px; }
+  aside ul { list-style:none; margin:0; padding:0 6px; overflow:auto; flex:1; }
+  aside li { padding:8px 9px; border-radius:8px; cursor:pointer; margin-bottom:4px;
+    border:1px solid transparent; }
+  aside li:hover { background:#16233a; }
+  aside li.on { background:#1d2f4d; border-color:#2f4f7a; }
+  aside li b { display:block; font-weight:600; font-size:12px; }
+  aside li span { color:#64748b; font-size:10px; }
+
+  main { flex:1; min-width:0; padding:14px 16px 24px; overflow:auto; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
+  .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; }
+  .summary { background:#141e30; border:1px solid #223049; border-left:3px solid #3b82f6;
+    border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12px; color:#dbe6f5; }
+  section { margin-bottom:16px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+  .card { background:#121a29; border:1px solid #223049; border-radius:9px;
+    padding:9px 11px; margin-bottom:8px; }
+  .card .t { font-weight:600; margin-bottom:3px; }
+  .card .d { color:#b6c2d4; font-size:11.5px; }
+  .ev { margin-top:5px; display:flex; flex-wrap:wrap; gap:5px; }
+  .ev span { font-size:10px; color:#94a3b8; background:#0b1220;
+    border:1px solid #263349; border-radius:5px; padding:1px 6px; }
+  .chip { font-size:10px; padding:1px 7px; border-radius:9px; border:1px solid #263349; }
+  .pending { color:#fbbf24; border-color:#7c5a1655; background:#241c08; }
+  .done { color:#34d399; border-color:#166534; background:#0c1f16; }
+  .skipped { color:#94a3b8; }
+  .high { color:#f87171; } .medium { color:#fbbf24; } .low { color:#94a3b8; }
+  ul.risks { margin:0; padding-left:16px; color:#fca5a5; }
+  ul.risks li { margin-bottom:4px; font-size:11.5px; }
+  .empty { color:#64748b; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="top">库里的历史快照（只读，不调模型）</div>
+    <ul id="list"></ul>
+  </aside>
+  <main>
+    <h1 id="title">AI 洞察</h1>
+    <div class="sub" id="sub">左侧选择一份快照</div>
+    <div id="body"></div>
+  </main>
+</div>
+<script>
+  var SNAPS = [];
+  var CUR = null;
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  // findings / plan / diagnosis 在历史快照里字段名不完全一致，兜底取值
+  function titleOf(obj, i) {
+    return obj.Title || obj.title || obj.Hypothesis || obj.hypothesis || ('条目 ' + (i + 1));
+  }
+
+  function renderList() {
+    var ul = document.getElementById('list');
+    ul.innerHTML = '';
+    if (!SNAPS.length) {
+      ul.appendChild(el('li', 'empty', '暂无快照'));
+      return;
+    }
+    SNAPS.forEach(function (s, i) {
+      var li = el('li', CUR && CUR.id === s.id ? 'on' : '');
+      li.appendChild(el('b', null, s.periodLabel || s.periodKey));
+      li.appendChild(el('span', null, (s.createdAt || '').slice(0, 16)));
+      li.addEventListener('click', function () { show(s); });
+      ul.appendChild(li);
+    });
+  }
+
+  function card(title, detail, extraNodes) {
+    var box = el('div', 'card');
+    box.appendChild(el('div', 't', title));
+    if (detail) box.appendChild(el('div', 'd', detail));
+    if (extraNodes && extraNodes.length) {
+      var wrap = el('div', 'ev');
+      extraNodes.forEach(function (n) { wrap.appendChild(n); });
+      box.appendChild(wrap);
+    }
+    return box;
+  }
+
+  function evidenceChips(list, prefix) {
+    var out = [];
+    (list || []).slice(0, 3).forEach(function (ev) {
+      if (!ev) return;
+      var txt = (prefix || '') + (ev.MetricId || ev.metricId || '') +
+        (ev.Value != null ? ' = ' + ev.Value : (ev.value != null ? ' = ' + ev.value : ''));
+      out.push(el('span', null, txt));
+      });
+    return out;
+  }
+
+  function show(s) {
+    CUR = s;
+    renderList();
+    document.getElementById('title').textContent = s.periodLabel || s.periodKey;
+    document.getElementById('sub').textContent =
+      (s.periodStart || '').slice(0, 10) + ' ~ ' + (s.periodEnd || '').slice(0, 10) +
+      '　提示词 ' + (s.promptVersion || '?') + '　生成于 ' + (s.createdAt || '').slice(0, 16);
+
+    var body = document.getElementById('body');
+    body.innerHTML = '';
+
+    if (s.summary) {
+      var sum = el('div', 'summary', s.summary);
+      body.appendChild(sum);
+    }
+
+    // 发现
+    var findings = Array.isArray(s.findings) ? s.findings : [];
+    var sec = el('section');
+    var h = el('h2', null, '发现');
+    h.appendChild(el('em', null, findings.length + ' 条'));
+    sec.appendChild(h);
+    if (!findings.length) sec.appendChild(el('div', 'empty', '这份快照没有发现条目'));
+    findings.forEach(function (f, i) {
+      sec.appendChild(card(titleOf(f, i), f.Detail || f.detail || '', evidenceChips(f.Evidence || f.evidence)));
+    });
+    body.appendChild(sec);
+
+    // 计划
+    var plan = Array.isArray(s.plan) ? s.plan : [];
+    if (plan.length) {
+      var ps = el('section');
+      var ph = el('h2', null, '建议');
+      ph.appendChild(el('em', null, plan.length + ' 条'));
+      ps.appendChild(ph);
+      plan.forEach(function (p, i) {
+        var st = (p.Status || p.status || 'pending').toLowerCase();
+        var chip = el('span', 'chip ' + (st === 'done' ? 'done' : st === 'pending' ? 'pending' : 'skipped'),
+          st === 'done' ? '已完成' : st === 'pending' ? '待做' : st);
+        var extra = [chip];
+        if (p.TargetMetricId || p.targetMetricId) {
+          var target = (p.TargetMetricId || p.targetMetricId);
+          if (p.TargetValue != null) target = target + ' → ' + p.TargetValue;
+          extra.push(el('span', null, target));
+        }
+        ps.appendChild(card(titleOf(p, i), p.Detail || p.detail || '', extra));
+      });
+      body.appendChild(ps);
+    }
+
+    // 诊断
+    var diag = Array.isArray(s.diagnosis) ? s.diagnosis : [];
+    if (diag.length) {
+      var ds = el('section');
+      var dh = el('h2', null, '推断');
+      dh.appendChild(el('em', null, diag.length + ' 条'));
+      ds.appendChild(dh);
+      diag.forEach(function (d, i) {
+        var conf = (d.Confidence || d.confidence || '').toLowerCase();
+        var extra = conf ? [el('span', 'chip ' + (conf === 'high' ? 'high' : conf === 'low' ? 'low' : 'medium'),
+          '置信度 ' + conf)] : [];
+        ds.appendChild(card(titleOf(d, i), '', extra.concat(evidenceChips(d.Evidence || d.evidence))));
+      });
+      body.appendChild(ds);
+    }
+
+    // 风险
+    var risks = Array.isArray(s.risks) ? s.risks : [];
+    if (risks.length) {
+      var rs = el('section');
+      var rh = el('h2', null, '风险');
+      rh.appendChild(el('em', null, risks.length + ' 条'));
+      rs.appendChild(rh);
+      var ul = el('ul', 'risks');
+      risks.forEach(function (r) {
+        ul.appendChild(el('li', null, typeof r === 'string' ? r : titleOf(r, 0)));
+      });
+      rs.appendChild(ul);
+      body.appendChild(rs);
+    }
+
+    var filled = findings.length + plan.length + diag.length + risks.length;
+    window.__INSIGHT_RESULT__ = 'ok: ' + (s.periodLabel || '') + ' / ' + filled + ' 条';
+    return window.__INSIGHT_RESULT__;
+  }
+
+  window.renderInsights = function (payload) {
+    SNAPS = (payload && payload.items) || [];
+    renderList();
+    if (SNAPS.length) {
+      show(SNAPS[0]);
+      return window.__INSIGHT_RESULT__ || ('ok: ' + SNAPS.length + ' 份快照');
+    }
+    document.getElementById('sub').textContent = '库里还没有 AI 洞察快照';
+    return 'ok: 0 份快照';
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__INSIGHTS_DATA__) {
+      try { window.__INSIGHTS_RESULT__ = window.renderInsights(window.__INSIGHTS_DATA__); }
+      catch (e) { window.__INSIGHTS_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

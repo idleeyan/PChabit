@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 便签</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.55 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px; }
+  header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; }
+  .grid { columns:320px; column-gap:12px; }
+  .note { break-inside:avoid; margin:0 0 12px; border-radius:10px; padding:10px 12px;
+    border:1px solid #223049; background:#141e30; }
+  .note.pin { border-color:#f59e0b55; }
+  .bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
+    font-size:10px; color:#94a3b8; }
+  .tag { padding:1px 6px; border-radius:5px; background:#0b1220; border:1px solid #263349; }
+  .body { white-space:pre-wrap; word-break:break-word; font-size:12px;
+    font-family:"Consolas","Cascadia Mono","Microsoft YaHei",monospace; }
+  .body a { color:#60a5fa; }
+  .empty { color:#64748b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>便签</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+<div class="grid" id="grid"></div>
+<script>
+  var COLORS = {
+    yellow: { bg:'#1f1c0d', bd:'#4d4318' },
+    green:  { bg:'#0f1f16', bd:'#1e4632' },
+    pink:   { bg:'#20131a', bd:'#4a2434' },
+    blue:   { bg:'#0f1a26', bd:'#1d3a55' },
+    purple: { bg:'#1a1326', bd:'#3a2455' },
+  };
+
+  // 只把 http(s) 链接变成可点文本，其余内容原样输出（不执行任何 HTML）
+  function paintBody(text) {
+    var box = document.createElement('div');
+    box.className = 'body';
+    var re = /https?:\/\/[^\s"'<>]+/g;
+    var last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) box.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var a = document.createElement('a');
+      a.href = m[0];
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      a.textContent = m[0];
+      box.appendChild(a);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) box.appendChild(document.createTextNode(text.slice(last)));
+    return box;
+  }
+
+  function renderNotes(payload) {
+    var items = (payload && payload.items) || [];
+    var grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    var pinned = items.filter(function (n) { return n.pinned; }).length;
+    document.getElementById('meta').textContent =
+      items.length + ' 条（' + pinned + ' 条置顶）· 只读，编辑请在 PChabit 里进行';
+
+    if (!items.length) {
+      grid.appendChild(Object.assign(document.createElement('div'),
+        { className: 'empty', textContent: '还没有便签' }));
+      return 'ok: 0 条';
+    }
+    items.forEach(function (n) {
+      var pal = COLORS[n.color] || COLORS.yellow;
+      var box = document.createElement('div');
+      box.className = 'note' + (n.pinned ? ' pin' : '');
+      box.style.background = pal.bg;
+      box.style.borderColor = pal.bd;
+
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      var left = document.createElement('span');
+      left.className = 'tag';
+      left.textContent = (n.pinned ? '置顶 · ' : '') + (n.color || 'yellow');
+      var right = document.createElement('span');
+      right.textContent = (n.updatedAt || '').slice(0, 16);
+      bar.appendChild(left);
+      bar.appendChild(right);
+      box.appendChild(bar);
+      box.appendChild(paintBody(n.content || ''));
+      grid.appendChild(box);
+    });
+    return 'ok: ' + items.length + ' 条便签';
+  }
+
+  window.renderNotes = renderNotes;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__NOTES_DATA__) {
+      try { window.__NOTES_RESULT__ = renderNotes(window.__NOTES_DATA__); }
+      catch (e) { window.__NOTES_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

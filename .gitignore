@@ -222,3 +222,5 @@ rust/pchabit-shell/dist/pages/*
 !rust/pchabit-shell/dist/pages/categories.html
 !rust/pchabit-shell/dist/pages/settings.html
 !rust/pchabit-shell/dist/pages/detail.html
+!rust/pchabit-shell/dist/pages/notes.html
+!rust/pchabit-shell/dist/pages/insights.html

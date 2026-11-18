@@ -34,8 +34,22 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "setcat" => run_setcat(db),
         "newcat" => run_newcat(db),
         "activecat" => run_activecat(db),
+        "notes" => run_notes(db),
+        "insights" => run_insights(db),
         _ => run_probe(db, date),
     }
+}
+
+fn run_notes(db: &Path) -> Result<(), String> {
+    let v = notes_json(db)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+fn run_insights(db: &Path) -> Result<(), String> {
+    let v = insights_json(db)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
 }
 
 /// `sankey` 子命令：`--date` 传 `2026-11-18` 或 `2026-11-12~2026-11-18` 区间。
@@ -1924,6 +1938,90 @@ fn run_activecat(db: &Path) -> Result<(), String> {
     let v = set_category_active(db, &req)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
+}
+
+// ==================== 便签与 AI 洞察（只读） ====================
+//
+// 便签：`StickyNotes` 里 `IsDeleted = 0` 的行，置顶优先、更新时间倒序。
+// AI 洞察：`AiInsightSnapshots` 是 WPF 调完模型后落库的快照，壳只读渲染，
+// 不需要 API Key 也不发请求。
+
+/// 便签清单：`[{id, color, content, pinned, archived, createdAt, updatedAt}]`
+pub fn notes_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT Id, Color, Content, IsPinned, IsArchived, CreatedAt, UpdatedAt \
+             FROM StickyNotes WHERE IsDeleted = 0 \
+             ORDER BY IsPinned DESC, UpdatedAt DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, Option<String>>(0).unwrap_or_default(),
+                "color": r.get::<_, Option<String>>(1).unwrap_or_default(),
+                "content": r.get::<_, Option<String>>(2).unwrap_or_default(),
+                "pinned": r.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0) != 0,
+                "archived": r.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0) != 0,
+                "createdAt": r.get::<_, Option<String>>(5).unwrap_or_default(),
+                "updatedAt": r.get::<_, Option<String>>(6).unwrap_or_default(),
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    let items: Vec<serde_json::Value> = rows.filter_map(|r| r.ok()).collect();
+    Ok(serde_json::json!({ "count": items.len(), "items": items }))
+}
+
+/// 把库里存的 JSON 文本安全解析成值；空或坏数据退回 null。
+fn parse_json_field(v: Option<String>) -> serde_json::Value {
+    match v {
+        Some(s) if !s.trim().is_empty() => {
+            serde_json::from_str(&s).unwrap_or(serde_json::Value::Null)
+        }
+        _ => serde_json::Value::Null,
+    }
+}
+
+/// AI 洞察快照清单（最新在前）：`{count, items:[{id, periodKey, periodLabel,
+/// periodStart, periodEnd, model, promptVersion, createdAt, summary,
+/// findings, plan, diagnosis, risks}]}`
+pub fn insights_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT Id, PeriodKey, PeriodLabel, PeriodStart, PeriodEnd, Summary, \
+             FindingsJson, PlanJson, DiagnosisJson, RisksJson, Model, PromptVersion, CreatedAt \
+             FROM AiInsightSnapshots ORDER BY CreatedAt DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, Option<String>>(0).unwrap_or_default(),
+                "periodKey": r.get::<_, Option<String>>(1).unwrap_or_default(),
+                "periodLabel": r.get::<_, Option<String>>(2).unwrap_or_default(),
+                "periodStart": r.get::<_, Option<String>>(3).unwrap_or_default(),
+                "periodEnd": r.get::<_, Option<String>>(4).unwrap_or_default(),
+                "summary": r.get::<_, Option<String>>(5).unwrap_or_default(),
+                "findings": parse_json_field(r.get::<_, Option<String>>(6).unwrap_or(None)),
+                "plan": parse_json_field(r.get::<_, Option<String>>(7).unwrap_or(None)),
+                "diagnosis": parse_json_field(r.get::<_, Option<String>>(8).unwrap_or(None)),
+                "risks": parse_json_field(r.get::<_, Option<String>>(9).unwrap_or(None)),
+                "model": r.get::<_, Option<String>>(10).unwrap_or_default(),
+                "promptVersion": r.get::<_, Option<String>>(11).unwrap_or_default(),
+                "createdAt": r.get::<_, Option<String>>(12).unwrap_or_default(),
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    let items: Vec<serde_json::Value> = rows.filter_map(|r| r.ok()).collect();
+    Ok(serde_json::json!({ "count": items.len(), "items": items }))
 }
 
 /// `yyyy-MM-dd HH:mm:ss.fffffff`（本地时间，固定 UTC+8）
