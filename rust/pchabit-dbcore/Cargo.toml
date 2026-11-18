@@ -1,0 +1,18 @@
+[package]
+name = "pchabit-dbcore"
+version = "0.1.0"
+edition = "2021"
+description = "PChabit 数据面探针：以只读方式打开与宿主同一个 SQLite，验证口径与耗时（P3 可行性评估，不进发布）"
+
+[[bin]]
+name = "pchabit-dbcore"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true

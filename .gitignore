@@ -213,3 +213,4 @@ goals
 
 # Rust 构建产物（cargo target 目录）
 target/
+rust/pchabit-dbcore/target/
