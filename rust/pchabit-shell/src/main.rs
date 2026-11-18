@@ -316,6 +316,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "category" => "piechart.html",
         "sankey" => "sankey.html",
         "analytics" => "analytics.html",
+        "admin" => "categories.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -330,6 +331,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
     let data = match page.as_str() {
         "activity" => payload_activity(),
         "sankey" => payload_sankey(),
+        "admin" => payload_admin(),
         _ => {
             let report = payload_analytics();
             match page.as_str() {
@@ -356,9 +358,11 @@ fn all_pages() -> serde_json::Value {
         "category": payload_category(&report),
         "sankey": payload_sankey(),
         "analytics": report,
+        "admin": payload_admin(),
     });
     log_line(&format!(
-        "五页载荷就绪：{:.1} ms",
+        "全部载荷就绪（{} 页）：{:.1} ms",
+        pages.as_object().map(|o| o.len()).unwrap_or(0),
         t0.elapsed().as_secs_f64() * 1000.0
     ));
     pages
@@ -368,6 +372,49 @@ fn all_pages() -> serde_json::Value {
 #[tauri::command]
 fn pages_data() -> serde_json::Value {
     all_pages()
+}
+
+/// 分类管理：分类清单 + 近 7 天出现过的进程及其当前分类。
+fn payload_admin() -> serde_json::Value {
+    let db = pchabit_datad::default_db();
+    let cats = pchabit_datad::categories_json(&db).unwrap_or_else(|e| {
+        log_line(&format!("admin: 分类读取失败 {e}"));
+        serde_json::Value::Array(vec![])
+    });
+    let apps = pchabit_datad::app_categories_json(&db, 7).unwrap_or_else(|e| {
+        log_line(&format!("admin: 进程列表读取失败 {e}"));
+        serde_json::json!({ "days": 7, "items": [] })
+    });
+    log_line(&format!(
+        "admin: {} 个分类 / {} 个进程",
+        cats.as_array().map(|a| a.len()).unwrap_or(0),
+        apps["items"].as_array().map(|a| a.len()).unwrap_or(0)
+    ));
+    serde_json::json!({ "categories": cats, "apps": apps })
+}
+
+/// 改一个进程的分类（写库）。
+#[tauri::command]
+fn set_category(process: String, category: String) -> Result<serde_json::Value, String> {
+    let db = pchabit_datad::default_db();
+    let req = serde_json::json!({ "process": process, "category": category });
+    let v = pchabit_datad::set_app_category(&db, &req)?;
+    log_line(&format!(
+        "写库: {} -> {}（{}）",
+        v["processName"].as_str().unwrap_or(""),
+        v["category"].as_str().unwrap_or(""),
+        if v["created"].as_bool().unwrap_or(false) {
+            "新增映射"
+        } else {
+            "更新映射"
+        }
+    ));
+    Ok(v)
+}
+
+#[tauri::command]
+fn categories() -> Result<serde_json::Value, String> {
+    pchabit_datad::categories_json(&pchabit_datad::default_db())
 }
 
 fn main() {
@@ -382,7 +429,7 @@ fn main() {
     let inject = format!("window.__PAGES__ = {pages};");
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![page_data, pages_data, note])
+        .invoke_handler(tauri::generate_handler![page_data, pages_data, note, set_category, categories])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {
                 tauri::webview::PageLoadEvent::Started => "页面开始加载",

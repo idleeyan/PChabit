@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 分类管理</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
+  #wrap { padding:14px 16px 24px; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
+  .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; }
+
+  .cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+  .chip { display:flex; align-items:center; gap:5px; background:#141e30;
+    border:1px solid #223049; border-radius:14px; padding:3px 10px; font-size:11px; }
+  .dot { width:8px; height:8px; border-radius:50%; }
+
+  .tools { display:flex; gap:8px; margin-bottom:10px; }
+  .tools input { flex:1; background:#141e30; border:1px solid #263349; color:#e2e8f0;
+    border-radius:6px; padding:5px 9px; font-size:12px; outline:none; }
+  .tools input:focus { border-color:#3b82f6; }
+
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid #1b2436; }
+  th { color:#94a3b8; font-weight:500; font-size:11px; position:sticky; top:0; background:#0f172a; }
+  td.num { color:#94a3b8; font-variant-numeric:tabular-nums; }
+  .proc { color:#64748b; font-size:10px; }
+  .tag { font-size:9px; color:#64748b; border:1px solid #263349; border-radius:4px;
+    padding:0 4px; margin-left:4px; }
+  select { background:#141e30; border:1px solid #263349; color:#e2e8f0;
+    border-radius:5px; padding:2px 6px; font-size:11px; outline:none; cursor:pointer; }
+  select:focus { border-color:#3b82f6; }
+  tr:hover td { background:#121a29; }
+  #msg { color:#34d399; font-size:11px; margin-left:8px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>分类管理</h1>
+  <div class="sub" id="sub">近 7 天出现过的进程，改分类会直接写入程序分类映射表</div>
+
+  <div class="cats" id="cats"></div>
+
+  <div class="tools">
+    <input id="q" placeholder="搜索应用名或进程名…" />
+    <span id="msg"></span>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th style="width:40%">应用</th><th style="width:20%">近 7 天</th><th style="width:40%">分类</th></tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<script>
+  var DATA = null;
+  var MSG = null;
+
+  function fmtMins(v) {
+    var m = Math.round(v || 0);
+    if (m < 60) return m + ' 分';
+    return Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分';
+  }
+
+  function render(d) {
+    DATA = d;
+    var cats = (d && d.categories) || [];
+    var apps = (d && d.apps && d.apps.items) || [];
+
+    document.getElementById('sub').textContent =
+      '近 ' + ((d && d.apps && d.apps.days) || 7) + ' 天 · ' + apps.length +
+      ' 个进程 · ' + cats.length + ' 个启用分类';
+
+    var chipBox = document.getElementById('cats');
+    chipBox.innerHTML = '';
+    cats.forEach(function (c) {
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      var dot = document.createElement('i');
+      dot.className = 'dot';
+      dot.style.background = c.color || '#666';
+      chip.appendChild(dot);
+      chip.appendChild(document.createTextNode((c.icon || '') + ' ' + c.name));
+      chipBox.appendChild(chip);
+    });
+
+    drawRows();
+    return 'ok: ' + apps.length + ' 进程 / ' + cats.length + ' 分类';
+  }
+
+  function drawRows() {
+    var cats = (DATA && DATA.categories) || [];
+    var apps = (DATA && DATA.apps && DATA.apps.items) || [];
+    var kw = (document.getElementById('q').value || '').trim().toLowerCase();
+    var tbody = document.getElementById('rows');
+    tbody.innerHTML = '';
+    var shown = 0;
+
+    apps.forEach(function (a) {
+      if (kw && (a.appName || '').toLowerCase().indexOf(kw) < 0 &&
+          (a.processName || '').toLowerCase().indexOf(kw) < 0) return;
+      shown++;
+
+      var tr = document.createElement('tr');
+      var td1 = document.createElement('td');
+      td1.appendChild(document.createTextNode(a.appName || a.processName));
+      var proc = document.createElement('div');
+      proc.className = 'proc';
+      proc.textContent = a.processName;
+      td1.appendChild(proc);
+      if (!a.mapped) {
+        var tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = '自动推断';
+        tag.title = '该进程还没有显式映射，分类来自内置规则';
+        td1.appendChild(tag);
+      }
+
+      var td2 = document.createElement('td');
+      td2.className = 'num';
+      td2.textContent = fmtMins(a.minutes);
+
+      var td3 = document.createElement('td');
+      var sel = document.createElement('select');
+      cats.forEach(function (c) {
+        var o = document.createElement('option');
+        o.value = c.name;
+        o.textContent = (c.icon || '') + ' ' + c.name;
+        if (c.name === a.category) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', function () { save(a, sel.value, sel); });
+      td3.appendChild(sel);
+
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+      tr.appendChild(td3);
+      tbody.appendChild(tr);
+    });
+
+    if (!shown) {
+      var tr = document.createElement('tr');
+      var td = document.createElement('td');
+      td.colSpan = 3;
+      td.style.color = '#64748b';
+      td.textContent = apps.length ? '没有匹配的应用' : '暂无数据';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    }
+  }
+
+  function save(app, category, sel) {
+    var msg = document.getElementById('msg');
+    if (!category || category === app.category) return;
+    msg.textContent = '保存中…';
+    sel.disabled = true;
+    window.__TAURI__.core.invoke('set_category', { process: app.processName, category: category })
+      .then(function (r) {
+        app.category = r.category;
+        app.categoryColorHex = r.categoryColorHex;
+        app.mapped = true;
+        msg.textContent = '已保存：' + app.processName + ' → ' + r.category +
+          (r.created ? '（新增）' : '（更新）');
+        sel.disabled = false;
+        // 写库后其余页面的分类口径也变了，重算全部载荷
+        return window.__TAURI__.core.invoke('pages_data').then(function (p) {
+          window.__PAGES__ = p;
+          window.__PAGES__.admin = DATA;
+          window.__ADMIN_SAVED__ = app.processName + ':' + r.category;
+        });
+      })
+      .then(function () { window.__ADMIN_RESULT__ = 'saved ' + app.processName; })
+      .catch(function (e) {
+        msg.textContent = '保存失败：' + e;
+        sel.disabled = false;
+        window.__ADMIN_RESULT__ = 'error: ' + e;
+      });
+  }
+
+  document.getElementById('q').addEventListener('input', drawRows);
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__ADMIN_DATA__) {
+      try { window.__ADMIN_RESULT__ = render(window.__ADMIN_DATA__); }
+      catch (e) { window.__ADMIN_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+
+  window.renderAdmin = function (d) {
+    window.__ADMIN_DATA__ = d;
+    return render(d);
+  };
+</script>
+</body>
+</html>

@@ -1,7 +1,8 @@
 //! `pchabit-datad` 命令行：解析参数后交给库执行。
 //!
 //! 使用方式（stdin 一行 JSON → stdout 一行 JSON）：
-//!   stats / detail / analytics / xlsx
+//!   stats / detail / analytics / xlsx / sankey
+//!   categories / appcats / setcat          ← 分类管理（setcat 会写库）
 //! 探针：
 //!   probe --db <path> --date <yyyy-MM-dd>
 

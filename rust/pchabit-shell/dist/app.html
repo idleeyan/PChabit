@@ -41,6 +41,7 @@
     <button data-page="category">分类构成</button>
     <button data-page="sankey">应用切换关系</button>
     <button data-page="analytics">活动分析</button>
+    <button data-page="admin">分类管理</button>
     <div class="foot" id="foot">—</div>
   </nav>
   <main>
@@ -55,9 +56,9 @@
 <script>
   var ASSET = { hardware:'pages/hardware-trend.html', activity:'pages/activity-trend.html',
                 category:'pages/piechart.html', sankey:'pages/sankey.html',
-                analytics:'pages/analytics.html' };
+                analytics:'pages/analytics.html', admin:'pages/categories.html' };
   var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
-                sankey:'应用切换关系', analytics:'活动分析' };
+                sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -90,6 +91,9 @@
     } else if (page === 'analytics') {
       w.__ANA_DATA__ = d;
       if (w.renderAnalytics) w.__ANA_RESULT__ = w.renderAnalytics(d);
+    } else if (page === 'admin') {
+      w.__ADMIN_DATA__ = d;
+      if (w.renderAdmin) w.__ADMIN_RESULT__ = w.renderAdmin(d);
     }
   }
 
@@ -183,8 +187,29 @@
         var pieMode = frame.contentWindow.__PIE_MODE__ || 'byCategory';
         var pieArr = (pieMode === 'byApp' ? d.byApp : d.byCategory) || [];
         extra = ' ' + (pieMode === 'byApp' ? '按应用 ' : '按分类 ') + pieArr.length + ' 项';
+      } else if (page === 'admin') {
+        var adminArr = (d && d.apps && d.apps.items) || [];
+        meta.textContent = adminArr.length + ' 个进程 · 分类可直接改（写入数据库）';
+        extra = ' ' + ((frame.contentWindow.__ADMIN_RESULT__) || '');
       }
       note(page + ' 已渲染' + extra);
+
+      // 自测钩子：?wtest=进程|分类 → 走一遍写库 + 重算载荷（配合 PCHABIT_DB 指向库副本）
+      var wtest = new URLSearchParams(location.search).get('wtest');
+      if (page === 'admin' && wtest) {
+        var parts = wtest.split('|');
+        window.__TAURI__.core.invoke('set_category', { process: parts[0], category: parts[1] })
+          .then(function (r) {
+            note('wtest 写入 ' + r.processName + ' -> ' + r.category +
+              (r.created ? '（新增映射）' : '（更新映射）'));
+            return window.__TAURI__.core.invoke('pages_data');
+          })
+          .then(function (p) {
+            window.__PAGES__ = p;
+            note('wtest 载荷重算完成 ' + Object.keys(p).length + ' 页');
+          })
+          .catch(function (e) { note('wtest 失败：' + e); });
+      }
     } catch (e) {
       meta.textContent = '渲染失败：' + e.message;
       note(page + ' 渲染失败：' + e.message);

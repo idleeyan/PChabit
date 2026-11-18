@@ -29,6 +29,9 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "xlsx" => run_xlsx(),
         "analytics" => run_analytics(db),
         "sankey" => run_sankey(db, date),
+        "categories" => run_categories(db),
+        "appcats" => run_appcats(db),
+        "setcat" => run_setcat(db),
         _ => run_probe(db, date),
     }
 }
@@ -59,8 +62,13 @@ pub fn analytics_json(db: &Path, req: &serde_json::Value) -> Result<serde_json::
 }
 
 /// 默认数据库路径（%LOCALAPPDATA%\PChabit\Data\pchabit.db）。
+///
+/// 可用 `PCHABIT_DB` 环境变量覆盖——自测写库时指向库副本，避免碰真实数据。
 pub fn default_db() -> PathBuf {
-    default_db_path()
+    match std::env::var("PCHABIT_DB") {
+        Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
+        _ => default_db_path(),
+    }
 }
 
 /// 本地今天的日期（`yyyy-MM-dd`），固定按 UTC+8 计算，不引第三方日期库。
@@ -1573,4 +1581,220 @@ pub(crate) fn civil_from_days(z: i64) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if m <= 2 { y + 1 } else { y };
     format!("{year:04}-{m:02}-{d:02}")
+}
+
+// ==================== 分类管理（读 + 写） ====================
+//
+// 写口径对齐 C# `CategoryService`：按 ProcessName 大小写不敏感匹配，命中则改 CategoryId
+// 并写 UpdatedAt，未命中则新增一行（CreatedAt/UpdatedAt 都写）。
+// 分类按 `IsActive = 1` 过滤，名称即唯一键（与 C# `CategoryExistsAsync` 一致）。
+
+/// 启用中的分类清单：`[{id,name,color,icon,sortOrder}]`
+pub fn categories_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT Id, Name, Color, Icon, SortOrder FROM ProgramCategories \
+             WHERE IsActive = 1 ORDER BY SortOrder, Name",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, i64>(0).unwrap_or(0),
+                "name": r.get::<_, Option<String>>(1).unwrap_or_default(),
+                "color": r.get::<_, Option<String>>(2).unwrap_or_default(),
+                "icon": r.get::<_, Option<String>>(3).unwrap_or_default(),
+                "sortOrder": r.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0),
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::Value::Array(
+        rows.filter_map(|r| r.ok()).collect(),
+    ))
+}
+
+/// `ceil` 到 1 位小数，对齐 C# 的 `Math.Round(x, 1)`
+fn round1_appcats(v: f64) -> f64 {
+    round1(v)
+}
+
+/// 近 N 天里出现过的进程 + 当前分类：`[{processName,appName,minutes,category,categoryColorHex,mapped}]`
+pub fn app_categories_json(db: &Path, days: i64) -> Result<serde_json::Value, String> {
+    let today = today_local();
+    let start = date_shift(&today, -(days.max(1) - 1));
+    let req = serde_json::json!({
+        "curStart": format!("{start} 00:00:00.0000000"),
+        "curEnd": format!("{today} 23:59:59.9999999"),
+        "prevStart": format!("{start} 00:00:00.0000000"),
+        "prevEnd": format!("{today} 23:59:59.9999999"),
+    });
+    let stats = stats_json(db, &req)?;
+
+    // 哪些进程已经显式映射过（决定"自动推断"还是"用户设定"）
+    let mapped: std::collections::HashSet<String> = {
+        let conn = open_readonly(db)?;
+        let mut stmt = conn
+            .prepare("SELECT ProcessName FROM ProgramCategoryMappings")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                let p: Option<String> = r.get(0)?;
+                Ok(normalize_process_name(&p.unwrap_or_default()))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    let items: Vec<serde_json::Value> = stats["rows"]
+        .as_array()
+        .map(|rows| {
+            rows.iter()
+                .map(|r| {
+                    let proc = r["processName"].as_str().unwrap_or("").to_string();
+                    serde_json::json!({
+                        "processName": proc.clone(),
+                        "appName": r["appName"],
+                        "minutes": round1_appcats(r["durationMinutes"].as_f64().unwrap_or(0.0)),
+                        "category": r["category"],
+                        "categoryColorHex": r["categoryColorHex"],
+                        "mapped": mapped.contains(&normalize_process_name(&proc)),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(serde_json::json!({ "days": days, "items": items }))
+}
+
+/// 改一个进程的分类：`{process, category}` → `{ok, processName, category, created}`
+pub fn set_app_category(db: &Path, req: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let process = req
+        .get("process")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "缺少 process".to_string())?;
+    let category = req
+        .get("category")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "缺少 category".to_string())?;
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+
+    let conn = Connection::open(db).map_err(|e| format!("打开数据库失败：{e}"))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
+
+    let cat_id: i64 = conn
+        .query_row(
+            "SELECT Id FROM ProgramCategories WHERE Name = ?1 AND IsActive = 1 LIMIT 1",
+            rusqlite::params![category],
+            |r| r.get(0),
+        )
+        .map_err(|e| format!("找不到启用的分类「{category}」：{e}"))?;
+
+    let now = now_stamp();
+    let existing: Option<i64> = conn
+        .query_row(
+            "SELECT Id FROM ProgramCategoryMappings WHERE LOWER(ProcessName) = LOWER(?1) LIMIT 1",
+            rusqlite::params![process],
+            |r| r.get(0),
+        )
+        .ok();
+
+    let created = match existing {
+        Some(id) => {
+            conn.execute(
+                "UPDATE ProgramCategoryMappings SET CategoryId = ?1, UpdatedAt = ?2 WHERE Id = ?3",
+                rusqlite::params![cat_id, now, id],
+            )
+            .map_err(|e| format!("更新映射失败：{e}"))?;
+            false
+        }
+        None => {
+            conn.execute(
+                "INSERT INTO ProgramCategoryMappings (ProcessName, CategoryId, CreatedAt, UpdatedAt) \
+                 VALUES (?1, ?2, ?3, ?3)",
+                rusqlite::params![process, cat_id, now],
+            )
+            .map_err(|e| format!("新增映射失败：{e}"))?;
+            true
+        }
+    };
+
+    let color: String = conn
+        .query_row(
+            "SELECT Color FROM ProgramCategories WHERE Id = ?1",
+            rusqlite::params![cat_id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .unwrap_or_default()
+        .unwrap_or_default();
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "processName": process,
+        "category": category,
+        "categoryColorHex": color,
+        "created": created,
+    }))
+}
+
+fn run_categories(db: &Path) -> Result<(), String> {
+    let v = categories_json(db)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+fn run_appcats(db: &Path) -> Result<(), String> {
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let days = serde_json::from_str::<serde_json::Value>(&buf)
+        .ok()
+        .and_then(|v| v.get("days").and_then(|d| d.as_i64()))
+        .unwrap_or(7);
+    let v = app_categories_json(db, days)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+fn run_setcat(db: &Path) -> Result<(), String> {
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let req: serde_json::Value =
+        serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
+    let v = set_app_category(db, &req)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+/// `yyyy-MM-dd HH:mm:ss.fffffff`（本地时间，固定 UTC+8）
+fn now_stamp() -> String {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let local = ms + 8 * 3_600_000;
+    let days = local / 86_400_000;
+    let rem = local % 86_400_000;
+    let h = rem / 3_600_000;
+    let m = (rem / 60_000) % 60;
+    let s = (rem / 1000) % 60;
+    let frac = rem % 1000 * 10_000;
+    format!(
+        "{} {h:02}:{m:02}:{s:02}.{frac:07}",
+        civil_from_days(days)
+    )
 }
