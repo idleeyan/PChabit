@@ -18,10 +18,19 @@ public sealed class AppStatsQueryService
         _dbFactory = dbFactory;
     }
 
-    /// <summary>按周期/分类过滤/搜索词构造应用统计报告（透传引擎）。</summary>
-    public Task<AppStatsReport> BuildReportAsync(
+    /// <summary>
+    /// 按周期/分类过滤/搜索词构造应用统计报告。
+    /// 优先走 Rust 数据面（<see cref="RustStatsProvider"/>，P3 第一块），失败则回退 C# 引擎；
+    /// 两条路径口径一致（归一化、分类优先级、专注判定、环比文案、饼图 Top8+其他）。
+    /// </summary>
+    public async Task<AppStatsReport> BuildReportAsync(
         AnalyticsPeriod period,
         string? categoryFilter,
         string? searchText)
-        => AppStatsEngine.BuildAsync(_dbFactory, period, categoryFilter, searchText);
+    {
+        var rust = await RustStatsProvider.TryBuildAsync(period, categoryFilter, searchText);
+        if (rust != null) return rust;
+
+        return await AppStatsEngine.BuildAsync(_dbFactory, period, categoryFilter, searchText);
+    }
 }

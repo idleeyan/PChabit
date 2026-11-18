@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.89.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
+| 当前版本 | **3.90.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 
@@ -77,6 +77,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-18 | 3.90.0 | **应用统计切至 Rust 数据面（P3 第一块）**。新增 `rust/pchabit-datad`（rusqlite bundled，独立进程）：只读打开宿主同一 WAL 库，把「按周期查 AppSessions + 分组聚合 + 环比 + 饼图 + 小时分布」整体算完，经 stdin/stdout 的 JSON 协议回传；`RustStatsProvider` 一次统计起一个子进程（约 20 ms），任何失败回退 `AppStatsEngine`，开关 `PCHABIT_RUST_STATS=0`、`PCHABIT_DATAD_PATH` 可指定产物。口径逐条对齐（归一化 / 分类优先级 / 生产力判定 / 25 分钟专注阈值 / 环比文案 / Top8+其他 / 小时分布），图表消费侧零改动。实测 19.9 万行库上完整报告 3.8 ms，与 Python 独立实现逐行一致；全量单测 208 项通过。`pchabit-netd` 保持零 crate 依赖，发布 474 文件。踩坑：`Task.WhenAny(...) != Task.WhenAll(...)` 恒为真导致每次误判超时，必须先存变量。发布 3.90.0.0 部署 `D:\Tool\PChabit` |
 | 2026-11-18 | 3.89.0 | **前台窗口监控切分至 Rust（P2 第一块）**。宿主 `AppMonitor` 原用 `SetWinEventHook` 监听 foreground/namechange，回调在 C# STA 消息循环里，UI 一卡就漏记前台切换。改为 `rust/pchabit-netd/src/appmon.rs` 独立线程 1 Hz 轮询 `GetForegroundWindow`：平时一次系统调用，仅在窗口/标题变化时解析进程名/标题/类名/矩形/最大化，协议新增 `APP` 命令；宿主每秒拉快照、比对进程名与标题后派生事件，语义与钩子路径一致，`PCHABIT_RUST_APPMON=0` 可回退。结构前置：管道客户端从 HardwareMonitor 下沉到 `PChabit.Core.Runtime.DaemonPipe`（两个程序集必须共用一条连接，服务端同时只服务一个客户端）。取舍：键鼠低层钩子不迁（每事件走 IPC 反而更慢、且有一致性风险）；WebMonitor 与 AppInfoResolver 暂留 C#（分别与库表、分类配置强耦合）。实测：日志出现「已启用 Rust 前台窗口监控」，`AppSessions` 每 9~10 秒正常切段落库、分类解析照常，0 ERR。发布 3.89.0.0（473 文件）部署 `D:\Tool\PChabit` |
 | 2026-11-18 | 3.88.0 | **GPU 传感器采集切分至 Rust（NVML 直读）+ 确定长期迁移路线**。用户拍板「逐步转纯 Rust，UI 最终换 Tauri 2」，路线分 P1 GPU 探针 → P2 监控钩子 → P3 数据面收口 → P4 UI 换壳。本轮做 P1：先逐节点分解 86.5 ms 的构成，实测 **GPU 单节点 85.73 ms（99%）**，CPU 3.13、网络 0.06、主板/内存合计 0.03、本机未枚举出 Storage 节点；对照组 NVML 直读 6 指标：利用率 1.30、温度 0.78、显存 0.07、风扇 0.53、功耗 2.19、频率 3.72 ms。落地 `rust/pchabit-netd/src/gpu.rs`（运行期 LoadLibrary 装 nvml.dll、零新增 crate，热指标每拍 / 冷指标每 5 拍）+ 协议 `GPU` 命令 + `RustGpuProbe` 接管 6 个键并跳过 LHM 的 GPU Update，`PCHABIT_RUST_GPU` 可关。`RustNetClient` 改进程级共享（管道服务端逐个 accept，只服务一个客户端）。口径坑：`GPU.VRAM` 是 used/total×100 的百分比，第一版误填 MB。实测 **85.73 → 1.90~2.70 ms/拍**；线上稳态 App CPU 由约 9% 单核降至 **1.56%**，`HardwareSamples` 照常落库且 GPU 读数与 NVML 一致。发布 3.88.0.0（473 文件）部署 `D:\Tool\PChabit`。新增陷阱 56 |
 | 2026-11-17 | 3.87.0 | **进程网络采样内核切分至 Rust（用户拍板：不整体重写，只切适合的部分）**。先评估整体重写：10–15 人月，且 UI 2.6 万行无法移植（Rust 侧 WinUI3 绑定仅 `winio-winui3` 0.7.0-alpha「subset」），结论不推荐；改为只切最贵的一段。实测定位：LHM `UpdateAll()` 86.477 ms/拍占 App CPU 约 92%、`ProcessNetworkMonitor.SampleOnce()` 5.208 ms/拍占 5.5%，键盘/鼠标/应用/网页四个钩子全亚毫秒且有节流，不切。落地：新增 `rust/pchabit-netd`（8 文件 1,934 行，手写 iphlpapi FFI + 命名管道 + 行式协议），C# 侧增 `ProcessNetworkMonitor.Rust.cs`(289 行) 与 `RustNetClient`(227 行) 退化为缓存层，公开 API / UI / DI 零改动，`PCHABIT_RUST_NETSAMPLER=0` 可整体回退。系统口径改由宿主推「本拍增量」（双 1 秒时钟各自积分实测差 15%）。实测 **5.208 → 0.444 ms/拍**。踩坑：`unsafe { GetLastError() } != CONST` 在 Rust 里是语法错；`Stop()` 提前 return 导致 bench 路径内核不回收；XML 注释含 `--` 触发 MSB4025。发布 3.87.0.0（473 文件 / 255 MB，含 `pchabit-netd.exe`）并部署 `D:\Tool\PChabit`，冒烟 PASS（0 ERR/FTL），内核常驻 5.6–6.0 MB、180s 累计 CPU 0.34s，端到端落库连续。另：`.gitignore` 误用 Edit 造成 CRLF→LF 整文件重写，已回滚改字节级追加。新增陷阱 54/55 |

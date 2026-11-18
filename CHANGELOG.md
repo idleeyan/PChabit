@@ -2,6 +2,34 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.90.0] - 2026-11-18
+
+### 变更：应用统计切至 Rust 数据面（P3 第一块）
+
+应用统计原来走「EF 拉全实体 → LINQ 聚合」：一次查询要把整段周期的会话实体全部
+materialize 到托管堆，再在 C# 里分组、算环比、拼饼图。19.9 万行的库上，这条链路
+每次刷新都要付一次完整 GC 压力。
+
+- **Rust 侧**（`rust/pchabit-datad`）：独立进程持有 `rusqlite`（bundled），只读打开
+  宿主正在写的同一个 WAL 库，SQL 直接按进程名聚合，算完回一行 JSON。
+  协议：stdin 收 `{curStart,curEnd,prevStart,prevEnd,catFilter,search}`，stdout 回报告。
+  `pchabit-netd` 仍然零 crate 依赖，发布链路不变。
+- **宿主侧**（`RustStatsProvider`）：一次统计 = 一个子进程（约 20 ms），用完即退；
+  找不到 exe / 超时 / 非零退出 / JSON 异常一律回退 `AppStatsEngine`，统计页不出现空白。
+  开关 `PCHABIT_RUST_STATS=0`，可用 `PCHABIT_DATAD_PATH` 指定产物路径。
+- **口径逐条对齐**（差异即 bug）：进程名归一化（去 .exe、小写）、分类解析优先级
+  （映射表 → 会话快照 → 未分类）、兜底色板、生产力分类判定、专注会话阈值 25 分钟、
+  环比文案（±5 分钟 flat / 新增 / ±N%）、饼图 Top8 + 其他、24 小时分布按 StartTime 小时。
+  图表消费侧零改动：仍然拿同一个 `AppStatsReport`。
+
+**实测**：本机 19.9 万行 AppSessions，当日 24 个进程的完整报告（查询 + 聚合 + 序列化）
+3.8 ms；与 Python 独立实现同口径结果逐行一致。全量单测 208 项通过，其中新增两条
+数据面回归（结构一致性、分类过滤一致性）。
+
+**踩坑记录**：`Task.WhenAny(work, ...)` 里若再次调用 `Task.WhenAll(...)` 做比较，
+拿到的永远是新的 Task 实例，判等恒为真——表现是每次都被判超时、进程被杀、静默回退。
+必须先存进变量再比。
+
 ## [3.89.0] - 2026-11-18
 
 ### 变更：前台窗口监控切分至 Rust 内核（P2 第一块）

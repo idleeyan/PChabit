@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>3.89.0</Version>
+        <Version>3.90.0</Version>
         <Platforms>x64</Platforms>
         <PlatformTarget>x64</PlatformTarget>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -281,6 +281,24 @@
     <Target Name="CopyRustNetdToPublish" AfterTargets="Publish" Condition="Exists('$(RustNetdExe)')">
         <Copy SourceFiles="$(RustNetdExe)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
     </Target>
+
+    <!--
+      Rust 数据面（pchabit-datad.exe，P3 第一块）：只读 SQLite 的应用统计计算。
+      与 netd 同样是「只拷贝、不调 cargo」，缺失时 RustStatsProvider 自动回退 C# 引擎。
+    -->
+    <PropertyGroup>
+        <RustDatadDir>$(MSBuildThisFileDirectory)..\..\rust\pchabit-datad</RustDatadDir>
+        <RustDatadExe>$(RustDatadDir)\target\release\pchabit-datad.exe</RustDatadExe>
+    </PropertyGroup>
+
+    <Target Name="CopyRustDatadToOutput" AfterTargets="Build" Condition="Exists('$(RustDatadExe)')">
+        <Copy SourceFiles="$(RustDatadExe)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    </Target>
+
+    <Target Name="CopyRustDatadToPublish" AfterTargets="Publish" Condition="Exists('$(RustDatadExe)')">
+        <Copy SourceFiles="$(RustDatadExe)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
+    </Target>
+
 </Project>
 
 
