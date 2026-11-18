@@ -2,6 +2,37 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.93.0] - 2026-11-18
+
+### 变更：EPPlus 彻底退出产品依赖（P3 第三块收尾）
+
+3.92.0 里 EPPlus 还留着当兜底，`AnalysisExcelExporter` 也仍在用它。这次两块一起收掉：
+产品代码不再引用 `OfficeOpenXml`，`PChabit.Infrastructure.csproj` 删除 `EPPlus` 包引用，
+**这个项目从此不再依赖任何带许可证限制的表格库**。EPPlus 只在测试项目里保留，角色变成
+「第三方校验器」——用它打开 Rust 产物，确认不是「合法 zip 但内容坏」。
+
+- **XLSX 协议升级为多区块**：一个工作表可含多个「标题 / 键值 / 表头 / 数据」段
+  （`sections`），用于 `AnalysisExcelExporter` 的硬件表——它在同一张表里有两组表头
+  （应用段 + 小时段）。旧的单区块写法仍兼容。
+- **`ExcelExportFormatter`**：删掉 `WriteWithEpplus` 兜底，只剩「数据组织一份 + Rust 写出」。
+  Rust 不可用时**明确抛错**，不再静默产出空文件。
+- **`AnalysisExcelExporter`**：6 张表（概览 / KPI / 分类构成 / 应用变化 / 硬件 / 洞察）
+  全部改为生成区块描述交 Rust 写出，`Export()` 签名保持同步 `byte[]`，行为对调用方不变。
+
+### 修掉一个被兜底掩盖的真 bug
+
+`RustXlsxWriter` 反序列化应答时没开大小写不敏感，而 Rust 返回的字段是小写
+（`ok` / `bytes` / `rows` / `ms`），于是 `"ok":true` 永远绑不到 `Ok` 属性——
+**3.92.0 的每一次导出其实都判定失败、悄悄回退到了 EPPlus**，日志只留一条 Warn，
+线上看起来「正常」。删掉兜底后这个 bug 立刻暴露（测试报「应答不合法」）。
+修法是 `PropertyNameCaseInsensitive = true`。
+
+教训：兜底路径会把「新路径从未成功」伪装成「一切正常」，迁移期的开关要配一条
+「关掉新路径必须失败」的用例，否则等于没测。
+
+**验证**：全量 **211 项通过**；分析报告导出用例升级为断言 6 张表齐全 + 概览键值落位；
+Excel 导出用例断言产物可被 EPPlus 打开，并新增「关闭 Rust 必须抛 InvalidOperationException」。
+
 ## [3.92.0] - 2026-11-18
 
 ### 变更：Excel 导出改由 Rust 写出（P3 第三块）

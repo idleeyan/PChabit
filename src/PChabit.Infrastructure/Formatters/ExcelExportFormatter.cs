@@ -1,5 +1,3 @@
-using OfficeOpenXml;
-using OfficeOpenXml.Style;
 using PChabit.Core.Interfaces;
 using Serilog;
 using System.Text.Json.Serialization;
@@ -7,9 +5,9 @@ using System.Text.Json.Serialization;
 namespace PChabit.Infrastructure.Formatters;
 
 /// <summary>
-/// Excel 导出（P3 第三块）：数据组织一次，写出两套实现。
-/// 主路径交给 <c>pchabit-datad xlsx</c>（Rust，无需 EPPlus 许可）；失败时回退 EPPlus，
-/// 保证导出永远可用。<c>PCHABIT_RUST_XLSX=0</c> 强制走 EPPlus。
+/// Excel 导出（P3 第三块）：数据组织在 C#，XLSX 生成交给 <c>pchabit-datad xlsx</c>（纯 Rust）。
+/// EPPlus 已从产品路径移除（其 NonCommercial 许可不再被产品依赖），仅测试项目保留它做产物校验。
+/// <c>PCHABIT_RUST_XLSX=0</c> 可关闭 Rust 路径（关闭后导出会明确报错，而不是静默产出空文件）。
 /// </summary>
 public class ExcelExportFormatter : IExportFormatter
 {
@@ -17,22 +15,16 @@ public class ExcelExportFormatter : IExportFormatter
     public string FileExtension => ".xlsx";
     public string MimeType => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-    public ExcelExportFormatter()
-    {
-        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-    }
-
     public async Task<string> FormatAsync(ExportData data, ExportOptions? options = null)
     {
         var sheets = BuildSheets(data, options);
-
         var bytes = await RustXlsxWriter.TryWriteAsync(sheets);
-        if (bytes != null) return Convert.ToBase64String(bytes);
-
-        // 回退：EPPlus（保留至今，仅作兜底）
-        using var package = new ExcelPackage();
-        WriteWithEpplus(package, sheets);
-        return Convert.ToBase64String(await package.GetAsByteArrayAsync());
+        if (bytes == null)
+        {
+            Log.Error("Excel 导出失败：pchabit-datad xlsx 不可用（检查产物是否存在，或 PCHABIT_RUST_XLSX 是否被关闭）");
+            throw new InvalidOperationException("Excel 导出需要 pchabit-datad xlsx（Rust 数据面），当前不可用。");
+        }
+        return Convert.ToBase64String(bytes);
     }
 
     // ==================== 数据组织（唯一一份） ====================
@@ -83,9 +75,8 @@ public class ExcelExportFormatter : IExportFormatter
         return new XlsxSheet
         {
             Name = "概览",
-            Title = "PChabit 数据导出报告",
             Widths = new double[] { 20, 50 },
-            Kv = kv
+            Sections = { new XlsxSection { Title = "PChabit 数据导出报告", Kv = kv } }
         };
     }
 
@@ -173,16 +164,15 @@ public class ExcelExportFormatter : IExportFormatter
         return Sheet("热门网站", new[] { "网站域名", "访问时间(分钟)" }, rows);
     }
 
-    private static XlsxSheet Sheet(string name, string[] headers, List<object?[]> rows) => new()
+    internal static XlsxSheet Sheet(string name, string[] headers, List<object?[]> rows) => new()
     {
         Name = name,
-        Headers = headers.ToList(),
-        Rows = rows,
-        Widths = AutoWidths(headers, rows)
+        Widths = AutoWidths(headers, rows),
+        Sections = { XlsxSection.Table(headers, rows) }
     };
 
     /// <summary>按内容长度估算列宽（替代 EPPlus 的 AutoFitColumns，两边表现接近）。</summary>
-    private static double[] AutoWidths(string[] headers, List<object?[]> rows)
+    internal static double[] AutoWidths(string[] headers, List<object?[]> rows)
     {
         var widths = new double[headers.Length];
         for (var i = 0; i < headers.Length; i++)
@@ -196,71 +186,6 @@ public class ExcelExportFormatter : IExportFormatter
             widths[i] = Math.Clamp(max + 2, 10, 50);
         }
         return widths;
-    }
-
-    // ==================== EPPlus 兜底写出 ====================
-
-    private static void WriteWithEpplus(ExcelPackage package, List<XlsxSheet> sheets)
-    {
-        foreach (var spec in sheets)
-        {
-            var sheet = package.Workbook.Worksheets.Add(spec.Name);
-            var row = 1;
-
-            if (!string.IsNullOrEmpty(spec.Title))
-            {
-                sheet.Cells[1, 1].Value = spec.Title;
-                sheet.Cells[1, 1].Style.Font.Size = 16;
-                sheet.Cells[1, 1].Style.Font.Bold = true;
-                sheet.Cells[1, 1, 1, Math.Max(4, spec.Widths?.Length ?? 4)].Merge = true;
-                row = 3;
-            }
-
-            if (spec.Kv != null)
-            {
-                foreach (var kv in spec.Kv)
-                {
-                    sheet.Cells[row, 1].Value = kv[0];
-                    if (kv.Length > 1 && kv[1] != null)
-                    {
-                        sheet.Cells[row, 2].Value = kv[1];
-                        if (kv[1] is double) sheet.Cells[row, 2].Style.Numberformat.Format = "0.00";
-                    }
-                    row++;
-                }
-                row++;
-            }
-
-            if (spec.Headers is { Count: > 0 })
-            {
-                for (var c = 0; c < spec.Headers.Count; c++)
-                {
-                    var cell = sheet.Cells[row, c + 1];
-                    cell.Value = spec.Headers[c];
-                    cell.Style.Font.Bold = true;
-                    cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    cell.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-                }
-                row++;
-            }
-
-            foreach (var dataRow in spec.Rows ?? new List<object?[]>())
-            {
-                for (var c = 0; c < dataRow.Length; c++)
-                {
-                    if (dataRow[c] == null) continue;
-                    sheet.Cells[row, c + 1].Value = dataRow[c];
-                    if (dataRow[c] is double) sheet.Cells[row, c + 1].Style.Numberformat.Format = "0.00";
-                }
-                row++;
-            }
-
-            if (spec.Widths != null)
-            {
-                for (var c = 0; c < spec.Widths.Length; c++)
-                    sheet.Column(c + 1).Width = spec.Widths[c];
-            }
-        }
     }
 
     private static string AnonymizeUrl(string url)
@@ -283,9 +208,18 @@ public class ExcelExportFormatter : IExportFormatter
 internal sealed class XlsxSheet
 {
     [JsonPropertyName("name")] public string Name { get; set; } = "Sheet";
-    [JsonPropertyName("title")] public string? Title { get; set; }
     [JsonPropertyName("widths")] public double[]? Widths { get; set; }
+    [JsonPropertyName("sections")] public List<XlsxSection> Sections { get; set; } = new();
+}
+
+/// <summary>工作表内的一个区块：可选的标题 / 键值 / 表头 + 数据行。</summary>
+internal sealed class XlsxSection
+{
+    [JsonPropertyName("title")] public string? Title { get; set; }
     [JsonPropertyName("kv")] public List<object?[]>? Kv { get; set; }
     [JsonPropertyName("headers")] public List<string>? Headers { get; set; }
     [JsonPropertyName("rows")] public List<object?[]>? Rows { get; set; }
+
+    public static XlsxSection Table(string[] headers, List<object?[]> rows) =>
+        new() { Headers = headers.ToList(), Rows = rows };
 }

@@ -116,5 +116,14 @@ public class AnalysisAiParserAndExcelTests
         // ZIP/PK header
         bytes[0].Should().Be((byte)'P');
         bytes[1].Should().Be((byte)'K');
+
+        // 六张表齐全（EPPlus 在这里只当第三方校验器）
+        using var package = new OfficeOpenXml.ExcelPackage(new MemoryStream(bytes));
+        var names = package.Workbook.Worksheets.Select(w => w.Name).ToList();
+        names.Should().BeEquivalentTo(new[] { "概览", "KPI", "分类构成", "应用变化", "硬件", "洞察" });
+        // 概览的键值块：A 列标签、B 列取值
+        package.Workbook.Worksheets["概览"].Cells["A3"].Text.Should().Be("周期");
+        // KPI 表头在第 1 行
+        package.Workbook.Worksheets["KPI"].Cells["A1"].Text.Should().Be("名称");
     }
 }

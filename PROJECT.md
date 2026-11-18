@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **3.92.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
+| 当前版本 | **3.93.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 
@@ -77,6 +77,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-18 | 3.93.0 | **EPPlus 彻底退出产品依赖（P3 第三块收尾）**。`AnalysisExcelExporter` 改走 Rust 写出，XLSX 协议升级为多区块（`sections`，支持硬件表的双表头）；`Infrastructure.csproj` 删除 EPPlus 包引用，产品不再依赖任何带许可证的表格库；EPPlus 仅留在测试项目做第三方校验。删掉兜底后暴露真 bug：应答反序列化缺 `PropertyNameCaseInsensitive`，导致 3.92.0 每次导出都静默回退 EPPlus，已修。全量 211 项通过 |
 | 2026-11-18 | 3.92.0 | **Excel 导出改由 Rust 写出（P3 第三块）**。`pchabit-datad` 新增 `xlsx` 子命令（rust_xlsxwriter，纯 Rust、无 C 依赖、无许可证），支持标题合并、键值区块、表头灰底、列宽、冻结、数值 0.00 格式；`ExcelExportFormatter` 重写为「数据组织一份 + 两套写出器」：`BuildSheets` 产出语言无关的工作簿描述，主路径交 Rust、失败回退 EPPlus，开关 `PCHABIT_RUST_XLSX=0`。EPPlus 的 AutoFitColumns 换成按内容长度估算列宽（10~50 夹取）。新增两条用例：Rust 字节必须能被 EPPlus 正常打开、关闭 Rust 时回退可用；全量 211 项通过。发布 3.92.0.0 部署 `D:\Tool\PChabit` |
 | 2026-11-18 | 3.91.0 | **应用详情切至 Rust 数据面（P3 第二块）**。`pchabit-datad` 新增 `detail` 子命令：一次请求算完会话聚合、键鼠切片（KeyboardSessions/MouseSessions 按 Day 区间）、硬件分钟样本按「最长重叠会话」归属后再取 CPU/GPU 均值与温度峰值、窗口标题 Top5、小时分布、日趋势四档强度；新增 `RustDetailProvider`，`AppDetailQueryService` 优先 Rust、失败回退 `AppDetailEngine`，开关 `PCHABIT_RUST_DETAIL=0`。口径对齐：进程匹配、25 分钟专注阈值、标题 48 字截断、小时标签两位数字（00…23）、日趋势强度阈值、keysPerHour 一位小数。踩坑：`HardwareSamples.Timestamp` 为分钟粒度（无秒），第一版解析要求 19 字符导致硬件样本全丢、详情页 CPU/GPU 显示 —；改为兼容 `HH:MM` 后恢复。实测单进程详情 3.0~3.4 ms，Doubao.exe 当日 117 段 / 56.0 分钟与 SQL 一致，全量单测 209 项通过。发布 3.91.0.0 部署 `D:\Tool\PChabit` |
 | 2026-11-18 | 3.90.0 | **应用统计切至 Rust 数据面（P3 第一块）**。新增 `rust/pchabit-datad`（rusqlite bundled，独立进程）：只读打开宿主同一 WAL 库，把「按周期查 AppSessions + 分组聚合 + 环比 + 饼图 + 小时分布」整体算完，经 stdin/stdout 的 JSON 协议回传；`RustStatsProvider` 一次统计起一个子进程（约 20 ms），任何失败回退 `AppStatsEngine`，开关 `PCHABIT_RUST_STATS=0`、`PCHABIT_DATAD_PATH` 可指定产物。口径逐条对齐（归一化 / 分类优先级 / 生产力判定 / 25 分钟专注阈值 / 环比文案 / Top8+其他 / 小时分布），图表消费侧零改动。实测 19.9 万行库上完整报告 3.8 ms，与 Python 独立实现逐行一致；全量单测 208 项通过。`pchabit-netd` 保持零 crate 依赖，发布 474 文件。踩坑：`Task.WhenAny(...) != Task.WhenAll(...)` 恒为真导致每次误判超时，必须先存变量。发布 3.90.0.0 部署 `D:\Tool\PChabit` |

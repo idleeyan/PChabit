@@ -1045,52 +1045,65 @@ fn run_xlsx() -> Result<(), String> {
         }
 
         let mut row: u32 = 0;
-
-        if let Some(title) = s.get("title").and_then(|v| v.as_str()) {
-            let cols = widths.len().max(2) as u16;
-            ws.merge_range(row, 0, row, cols - 1, title, &title_fmt)
-                .map_err(|e| e.to_string())?;
-            row += 2;
-        }
-
-        if let Some(kv) = s.get("kv").and_then(|v| v.as_array()) {
-            for item in kv {
-                let arr = item.as_array();
-                if let Some(arr) = arr {
-                    if let Some(label) = arr.first().and_then(|v| v.as_str()) {
-                        ws.write_string(row, 0, label).map_err(|e| e.to_string())?;
-                    }
-                    if let Some(v) = arr.get(1) {
-                        write_cell(ws, row, 1, v, &num_fmt, &header_fmt)?;
-                    }
-                }
-                row += 1;
-            }
-            row += 1;
-        }
-
         let mut header_rows = 0u16;
-        if let Some(headers) = s.get("headers").and_then(|v| v.as_array()) {
-            if !headers.is_empty() {
-                for (c, h) in headers.iter().enumerate() {
-                    let text = h.as_str().unwrap_or("");
-                    ws.write_string_with_format(row, c as u16, text, &header_fmt)
-                        .map_err(|e| e.to_string())?;
+
+        // 区块化：一个工作表可含多个「标题/键值/表头/数据」段（如硬件表的应用段 + 小时段）
+        let sections: Vec<serde_json::Value> = match s.get("sections").and_then(|v| v.as_array()) {
+            Some(arr) if !arr.is_empty() => arr.clone(),
+            // 兼容单区块写法
+            _ => vec![s.clone()],
+        };
+
+        for (si, sec) in sections.iter().enumerate() {
+            if si > 0 {
+                row += 1; // 段之间空一行
+            }
+
+            if let Some(title) = sec.get("title").and_then(|v| v.as_str()) {
+                let cols = widths.len().max(4) as u16;
+                ws.merge_range(row, 0, row, cols - 1, title, &title_fmt)
+                    .map_err(|e| e.to_string())?;
+                row += 2;
+            }
+
+            if let Some(kv) = sec.get("kv").and_then(|v| v.as_array()) {
+                for item in kv {
+                    if let Some(arr) = item.as_array() {
+                        if let Some(label) = arr.first().and_then(|v| v.as_str()) {
+                            ws.write_string(row, 0, label).map_err(|e| e.to_string())?;
+                        }
+                        if let Some(v) = arr.get(1) {
+                            write_cell(ws, row, 1, v, &num_fmt, &header_fmt)?;
+                        }
+                    }
+                    row += 1;
                 }
-                header_rows = 1;
                 row += 1;
             }
-        }
 
-        if let Some(rows) = s.get("rows").and_then(|v| v.as_array()) {
-            for r in rows {
-                if let Some(cells) = r.as_array() {
-                    for (c, v) in cells.iter().enumerate() {
-                        write_cell(ws, row, c as u16, v, &num_fmt, &header_fmt)?;
+            if let Some(headers) = sec.get("headers").and_then(|v| v.as_array()) {
+                if !headers.is_empty() {
+                    for (c, h) in headers.iter().enumerate() {
+                        ws.write_string_with_format(row, c as u16, h.as_str().unwrap_or(""), &header_fmt)
+                            .map_err(|e| e.to_string())?;
                     }
-                    written_rows += 1;
+                    if header_rows == 0 {
+                        header_rows = row as u16 + 1;
+                    }
+                    row += 1;
                 }
-                row += 1;
+            }
+
+            if let Some(rows) = sec.get("rows").and_then(|v| v.as_array()) {
+                for r in rows {
+                    if let Some(cells) = r.as_array() {
+                        for (c, v) in cells.iter().enumerate() {
+                            write_cell(ws, row, c as u16, v, &num_fmt, &header_fmt)?;
+                        }
+                        written_rows += 1;
+                    }
+                    row += 1;
+                }
             }
         }
 

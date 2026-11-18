@@ -17,7 +17,9 @@ internal static class RustXlsxWriter
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        // Rust 侧字段是小写（ok/bytes/rows/ms），必须大小写不敏感，否则应答恒被判定为不合法
+        PropertyNameCaseInsensitive = true
     };
 
     private static string? _resolvedExe;

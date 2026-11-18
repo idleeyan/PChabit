@@ -1,29 +1,23 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using OfficeOpenXml;
 using PChabit.Infrastructure.Analysis;
 using Serilog;
 
 namespace PChabit.Infrastructure.Formatters;
 
-/// <summary>分析周期报告 → 多工作表 Excel（KPI / 构成 / 应用变化 / 硬件 / 洞察）。</summary>
+/// <summary>
+/// 分析周期报告 → 多工作表 Excel（概览 / KPI / 分类构成 / 应用变化 / 硬件 / 洞察）。
+/// P3 第三块的收尾：写出同样交给 <c>pchabit-datad xlsx</c>，EPPlus 从产品路径彻底退出。
+/// </summary>
 public static class AnalysisExcelExporter
 {
-    static AnalysisExcelExporter()
-    {
-        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-    }
-
     public static byte[] Export(AnalyticsPeriodReport report)
     {
-        using var package = new ExcelPackage();
-        AddOverview(package, report);
-        AddKpis(package, report);
-        AddCategories(package, report);
-        AddTopChanges(package, report);
-        AddHardware(package, report);
-        AddInsights(package, report);
-        return package.GetAsByteArray();
+        var sheets = BuildSheets(report);
+        var bytes = RustXlsxWriter.TryWriteAsync(sheets).GetAwaiter().GetResult();
+        if (bytes == null)
+            throw new InvalidOperationException("分析报告导出失败：pchabit-datad xlsx 不可用。");
+        return bytes;
     }
 
     public static async Task ExportToFileAsync(AnalyticsPeriodReport report, string path)
@@ -32,185 +26,124 @@ public static class AnalysisExcelExporter
         await File.WriteAllBytesAsync(path, bytes);
     }
 
-    private static void AddOverview(ExcelPackage package, AnalyticsPeriodReport report)
+    private static List<XlsxSheet> BuildSheets(AnalyticsPeriodReport report) => new()
     {
-        var sheet = package.Workbook.Worksheets.Add("概览");
-        sheet.Cells["A1"].Value = "PChabit 分析报告";
-        sheet.Cells["A1"].Style.Font.Size = 16;
-        sheet.Cells["A1"].Style.Font.Bold = true;
-        sheet.Cells["A3"].Value = "周期";
-        sheet.Cells["B3"].Value = report.Period.Label;
-        sheet.Cells["A4"].Value = "时间范围";
-        sheet.Cells["B4"].Value =
-            $"{report.Period.Start:yyyy-MM-dd} ~ {report.Period.EndExclusive.AddDays(-1):yyyy-MM-dd}";
+        BuildOverview(report),
+        BuildKpis(report),
+        BuildCategories(report),
+        BuildTopChanges(report),
+        BuildHardware(report),
+        BuildInsights(report)
+    };
+
+    private static XlsxSheet BuildOverview(AnalyticsPeriodReport report)
+    {
+        var kv = new List<object?[]>
+        {
+            new object?[] { "周期", report.Period.Label },
+            new object?[] { "时间范围", $"{report.Period.Start:yyyy-MM-dd} ~ {report.Period.EndExclusive.AddDays(-1):yyyy-MM-dd}" }
+        };
         if (report.Previous != null)
         {
-            sheet.Cells["A5"].Value = "对比期";
-            sheet.Cells["B5"].Value =
-                $"{report.Previous.Start:yyyy-MM-dd} ~ {report.Previous.EndExclusive.AddDays(-1):yyyy-MM-dd}";
+            kv.Add(new object?[] { "对比期", $"{report.Previous.Start:yyyy-MM-dd} ~ {report.Previous.EndExclusive.AddDays(-1):yyyy-MM-dd}" });
         }
-        var quality = AnalysisReportBuilder.BuildQuality(report);
-        sheet.Cells["A7"].Value = "数据质量";
-        sheet.Cells["B7"].Value = quality.Summary;
-        sheet.Cells["A8"].Value = "导出时间";
-        sheet.Cells["B8"].Value = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+        kv.Add(new object?[] { null, null });
+        kv.Add(new object?[] { "数据质量", AnalysisReportBuilder.BuildQuality(report).Summary });
+        kv.Add(new object?[] { "导出时间", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") });
+
         if (report.Extra != null)
         {
-            sheet.Cells["A10"].Value = "键盘按键";
-            sheet.Cells["B10"].Value = report.Extra.TotalKeys;
-            sheet.Cells["A11"].Value = "网页分钟";
-            sheet.Cells["B11"].Value = Math.Round(report.Extra.WebMinutes, 1);
-            sheet.Cells["A12"].Value = "输入密度/时";
-            sheet.Cells["B12"].Value = Math.Round(report.Extra.KeysPerActiveHour, 1);
+            kv.Add(new object?[] { null, null });
+            kv.Add(new object?[] { "键盘按键", report.Extra.TotalKeys });
+            kv.Add(new object?[] { "网页分钟", Math.Round(report.Extra.WebMinutes, 1) });
+            kv.Add(new object?[] { "输入密度/时", Math.Round(report.Extra.KeysPerActiveHour, 1) });
         }
-        sheet.Column(1).Width = 18;
-        sheet.Column(2).Width = 64;
-    }
 
-    private static void AddKpis(ExcelPackage package, AnalyticsPeriodReport report)
-    {
-        var sheet = package.Workbook.Worksheets.Add("KPI");
-        sheet.Cells["A1"].Value = "名称";
-        sheet.Cells["B1"].Value = "数值";
-        sheet.Cells["C1"].Value = "环比";
-        sheet.Cells["D1"].Value = "说明";
-        StyleHeader(sheet, 1);
-        var row = 2;
-        foreach (var k in report.Kpis)
+        return new XlsxSheet
         {
-            sheet.Cells[row, 1].Value = k.Name;
-            sheet.Cells[row, 2].Value = k.Value;
-            sheet.Cells[row, 3].Value = k.DeltaText;
-            sheet.Cells[row, 4].Value = k.Hint;
-            row++;
-        }
-        sheet.Column(1).Width = 16;
-        sheet.Column(2).Width = 14;
-        sheet.Column(3).Width = 12;
-        sheet.Column(4).Width = 40;
+            Name = "概览",
+            Widths = new double[] { 18, 64 },
+            Sections = { new XlsxSection { Title = "PChabit 分析报告", Kv = kv } }
+        };
     }
 
-    private static void AddCategories(ExcelPackage package, AnalyticsPeriodReport report)
+    private static XlsxSheet BuildKpis(AnalyticsPeriodReport report)
     {
-        var sheet = package.Workbook.Worksheets.Add("分类构成");
-        sheet.Cells["A1"].Value = "分类";
-        sheet.Cells["B1"].Value = "时长";
-        sheet.Cells["C1"].Value = "分钟";
-        sheet.Cells["D1"].Value = "占比%";
-        StyleHeader(sheet, 1);
-        var row = 2;
-        foreach (var c in report.CategoryShares)
+        var rows = report.Kpis.Select(k => new object?[] { k.Name, k.Value, k.DeltaText, k.Hint }).ToList();
+        return Sheet("KPI", new[] { "名称", "数值", "环比", "说明" }, new double[] { 16, 14, 12, 40 }, rows);
+    }
+
+    private static XlsxSheet BuildCategories(AnalyticsPeriodReport report)
+    {
+        var rows = report.CategoryShares.Select(c => new object?[]
         {
-            sheet.Cells[row, 1].Value = c.Category;
-            sheet.Cells[row, 2].Value = c.MinutesText;
-            sheet.Cells[row, 3].Value = Math.Round(c.Minutes, 1);
-            sheet.Cells[row, 4].Value = Math.Round(c.Percentage, 1);
-            row++;
-        }
-        sheet.Column(1).Width = 20;
-        sheet.Column(2).Width = 14;
-        sheet.Column(3).Width = 12;
-        sheet.Column(4).Width = 12;
+            c.Category, c.MinutesText, Math.Round(c.Minutes, 1), Math.Round(c.Percentage, 1)
+        }).ToList();
+        return Sheet("分类构成", new[] { "分类", "时长", "分钟", "占比%" }, new double[] { 20, 14, 12, 12 }, rows);
     }
 
-    private static void AddTopChanges(ExcelPackage package, AnalyticsPeriodReport report)
+    private static XlsxSheet BuildTopChanges(AnalyticsPeriodReport report)
     {
-        var sheet = package.Workbook.Worksheets.Add("应用变化");
-        sheet.Cells["A1"].Value = "应用";
-        sheet.Cells["B1"].Value = "本期分钟";
-        sheet.Cells["C1"].Value = "上期分钟";
-        sheet.Cells["D1"].Value = "变化";
-        StyleHeader(sheet, 1);
-        var row = 2;
-        foreach (var t in report.TopChanges)
+        var rows = report.TopChanges.Select(t => new object?[]
         {
-            sheet.Cells[row, 1].Value = t.Name;
-            sheet.Cells[row, 2].Value = Math.Round(t.CurrentMinutes, 1);
-            sheet.Cells[row, 3].Value = Math.Round(t.PreviousMinutes, 1);
-            sheet.Cells[row, 4].Value = t.DeltaText;
-            row++;
-        }
-        sheet.Column(1).Width = 28;
-        sheet.Column(2).Width = 14;
-        sheet.Column(3).Width = 14;
-        sheet.Column(4).Width = 12;
+            t.Name, Math.Round(t.CurrentMinutes, 1), Math.Round(t.PreviousMinutes, 1), t.DeltaText
+        }).ToList();
+        return Sheet("应用变化", new[] { "应用", "本期分钟", "上期分钟", "变化" }, new double[] { 28, 14, 14, 12 }, rows);
     }
 
-    private static void AddHardware(ExcelPackage package, AnalyticsPeriodReport report)
+    private static XlsxSheet BuildHardware(AnalyticsPeriodReport report)
     {
-        var sheet = package.Workbook.Worksheets.Add("硬件");
+        // 硬件表结构特殊：汇总行 -> 应用段（表头在第 3 行）-> 空两行 -> 小时段（另一组表头）
         if (report.Hardware is not { HasData: true } hw)
         {
-            sheet.Cells["A1"].Value = "本周期无硬件分钟样本";
-            return;
+            return Sheet("硬件", new[] { "说明" }, new double[] { 40 },
+                new List<object?[]> { new object?[] { "本周期无硬件分钟样本" } });
         }
-        sheet.Cells["A1"].Value = "汇总";
-        sheet.Cells["B1"].Value = hw.SummaryText;
-        sheet.Cells["A3"].Value = "应用";
-        sheet.Cells["B3"].Value = "CPU均%";
-        sheet.Cells["C3"].Value = "GPU均%";
-        sheet.Cells["D3"].Value = "峰温°C";
-        sheet.Cells["E3"].Value = "重叠分钟";
-        sheet.Cells["F3"].Value = "样本数";
-        StyleHeader(sheet, 3);
-        var row = 4;
-        foreach (var a in hw.AppLoads)
+
+        var appRows = hw.AppLoads.Select(a => new object?[]
         {
-            sheet.Cells[row, 1].Value = a.DisplayName;
-            sheet.Cells[row, 2].Value = a.CpuLoadAvg;
-            sheet.Cells[row, 3].Value = a.GpuLoadAvg;
-            sheet.Cells[row, 4].Value = a.GpuTempMax;
-            sheet.Cells[row, 5].Value = a.OverlapMinutes;
-            sheet.Cells[row, 6].Value = a.SampleCount;
-            row++;
-        }
-        row += 2;
-        sheet.Cells[row, 1].Value = "小时";
-        sheet.Cells[row, 2].Value = "CPU%";
-        sheet.Cells[row, 3].Value = "GPU%";
-        sheet.Cells[row, 4].Value = "样本";
-        StyleHeader(sheet, row);
-        row++;
-        foreach (var h in hw.Hours.Where(x => x.SampleCount > 0))
+            a.DisplayName, a.CpuLoadAvg, a.GpuLoadAvg, a.GpuTempMax, a.OverlapMinutes, a.SampleCount
+        }).ToList();
+
+        var hourRows = hw.Hours.Where(x => x.SampleCount > 0).Select(h => new object?[]
         {
-            sheet.Cells[row, 1].Value = h.Label;
-            sheet.Cells[row, 2].Value = h.CpuLoadAvg;
-            sheet.Cells[row, 3].Value = h.GpuLoadAvg;
-            sheet.Cells[row, 4].Value = h.SampleCount;
-            row++;
-        }
-        for (var c = 1; c <= 6; c++) sheet.Column(c).Width = 14;
-        sheet.Column(1).Width = 24;
+            h.Label, h.CpuLoadAvg, h.GpuLoadAvg, h.SampleCount
+        }).ToList();
+
+        return new XlsxSheet
+        {
+            Name = "硬件",
+            Widths = new double[] { 24, 14, 14, 14, 14, 14 },
+            Sections =
+            {
+                new XlsxSection
+                {
+                    Kv = new List<object?[]> { new object?[] { "汇总", hw.SummaryText } },
+                    Headers = new List<string> { "应用", "CPU均%", "GPU均%", "峰温°C", "重叠分钟", "样本数" },
+                    Rows = appRows
+                },
+                new XlsxSection
+                {
+                    Headers = new List<string> { "小时", "CPU%", "GPU%", "样本" },
+                    Rows = hourRows
+                }
+            }
+        };
     }
 
-    private static void AddInsights(ExcelPackage package, AnalyticsPeriodReport report)
+    private static XlsxSheet BuildInsights(AnalyticsPeriodReport report)
     {
-        var sheet = package.Workbook.Worksheets.Add("洞察");
-        sheet.Cells["A1"].Value = "级别";
-        sheet.Cells["B1"].Value = "标题";
-        sheet.Cells["C1"].Value = "说明";
-        sheet.Cells["D1"].Value = "ActionKey";
-        StyleHeader(sheet, 1);
-        var row = 2;
-        foreach (var i in report.Insights)
-        {
-            sheet.Cells[row, 1].Value = i.Severity;
-            sheet.Cells[row, 2].Value = i.Title;
-            sheet.Cells[row, 3].Value = i.Message;
-            sheet.Cells[row, 4].Value = i.ActionKey;
-            row++;
-        }
-        sheet.Column(1).Width = 10;
-        sheet.Column(2).Width = 20;
-        sheet.Column(3).Width = 72;
-        sheet.Column(4).Width = 14;
+        var rows = report.Insights.Select(i => new object?[] { i.Severity, i.Title, i.Message, i.ActionKey }).ToList();
+        return Sheet("洞察", new[] { "级别", "标题", "说明", "ActionKey" }, new double[] { 10, 20, 72, 14 }, rows);
     }
 
-    private static void StyleHeader(ExcelWorksheet sheet, int row)
+    private static XlsxSheet Sheet(string name, string[] headers, double[] widths, List<object?[]> rows) => new()
     {
-        using var range = sheet.Cells[row, 1, row, 4];
-        range.Style.Font.Bold = true;
-    }
+        Name = name,
+        Widths = widths,
+        Sections = { XlsxSection.Table(headers, rows) }
+    };
 }
 
 /// <summary>AI 深度解读结构化解析 v2：契约 v1/v2 兼容 + 截断修复 + evidence。</summary>

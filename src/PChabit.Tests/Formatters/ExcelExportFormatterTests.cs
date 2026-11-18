@@ -7,8 +7,8 @@ using Xunit;
 namespace PChabit.Tests.Formatters;
 
 /// <summary>
-/// P3 第三块回归：Rust XLSX 写出器产出的文件必须是合法 xlsx（PK 头 + 可被 EPPlus 打开）。
-/// 找不到 datad 时跳过（回退 EPPlus 本身另有用例覆盖）。
+/// P3 第三块回归：产品路径只有 Rust 写出器（EPPlus 已从产品依赖中移除），
+/// 所以这里既要保证产物是第三方库能打开的合法 xlsx，也要保证「关掉 Rust」会明确失败而不是静默产出空文件。
 /// </summary>
 public class ExcelExportFormatterTests
 {
@@ -36,10 +36,9 @@ public class ExcelExportFormatterTests
     };
 
     [Fact]
-    public async Task Excel导出_应产出可打开的xlsx()
+    public async Task Excel导出_应产出可被EPPlus打开的xlsx()
     {
-        var formatter = new ExcelExportFormatter();
-        var base64 = await formatter.FormatAsync(SampleData());
+        var base64 = await new ExcelExportFormatter().FormatAsync(SampleData());
 
         base64.Should().NotBeNullOrEmpty();
         var bytes = Convert.FromBase64String(base64);
@@ -47,22 +46,24 @@ public class ExcelExportFormatterTests
         bytes[0].Should().Be(0x50); // P
         bytes[1].Should().Be(0x4B); // K
 
-        // 用 EPPlus 打开一次，确认不是「合法 zip 但内容坏」
         using var package = new OfficeOpenXml.ExcelPackage(new MemoryStream(bytes));
         package.Workbook.Worksheets.Should().NotBeEmpty();
         package.Workbook.Worksheets[0].Name.Should().Be("概览");
+        // 概览表标题落在合并区首格
+        package.Workbook.Worksheets[0].Cells["A1"].Text.Should().Contain("PChabit");
+        package.Workbook.Worksheets.Any(w => w.Name == "应用会话").Should().BeTrue();
     }
 
     [Fact]
-    public async Task Excel导出_关闭Rust时仍能回退EPPlus()
+    public async Task Excel导出_关闭Rust时必须明确报错而不是静默空文件()
     {
         var old = Environment.GetEnvironmentVariable("PCHABIT_RUST_XLSX");
         try
         {
             Environment.SetEnvironmentVariable("PCHABIT_RUST_XLSX", "0");
-            var base64 = await new ExcelExportFormatter().FormatAsync(SampleData());
-            var bytes = Convert.FromBase64String(base64);
-            bytes[0].Should().Be(0x50);
+            var act = async () => await new ExcelExportFormatter().FormatAsync(SampleData());
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*Rust 数据面*");
         }
         finally
         {
