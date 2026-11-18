@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 键鼠活动</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; }
+  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
+
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
+    border-bottom:1px solid #223049; white-space:nowrap; }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
+  tbody tr:hover { background:#16233a; }
+  .nm { color:#93c5fd; }
+
+  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; align-items:end; height:70px; }
+  .hours .col { display:flex; flex-direction:column; justify-content:flex-end; gap:1px; height:70px; }
+  .hours .col i { display:block; border-radius:2px; min-height:1px; }
+  .kbar { background:#3b82f6; }
+  .cbar { background:#f59e0b; }
+  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; margin-top:2px;
+    font-size:9px; color:#475569; text-align:center; }
+  .legend { display:flex; gap:12px; font-size:10px; color:#94a3b8; margin-bottom:6px; }
+  .legend b { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
+  .empty { color:#64748b; padding:8px 0; }
+  .note { color:#64748b; font-size:10px; margin-top:6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>键鼠活动</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<section style="margin-bottom:12px">
+  <h2>24 小时分布 <em>键盘（蓝）/ 点击（橙）</em></h2>
+  <div class="legend">
+    <span><b style="background:#3b82f6"></b>按键</span>
+    <span><b style="background:#f59e0b"></b>点击</span>
+  </div>
+  <div class="hours" id="hours"></div>
+  <div class="hlbl" id="hlbl"></div>
+</section>
+
+<div class="row">
+  <section>
+    <h2>键盘排行 <em>按按键数</em></h2>
+    <table><thead><tr><th>应用</th><th class="r">按键</th><th class="r">占比</th></tr></thead>
+      <tbody id="topkeys"></tbody></table>
+  </section>
+  <section>
+    <h2>点击排行 <em>按点击数</em></h2>
+    <table><thead><tr><th>应用</th><th class="r">点击</th><th class="r">占比</th></tr></thead>
+      <tbody id="topclicks"></tbody></table>
+    <div class="note" id="movenote"></div>
+  </section>
+</div>
+
+<script>
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function n(v) { return (v || 0).toLocaleString(); }
+
+  function renderInput(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    var rg = d.range || {};
+    document.getElementById('meta').textContent =
+      (rg.start || '') + ' ~ ' + (rg.end || '') + '　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '') +
+      '　' + (d.keyRows || 0) + ' 行键盘记录';
+
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    [
+      ['按键总数', n(d.keys), '近 ' + ((d.range && d.range.end) ? '7' : 'N') + ' 天'],
+      ['鼠标点击', n(d.clicks), '左/右/中合计'],
+      ['滚轮格数', n(d.scroll), '所有应用'],
+      ['打字爆发', n(d.bursts), '连续输入段'],
+      ['每小时按键', (d.keysPerHour || 0).toFixed(0), '平均'],
+      ['鼠标位移', d.moveText || '0.0 米', '采样来自鼠标钩子'],
+      ['移动事件', n(d.moveEvents), '次'],
+    ].forEach(function (k) {
+      var b = el('div', 'kpi');
+      b.appendChild(el('div', 'n', k[0]));
+      b.appendChild(el('div', 'v', k[1]));
+      b.appendChild(el('div', 's', k[2]));
+      kp.appendChild(b);
+    });
+
+    // 24 小时双柱
+    var hours = document.getElementById('hours');
+    var hlbl = document.getElementById('hlbl');
+    hours.innerHTML = ''; hlbl.innerHTML = '';
+    var ks = d.hourlyKeys || [];
+    var cs = d.hourlyClicks || [];
+    var maxV = Math.max(
+      ks.reduce(function (m, x) { return Math.max(m, x || 0); }, 1),
+      cs.reduce(function (m, x) { return Math.max(m, x || 0); }, 1)
+    ) || 1;
+    for (var i = 0; i < 24; i++) {
+      var col = el('div', 'col');
+      var kb = el('i', 'kbar');
+      kb.style.height = Math.max((ks[i] || 0) > 0 ? 2 : 1, ((ks[i] || 0) / maxV) * 56) + 'px';
+      if (!ks[i]) kb.style.background = '#182234';
+      kb.title = i + ':00 按键 ' + n(ks[i]);
+      var cb = el('i', 'cbar');
+      cb.style.height = Math.max((cs[i] || 0) > 0 ? 2 : 1, ((cs[i] || 0) / maxV) * 56) + 'px';
+      if (!cs[i]) cb.style.background = '#182234';
+      cb.title = i + ':00 点击 ' + n(cs[i]);
+      col.appendChild(kb);
+      col.appendChild(cb);
+      col.title = i + ':00 · 键 ' + n(ks[i]) + ' / 击 ' + n(cs[i]);
+      hours.appendChild(col);
+      hlbl.appendChild(el('span', null, i % 3 === 0 ? String(i) : ''));
+    }
+
+    // 排行
+    [['topkeys', d.topKeys, 'keys'], ['topclicks', d.topClicks, 'clicks']].forEach(function (cfg) {
+      var tb = document.getElementById(cfg[0]);
+      tb.innerHTML = '';
+      var arr = cfg[1] || [];
+      if (!arr.length) {
+        var tr0 = document.createElement('tr');
+        var td0 = el('td', 'empty', '这段时间没有记录');
+        td0.colSpan = 3; tr0.appendChild(td0); tb.appendChild(tr0);
+        return;
+      }
+      var maxv = arr.reduce(function (m, x) { return Math.max(m, x[cfg[2]] || 0); }, 1);
+      arr.forEach(function (x) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', 'nm', x.name));
+        tr.appendChild(el('td', 'r', n(x[cfg[2]])));
+        tr.appendChild(el('td', 'r', ((x[cfg[2]] / maxv) * 100).toFixed(1) + '%'));
+        tb.appendChild(tr);
+      });
+    });
+
+    document.getElementById('movenote').textContent =
+      d.moveDistance > 0
+        ? '鼠标位移 ' + d.moveText + '（按 96 DPI 粗算）'
+        : '当前数据库里鼠标位移全为 0：键鼠钩子在部署版里未产出位移，属采集侧限制，不是页面问题。';
+
+    return 'ok: ' + n(d.keys) + ' 键 / ' + n(d.clicks) + ' 击 / ' + n(d.scroll) + ' 滚';
+  }
+
+  window.renderInput = renderInput;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__INPUT_DATA__) {
+      try { window.__INPUT_RESULT__ = renderInput(window.__INPUT_DATA__); }
+      catch (e) { window.__INPUT_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

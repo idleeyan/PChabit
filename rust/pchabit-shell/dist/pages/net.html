@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 网络流量</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; }
+  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
+
+  .row { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; align-items:start; }
+  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
+    border-bottom:1px solid #223049; white-space:nowrap; }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
+  tbody tr:hover { background:#16233a; }
+  .nm { color:#93c5fd; }
+  .bar { height:3px; background:#1e3a5f; border-radius:2px; margin-top:3px; }
+  .bar i { display:block; height:3px; background:#3b82f6; border-radius:2px; }
+
+  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; align-items:end; height:60px; }
+  .hours i { display:block; border-radius:2px 2px 0 0; background:#2563eb; min-height:1px; }
+  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
+    font-size:9px; color:#475569; text-align:center; }
+
+  .days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .days > div { text-align:center; }
+  .days .b { height:46px; display:flex; align-items:flex-end; }
+  .days .b i { display:block; width:100%; background:#0ea5e9; border-radius:3px; min-height:2px; }
+  .days .l { font-size:9px; color:#64748b; }
+  .days .v { font-size:9px; color:#94a3b8; }
+  .empty { color:#64748b; padding:8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>网络流量</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="row">
+  <div>
+    <section style="margin-bottom:12px">
+      <h2>应用流量排行 <em id="pn"></em></h2>
+      <table>
+        <thead><tr>
+          <th>进程</th><th class="r">下行</th><th class="r">占比</th><th class="r">上行</th>
+        </tr></thead>
+        <tbody id="procs"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>24 小时下行 <em>按小时汇总</em></h2>
+      <div class="hours" id="hours"></div>
+      <div class="hlbl" id="hlbl"></div>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <h2>每日趋势 <em>下行 / 上行</em></h2>
+      <div class="days" id="days"></div>
+      <div style="margin-top:10px">
+        <table><thead><tr><th>日期</th><th class="r">下行</th><th class="r">上行</th></tr></thead>
+        <tbody id="daytb"></tbody></table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function bytes(v) {
+    v = v || 0;
+    var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = 0;
+    while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+    return (i === 0 ? Math.round(v) : v.toFixed(2)) + ' ' + u[i];
+  }
+
+  function renderNet(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    var rg = d.range || {};
+    document.getElementById('meta').textContent =
+      (rg.start || '') + ' ~ ' + (rg.end || '') + '　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
+
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    [
+      ['下行总量', d.totalDownText, rg.start + ' ~ ' + rg.end],
+      ['上行总量', d.totalUpText, '同期累计'],
+      ['峰值下行', d.peakDownText, '采样 99 分位'],
+      ['峰值上行', d.peakUpText, '采样 99 分位'],
+      ['统计进程', (d.processes || []).length + ' 个', '按累计下行排序'],
+    ].forEach(function (k) {
+      var b = el('div', 'kpi');
+      b.appendChild(el('div', 'n', k[0]));
+      var v = el('div', 'v', k[1] || '-');
+      if (String(k[1] || '').length > 8) { v.style.fontSize = '12px'; v.title = k[1]; }
+      b.appendChild(v);
+      b.appendChild(el('div', 's', k[2]));
+      kp.appendChild(b);
+    });
+
+    // 进程排行
+    var tb = document.getElementById('procs');
+    tb.innerHTML = '';
+    var procs = d.processes || [];
+    document.getElementById('pn').textContent = procs.length + ' 个进程';
+    if (!procs.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', 'empty', '这段时间没有网络记录');
+      td0.colSpan = 4; tr0.appendChild(td0); tb.appendChild(tr0);
+    }
+    var maxShare = procs.reduce(function (m, x) { return Math.max(m, x.share || 0); }, 1);
+    procs.forEach(function (x) {
+      var tr = document.createElement('tr');
+      var td = el('td');
+      td.appendChild(el('span', 'nm', x.name));
+      var bar = el('div', 'bar');
+      var fill = el('i');
+      fill.style.width = Math.max(2, ((x.share || 0) / maxShare) * 100) + '%';
+      bar.appendChild(fill);
+      td.appendChild(bar);
+      tr.appendChild(td);
+      tr.appendChild(el('td', 'r', x.downText));
+      tr.appendChild(el('td', 'r', (x.share || 0).toFixed(1) + '%'));
+      tr.appendChild(el('td', 'r', x.upText));
+      tb.appendChild(tr);
+    });
+
+    // 24 小时
+    var hours = document.getElementById('hours');
+    var hlbl = document.getElementById('hlbl');
+    hours.innerHTML = ''; hlbl.innerHTML = '';
+    var arr = d.hourlyDown || [];
+    var maxV = arr.reduce(function (m, h) { return Math.max(m, h || 0); }, 1) || 1;
+    arr.forEach(function (h, i) {
+      var bar = el('i');
+      bar.style.height = Math.max((h || 0) > 0 ? 3 : 1, ((h || 0) / maxV) * 56) + 'px';
+      if (!h) bar.style.background = '#182234';
+      bar.title = i + ':00 · ' + bytes(h);
+      hours.appendChild(bar);
+      hlbl.appendChild(el('span', null, i % 3 === 0 ? String(i) : ''));
+    });
+
+    // 每日
+    var days = d.daily || [];
+    var tr2 = document.getElementById('days');
+    tr2.innerHTML = '';
+    var maxD = days.reduce(function (m, x) { return Math.max(m, x.down || 0); }, 1) || 1;
+    days.forEach(function (x) {
+      var box = el('div');
+      box.appendChild(el('div', 'v', x.downText));
+      var b = el('div', 'b');
+      var fill = el('i');
+      fill.style.height = Math.max(2, ((x.down || 0) / maxD) * 44) + 'px';
+      b.appendChild(fill);
+      box.appendChild(b);
+      box.appendChild(el('div', 'l', x.label || ''));
+      box.title = (x.date || '') + ' 下行 ' + x.downText + ' / 上行 ' + bytes(x.up);
+      tr2.appendChild(box);
+    });
+
+    var dtb = document.getElementById('daytb');
+    dtb.innerHTML = '';
+    (days.slice().reverse()).forEach(function (x) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', null, (x.date || '').slice(5)));
+      tr.appendChild(el('td', 'r', x.downText));
+      tr.appendChild(el('td', 'r', bytes(x.up)));
+      dtb.appendChild(tr);
+    });
+
+    return 'ok: 下 ' + d.totalDownText + ' / 上 ' + d.totalUpText + ' / ' +
+      procs.length + ' 进程';
+  }
+
+  window.renderNet = renderNet;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__NET_DATA__) {
+      try { window.__NET_RESULT__ = renderNet(window.__NET_DATA__); }
+      catch (e) { window.__NET_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

@@ -37,6 +37,11 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "notes" => run_notes(db),
         "web" => run_web(db, date),
         "timeline" => run_timeline(db, date),
+        "dashboard" => run_json_cmd(dashboard_json(db)),
+        "net" => run_net(db, date),
+        "input" => run_input(db, date),
+        "reports" => run_json_cmd(reports_json(db)),
+        "data" => run_json_cmd(data_json(db)),
         _ => run_probe(db, date),
     }
 }
@@ -58,6 +63,33 @@ fn run_web(db: &Path, range: &str) -> Result<(), String> {
     let v = web_json(db, &start, &end)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
+}
+
+/// 统一打印入口：命令自己算好 JSON，这里只负责序列化。
+fn run_json_cmd(v: Result<serde_json::Value, String>) -> Result<(), String> {
+    let v = v?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+/// `--date a~b` 或单日，缺省近 7 天。
+fn parse_range(range: &str) -> (String, String) {
+    let today = today_local();
+    match range.split_once('~') {
+        Some((a, b)) => (a.trim().to_string(), b.trim().to_string()),
+        None if !range.trim().is_empty() => (range.trim().to_string(), range.trim().to_string()),
+        None => (date_shift(&today, -6), today),
+    }
+}
+
+fn run_net(db: &Path, range: &str) -> Result<(), String> {
+    let (start, end) = parse_range(range);
+    run_json_cmd(net_json(db, &start, &end))
+}
+
+fn run_input(db: &Path, range: &str) -> Result<(), String> {
+    let (start, end) = parse_range(range);
+    run_json_cmd(input_json(db, &start, &end))
 }
 
 /// `timeline` 子命令：`--date` 传 `2026-11-18`，缺省今天。
@@ -1957,6 +1989,674 @@ fn run_activecat(db: &Path) -> Result<(), String> {
     let v = set_category_active(db, &req)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
+}
+
+// ==================== 仪表盘 / 网络 / 键鼠 / 周报 / 数据概览 ====================
+//
+// 这四块都是「只读 + 直接聚合」，没有跨表口径微调的空间，SQL 怎么写就怎么算，
+// 但每个字段的含义必须写在注释里，避免后续又出现「看着像 bug」的误读。
+
+/// 会话时长（分钟）：`ActiveDuration > 0` 用它，否则用 `Duration`，与 web 页同口径。
+fn session_minutes(active: i64, duration: i64) -> f64 {
+    let ticks = if active > 0 { active } else { duration };
+    ticks as f64 / 600_000_000.0
+}
+
+/// 仪表盘：今日 KPI + 24 小时活跃 + Top 应用 + 今日对比昨日 + 7 天趋势 + 当前应用。
+pub fn dashboard_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+    let today = today_local();
+    let yesterday = date_shift(&today, -1);
+    let (ts0, ts1) = day_bounds(&today);
+    let (ys0, ys1) = day_bounds(&yesterday);
+
+    let mut total = 0.0f64;
+    let mut sessions = 0i64;
+    let mut apps: HashMap<String, f64> = HashMap::new();
+    let mut hourly = vec![0.0f64; 24];
+    let mut focus_count = 0i64;
+    let mut first = String::new();
+    let mut last = String::new();
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT ProcessName, AppName, StartTime, EndTime, Duration, ActiveDuration \
+                 FROM AppSessions WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([&ts0, &ts1]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let proc: String = row.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+            let app: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
+            let st: String = row.get::<_, Option<String>>(3).unwrap_or(None).unwrap_or_default();
+            let dur: i64 = row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0);
+            let act: i64 = row.get::<_, Option<i64>>(5).unwrap_or(None).unwrap_or(0);
+            let mins = session_minutes(act, dur);
+            if mins <= 0.0 {
+                continue;
+            }
+            total += mins;
+            sessions += 1;
+            if mins >= 25.0 {
+                focus_count += 1;
+            }
+            let key = if app.trim().is_empty() {
+                let n = normalize_process_name(&proc);
+                if n.is_empty() { "未知应用".to_string() } else { n }
+            } else {
+                app.trim().to_string()
+            };
+            *apps.entry(key).or_insert(0.0) += mins;
+            if let Some(d) = parse_dt(&st) {
+                hourly[d.hour as usize] += mins;
+            }
+            if first.is_empty() {
+                first = st.clone();
+            }
+            last = st.clone();
+        }
+    }
+
+    let mut yesterday_total = 0.0f64;
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT Duration, ActiveDuration FROM AppSessions WHERE StartTime >= ?1 AND StartTime < ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([&ys0, &ys1]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let dur: i64 = row.get::<_, Option<i64>>(0).unwrap_or(None).unwrap_or(0);
+            let act: i64 = row.get::<_, Option<i64>>(1).unwrap_or(None).unwrap_or(0);
+            yesterday_total += session_minutes(act, dur);
+        }
+    }
+
+    let mut top: Vec<serde_json::Value> = Vec::new();
+    let mut app_vec: Vec<(String, f64)> = apps.into_iter().collect();
+    app_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let app_count = app_vec.len();
+    for (name, mins) in app_vec.iter().take(8) {
+        top.push(serde_json::json!({
+            "name": name,
+            "minutes": round1(*mins),
+            "share": if total > 0.0 { round1(mins / total * 100.0) } else { 0.0 },
+        }));
+    }
+
+    // 键鼠：KeyboardSessions / MouseSessions 按 Date 过滤（Date 是 "YYYY-MM-DD"）
+    let mut keys = 0i64;
+    let mut clicks = 0i64;
+    let mut scroll = 0i64;
+    {
+        let mut stmt = conn
+            .prepare("SELECT COALESCE(SUM(TotalKeyPresses),0) FROM KeyboardSessions WHERE substr(Date,1,10) = ?1")
+            .map_err(|e| e.to_string())?;
+        keys = stmt.query_row([&today], |r| r.get::<_, Option<i64>>(0)).unwrap_or(None).unwrap_or(0);
+        let mut stmt2 = conn
+            .prepare(
+                "SELECT COALESCE(SUM(LeftClickCount+RightClickCount+MiddleClickCount),0), \
+                 COALESCE(SUM(ScrollCount),0) FROM MouseSessions WHERE substr(Date,1,10) = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        if let Ok((c, s)) = stmt2.query_row([&today], |r| {
+            Ok((
+                r.get::<_, Option<i64>>(0)?.unwrap_or_default(),
+                r.get::<_, Option<i64>>(1)?.unwrap_or_default(),
+            ))
+        }) {
+            clicks = c;
+            scroll = s;
+        }
+    }
+
+    // 今日网页 / 网络 / 硬件：**不从 DailySummaries 读**。
+    // `DailySummaries` 的今日行要等当天结束才回填（实测今天这行 ActiveMinutes=0、WebMinutes=0、
+    // MetricsVersion 还落后一天），拿它做「今日」KPI 会全天显示 0。所以这三项直接现算，
+    // 日汇总只在 7 天趋势里用。
+    let mut web_minutes = 0.0f64;
+    if let Ok(Some(ticks)) = conn.query_row(
+        "SELECT COALESCE(SUM(CASE WHEN ActiveDuration > 0 THEN ActiveDuration ELSE Duration END),0) \
+         FROM WebSessions WHERE StartTime >= ?1 AND StartTime < ?2",
+        [&ts0, &ts1],
+        |r| r.get::<_, Option<i64>>(0),
+    ) {
+        web_minutes = ticks as f64 / 600_000_000.0;
+    }
+
+    let mut net_down = 0i64;
+    let mut net_up = 0i64;
+    if let Ok((d, u)) = conn.query_row(
+        "SELECT COALESCE(SUM(BytesDown),0), COALESCE(SUM(BytesUp),0) \
+         FROM ProcessNetworkUsages WHERE Date = ?1",
+        [&today],
+        |r| {
+            Ok((
+                r.get::<_, Option<i64>>(0)?.unwrap_or_default(),
+                r.get::<_, Option<i64>>(1)?.unwrap_or_default(),
+            ))
+        },
+    ) {
+        net_down = d;
+        net_up = u;
+    }
+
+    let mut cpu_avg: Option<f64> = None;
+    let mut gpu_avg: Option<f64> = None;
+    let mut gpu_temp: Option<f64> = None;
+    if let Ok((c, g, gt)) = conn.query_row(
+        "SELECT AVG(CpuLoadAvg), AVG(GpuLoadAvg), MAX(GpuTempMax) FROM HardwareSamples \
+         WHERE Timestamp >= ?1 AND Timestamp < ?2",
+        [&format!("{today} 00:00"), &format!("{} 00:00", date_shift(&today, 1))],
+        |r| {
+            Ok((
+                r.get::<_, Option<f64>>(0)?,
+                r.get::<_, Option<f64>>(1)?,
+                r.get::<_, Option<f64>>(2)?,
+            ))
+        },
+    ) {
+        cpu_avg = c;
+        gpu_avg = g;
+        gpu_temp = gt;
+    }
+
+    // 7 天趋势：DailySummaries 有行就用它，没行就现场从会话算
+    let mut trend: Vec<serde_json::Value> = Vec::new();
+    for i in (0..7).rev() {
+        let d = date_shift(&today, -i);
+        let mut mins = 0.0f64;
+        let mut from_summary = false;
+        if let Ok(v) = conn.query_row(
+            "SELECT ActiveMinutes FROM DailySummaries WHERE Date = ?1",
+            [&d],
+            |r| r.get::<_, Option<f64>>(0),
+        ) {
+            if let Some(m) = v {
+                mins = m;
+                from_summary = true;
+            }
+        }
+        if !from_summary {
+            let (a, b) = day_bounds(&d);
+            let mut stmt = conn
+                .prepare("SELECT Duration, ActiveDuration FROM AppSessions WHERE StartTime >= ?1 AND StartTime < ?2")
+                .map_err(|e| e.to_string())?;
+            let mut rows = stmt.query([&a, &b]).map_err(|e| e.to_string())?;
+            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                let dur: i64 = row.get::<_, Option<i64>>(0).unwrap_or(None).unwrap_or(0);
+                let act: i64 = row.get::<_, Option<i64>>(1).unwrap_or(None).unwrap_or(0);
+                mins += session_minutes(act, dur);
+            }
+        }
+        trend.push(serde_json::json!({
+            "date": d,
+            "label": d.get(5..10).unwrap_or("").to_string(),
+            "minutes": round1(mins),
+            "source": if from_summary { "summary" } else { "sessions" },
+        }));
+    }
+
+    // 最近活动：今日 StartTime 最大的一条会话（DB 里会话是闭区间，没有「进行中」状态，
+    // 所以只给「最近一次活动」，不假装是「当前应用」）
+    let mut recent = serde_json::Value::Null;
+    if let Ok((app, st)) = conn.query_row(
+        "SELECT COALESCE(NULLIF(AppName,''), ProcessName), StartTime FROM AppSessions \
+         WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime DESC LIMIT 1",
+        [&ts0, &ts1],
+        |r| {
+            Ok((
+                r.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default(),
+                r.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default(),
+            ))
+        },
+    ) {
+        if !app.trim().is_empty() {
+            recent = serde_json::json!({
+                "app": app,
+                "at": st.get(11..16).unwrap_or(""),
+            });
+        }
+    }
+
+    let delta = if yesterday_total > 0.0 {
+        round1((total - yesterday_total) / yesterday_total * 100.0)
+    } else {
+        0.0
+    };
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "date": today,
+        "label": format!("{}月{}日",
+            today.get(5..7).unwrap_or("?").trim_start_matches('0'),
+            today.get(8..10).unwrap_or("?").trim_start_matches('0')),
+        "weekday": weekday_label(&today),
+        "totalMinutes": round1(total),
+        "yesterdayMinutes": round1(yesterday_total),
+        "deltaPercent": delta,
+        "appCount": app_count,
+        "sessions": sessions,
+        "focusCount": focus_count,
+        "firstActive": first.get(11..16).unwrap_or("").to_string(),
+        "lastActive": last.get(11..16).unwrap_or("").to_string(),
+        "keys": keys,
+        "clicks": clicks,
+        "scroll": scroll,
+        "hourly": hourly.iter().map(|v| round1(*v)).collect::<Vec<f64>>(),
+        "topApps": top,
+        "webMinutes": round1(web_minutes),
+        "netDown": net_down,
+        "netDownText": human_bytes(net_down),
+        "netUpText": human_bytes(net_up),
+        "cpuLoadAvg": cpu_avg,
+        "gpuLoadAvg": gpu_avg,
+        "gpuTempMax": gpu_temp,
+        "trend": trend,
+        "recent": recent,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
+}
+
+/// 网络流量：`--date a~b`（缺省近 7 天）。上行/下行都来自 `ProcessNetworkUsages`，
+/// 峰值来自 `NetworkTrafficSamples`（采样流量的瞬时峰值，两者统计口径不同）。
+pub fn net_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+
+    let mut total_up = 0i64;
+    let mut total_down = 0i64;
+    let mut by_proc: HashMap<String, (i64, i64)> = HashMap::new();
+    let mut hourly_down = vec![0i64; 24];
+    let mut daily: BTreeMap<String, (i64, i64)> = BTreeMap::new();
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT Date, Hour, ProcessName, BytesUp, BytesDown FROM ProcessNetworkUsages \
+                 WHERE Date >= ?1 AND Date <= ?2 ORDER BY Date, Hour",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([start, end]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let d: String = row.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+            let h: i64 = row.get::<_, Option<i64>>(1).unwrap_or(None).unwrap_or(0);
+            let proc: String = row.get::<_, Option<String>>(2).unwrap_or(None).unwrap_or_default();
+            let up: i64 = row.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0);
+            let down: i64 = row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0);
+            total_up += up;
+            total_down += down;
+            if (0..24).contains(&h) {
+                hourly_down[h as usize] += down;
+            }
+            let e = by_proc.entry(normalize_process_name(&proc)).or_insert((0, 0));
+            e.0 += up;
+            e.1 += down;
+            let de = daily.entry(d).or_insert((0, 0));
+            de.0 += up;
+            de.1 += down;
+        }
+    }
+
+    let mut procs: Vec<serde_json::Value> = Vec::new();
+    let mut v: Vec<(String, i64, i64)> =
+        by_proc.into_iter().map(|(k, (u, d))| (k, u, d)).collect();
+    v.sort_by(|a, b| b.2.cmp(&a.2));
+    for (name, up, down) in v.iter().take(15) {
+        procs.push(serde_json::json!({
+            "name": name,
+            "up": up,
+            "down": down,
+            "downText": human_bytes(*down),
+            "upText": human_bytes(*up),
+            "share": if total_down > 0 { round1(*down as f64 / total_down as f64 * 100.0) } else { 0.0 },
+        }));
+    }
+
+    // 峰值取 99 分位，不取 MAX：`NetworkTrafficSamples.PeakDownBps` 里有明显脏样本
+    // （实测 7 天内 MAX 到 7e11 B/s，约 700 GB/s），MAX 会把整张卡片带成荒谬值。
+    let peak_down = percentile(&conn, "PeakDownBps", start, end, 0.99).unwrap_or(0.0);
+    let peak_up = percentile(&conn, "PeakUpBps", start, end, 0.99).unwrap_or(0.0);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "range": { "start": start, "end": end },
+        "totalUp": total_up,
+        "totalDown": total_down,
+        "totalDownText": human_bytes(total_down),
+        "totalUpText": human_bytes(total_up),
+        "peakDownText": format!("{}/s（99 分位）", human_bytes(peak_down as i64)),
+        "peakUpText": format!("{}/s（99 分位）", human_bytes(peak_up as i64)),
+        "hourlyDown": hourly_down,
+        "daily": daily.into_iter().map(|(d, (u, dn))| serde_json::json!({
+            "date": d,
+            "label": d.get(5..10).unwrap_or("").to_string(),
+            "up": u,
+            "down": dn,
+            "downText": human_bytes(dn),
+        })).collect::<Vec<serde_json::Value>>(),
+        "processes": procs,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
+}
+
+/// 键鼠统计：`KeyboardSessions` / `MouseSessions` 按日期区间聚合。
+pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+
+    let mut keys = 0i64;
+    let mut bursts = 0i64;
+    let mut key_rows = 0i64;
+    let mut typed_by_proc: HashMap<String, i64> = HashMap::new();
+    let mut hourly_keys = vec![0i64; 24];
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT Hour, ProcessName, TotalKeyPresses, TypingBursts FROM KeyboardSessions \
+                 WHERE substr(Date,1,10) >= ?1 AND substr(Date,1,10) <= ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([start, end]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let h: i64 = row.get::<_, Option<i64>>(0).unwrap_or(None).unwrap_or(0);
+            let proc: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
+            let k: i64 = row.get::<_, Option<i64>>(2).unwrap_or(None).unwrap_or(0);
+            let b: String = row.get::<_, Option<String>>(3).unwrap_or(None).unwrap_or_default();
+            keys += k;
+            key_rows += 1;
+            if !b.trim().is_empty() && b.trim() != "[]" {
+                bursts += 1;
+            }
+            if (0..24).contains(&h) {
+                hourly_keys[h as usize] += k;
+            }
+            *typed_by_proc.entry(normalize_process_name(&proc)).or_insert(0) += k;
+        }
+    }
+
+    let mut clicks = 0i64;
+    let mut scroll = 0i64;
+    let mut move_dist = 0.0f64;
+    let mut move_events = 0i64;
+    let mut click_by_proc: HashMap<String, i64> = HashMap::new();
+    let mut hourly_clicks = vec![0i64; 24];
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT Hour, ProcessName, LeftClickCount, RightClickCount, MiddleClickCount, \
+                 ScrollCount, TotalMoveDistance, MoveEventCount FROM MouseSessions \
+                 WHERE substr(Date,1,10) >= ?1 AND substr(Date,1,10) <= ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query([start, end]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let h: i64 = row.get::<_, Option<i64>>(0).unwrap_or(None).unwrap_or(0);
+            let proc: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
+            let l: i64 = row.get::<_, Option<i64>>(2).unwrap_or(None).unwrap_or(0);
+            let r: i64 = row.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0);
+            let m: i64 = row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0);
+            let s: i64 = row.get::<_, Option<i64>>(5).unwrap_or(None).unwrap_or(0);
+            let dist: f64 = row.get::<_, Option<f64>>(6).unwrap_or(None).unwrap_or(0.0);
+            let mv: i64 = row.get::<_, Option<i64>>(7).unwrap_or(None).unwrap_or(0);
+            let c = l + r + m;
+            clicks += c;
+            scroll += s;
+            move_dist += dist;
+            move_events += mv;
+            if (0..24).contains(&h) {
+                hourly_clicks[h as usize] += c;
+            }
+            *click_by_proc.entry(normalize_process_name(&proc)).or_insert(0) += c;
+        }
+    }
+
+    let mut top_keys: Vec<serde_json::Value> = {
+        let mut v: Vec<(String, i64)> = typed_by_proc.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.into_iter().take(10).map(|(n, k)| serde_json::json!({ "name": n, "keys": k })).collect()
+    };
+    if top_keys.is_empty() {
+        top_keys = Vec::new();
+    }
+
+    let mut top_clicks: Vec<serde_json::Value> = {
+        let mut v: Vec<(String, i64)> = click_by_proc.into_iter().collect();
+        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.into_iter().take(10).map(|(n, c)| serde_json::json!({ "name": n, "clicks": c })).collect()
+    };
+    if top_clicks.is_empty() {
+        top_clicks = Vec::new();
+    }
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "range": { "start": start, "end": end },
+        "keys": keys,
+        "keyRows": key_rows,
+        "clicks": clicks,
+        "scroll": scroll,
+        "bursts": bursts,
+        "moveDistance": round1(move_dist),
+        "moveText": human_meters(move_dist),
+        "moveEvents": move_events,
+        "keysPerHour": if key_rows > 0 { round1(keys as f64 / key_rows as f64) } else { 0.0 },
+        "hourlyKeys": hourly_keys,
+        "hourlyClicks": hourly_clicks,
+        "topKeys": top_keys,
+        "topClicks": top_clicks,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
+}
+
+/// 周报（历史报告）：把 `DailySummaries` 按自然周汇总。
+pub fn reports_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT Date, ActiveMinutes, FocusMinutesV2, WebMinutes, TotalKeys, \
+             TotalMouseClicks, AppSwitches FROM DailySummaries ORDER BY Date",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+
+    let mut weeks: BTreeMap<String, (f64, f64, f64, i64, i64, i64, i64)> = BTreeMap::new();
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let d: String = row.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+        let active: f64 = row.get::<_, Option<f64>>(1).unwrap_or(None).unwrap_or(0.0);
+        let focus: f64 = row.get::<_, Option<f64>>(2).unwrap_or(None).unwrap_or(0.0);
+        let web: f64 = row.get::<_, Option<f64>>(3).unwrap_or(None).unwrap_or(0.0);
+        let keys: i64 = row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0);
+        let clicks: i64 = row.get::<_, Option<i64>>(5).unwrap_or(None).unwrap_or(0);
+        let sw: i64 = row.get::<_, Option<i64>>(6).unwrap_or(None).unwrap_or(0);
+        if d.len() < 10 {
+            continue;
+        }
+        // 周一为一周起点
+        let weekday = parse_dt(&format!("{d} 00:00:00.0000000"))
+            .map(|x| (x.secs / 86400.0).round() as i64)
+            .unwrap_or(0);
+        let back = (weekday + 3).rem_euclid(7); // 1970-01-01 周四
+        let monday = date_shift(&d, -back);
+        let e = weeks.entry(monday).or_insert((0.0, 0.0, 0.0, 0, 0, 0, 0));
+        e.0 += active;
+        e.1 += focus;
+        e.2 += web;
+        e.3 += keys;
+        e.4 += clicks;
+        e.5 += sw;
+        e.6 += 1;
+    }
+
+    let mut list: Vec<serde_json::Value> = weeks
+        .iter()
+        .map(|(start, (active, focus, web, keys, clicks, sw, days))| {
+            serde_json::json!({
+                "start": start,
+                "end": date_shift(start, 6),
+                "label": format!("{} ~ {}",
+                    start.get(5..10).unwrap_or(""),
+                    date_shift(start, 6).get(5..10).unwrap_or("")),
+                "activeMinutes": round1(*active),
+                "focusMinutes": round1(*focus),
+                "webMinutes": round1(*web),
+                "keys": keys,
+                "clicks": clicks,
+                "switches": sw,
+                "days": days,
+                "avgActiveMinutes": if *days > 0 { round1(active / *days as f64) } else { 0.0 },
+                "focusRatio": if *active > 0.0 { round1(focus / active * 100.0) } else { 0.0 },
+            })
+        })
+        .collect();
+    list.reverse();
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "weeks": list,
+        "count": list.len(),
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
+}
+
+/// 数据概览：库文件大小、关键表行数、备份记录（全部只读）。
+pub fn data_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+
+    let tables = [
+        "AppSessions",
+        "WebSessions",
+        "KeyboardSessions",
+        "MouseSessions",
+        "HardwareSamples",
+        "ProcessNetworkUsages",
+        "NetworkTrafficSamples",
+        "BrowserHistoryItems",
+        "StickyNotes",
+        "DailySummaries",
+        "AppDailyStats",
+    ];
+    let mut counts: Vec<serde_json::Value> = Vec::new();
+    for t in tables {
+        let n: i64 = conn
+            .query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get::<_, i64>(0))
+            .unwrap_or(-1);
+        counts.push(serde_json::json!({ "table": t, "rows": n }));
+    }
+
+    let mut backups: Vec<serde_json::Value> = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT FilePath, CreatedAt, FileSize, IsAutomatic, Description FROM BackupRecords \
+         ORDER BY CreatedAt DESC LIMIT 10",
+    ) {
+        if let Ok(mut rows) = stmt.query([]) {
+            while let Ok(Some(row)) = rows.next() {
+                let path: String = row.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+                let created: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
+                let size: i64 = row.get::<_, Option<i64>>(2).unwrap_or(None).unwrap_or(0);
+                let auto: i64 = row.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0);
+                let desc: String = row.get::<_, Option<String>>(4).unwrap_or(None).unwrap_or_default();
+                let exists = Path::new(&path).exists();
+                backups.push(serde_json::json!({
+                    "path": path,
+                    "createdAt": created,
+                    "sizeText": human_bytes(size),
+                    "automatic": auto != 0,
+                    "description": desc,
+                    "exists": exists,
+                }));
+            }
+        }
+    }
+
+    let db_size = std::fs::metadata(db).map(|m| m.len() as i64).unwrap_or(0);
+    let wal_size = std::fs::metadata(format!("{}-wal", db.display()))
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
+    let shm_size = std::fs::metadata(format!("{}-shm", db.display()))
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "path": db.display().to_string(),
+        "sizeText": human_bytes(db_size),
+        "walText": human_bytes(wal_size),
+        "shmText": human_bytes(shm_size),
+        "totalText": human_bytes(db_size + wal_size),
+        "tables": counts,
+        "backups": backups,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
+}
+
+/// 采样表某列的 p 分位（p=0.99 即「99% 的采样不超过它」）。无数据返回 None。
+fn percentile(conn: &Connection, col: &str, start: &str, end: &str, p: f64) -> Option<f64> {
+    let lo = format!("{start} 00:00");
+    let hi = format!("{} 00:00", date_shift(end, 1));
+    let total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM NetworkTrafficSamples WHERE Timestamp >= ?1 AND Timestamp < ?2",
+            [&lo, &hi],
+            |r| r.get::<_, i64>(0),
+        )
+        .ok()?;
+    if total <= 0 {
+        return None;
+    }
+    let offset = ((total as f64) * p).floor() as i64;
+    let sql = format!(
+        "SELECT {col} FROM NetworkTrafficSamples WHERE Timestamp >= ?1 AND Timestamp < ?2 \
+         ORDER BY {col} LIMIT 1 OFFSET ?3"
+    );
+    conn.query_row(&sql, rusqlite::params![&lo, &hi, offset], |r| {
+        r.get::<_, Option<f64>>(0)
+    })
+    .ok()
+    .flatten()
+}
+
+fn human_bytes(v: i64) -> String {
+    let f = v as f64;
+    if f >= 1024.0 * 1024.0 * 1024.0 {
+        format!("{:.2} GB", f / 1024.0 / 1024.0 / 1024.0)
+    } else if f >= 1024.0 * 1024.0 {
+        format!("{:.1} MB", f / 1024.0 / 1024.0)
+    } else if f >= 1024.0 {
+        format!("{:.1} KB", f / 1024.0)
+    } else {
+        format!("{v} B")
+    }
+}
+
+fn human_meters(px: f64) -> String {
+    // 钩子记的是像素位移；按 96 DPI 约 1 厘米 ≈ 37.8 像素粗算，仅用于展示
+    let meters = px / 3779.5;
+    if meters >= 1000.0 {
+        format!("{:.1} 公里", meters / 1000.0)
+    } else {
+        format!("{:.1} 米", meters)
+    }
 }
 
 // ==================== 时间线（某一天的会话甘特） ====================

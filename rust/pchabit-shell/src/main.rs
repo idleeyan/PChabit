@@ -329,6 +329,11 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "notes" => "notes.html",
         "web" => "web.html",
         "timeline" => "timeline.html",
+        "dashboard" => "dashboard.html",
+        "net" => "net.html",
+        "input" => "input.html",
+        "reports" => "reports.html",
+        "data" => "data.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -352,6 +357,11 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "notes" => payload_notes(),
         "web" => payload_web(),
         "timeline" => payload_timeline(&pchabit_datad::today_local(), 0),
+        "dashboard" => payload_dashboard(),
+        "net" => payload_net(),
+        "input" => payload_input(),
+        "reports" => payload_reports(),
+        "data" => payload_data(),
         "detail" => serde_json::json!({
             "apps": pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
                 .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }))
@@ -394,6 +404,11 @@ fn all_pages() -> serde_json::Value {
         "notes": payload_notes(),
         "web": payload_web(),
         "timeline": payload_timeline(&pchabit_datad::today_local(), 0),
+        "dashboard": payload_dashboard(),
+        "net": payload_net(),
+        "input": payload_input(),
+        "reports": payload_reports(),
+        "data": payload_data(),
     });
     log_line(&format!(
         "全部载荷就绪（{} 页）：{:.1} ms",
@@ -474,6 +489,116 @@ fn payload_web() -> serde_json::Value {
                 "ok": false, "error": e, "summary": {}, "domains": [], "hourly": [],
                 "daily": [], "recent": []
             })
+        }
+    }
+}
+
+/// 仪表盘（只读）：今日 KPI + 24 小时活跃 + Top 应用 + 7 天趋势。
+fn payload_dashboard() -> serde_json::Value {
+    match pchabit_datad::dashboard_json(&pchabit_datad::default_db()) {
+        Ok(v) => {
+            log_line(&format!(
+                "dashboard: {} {} / {:.1} 分钟 / {} 应用 / {:.1} ms",
+                v["label"].as_str().unwrap_or(""),
+                v["weekday"].as_str().unwrap_or(""),
+                v["totalMinutes"].as_f64().unwrap_or(0.0),
+                v["appCount"].as_i64().unwrap_or(0),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("dashboard: 读取失败 {e}"));
+            serde_json::json!({ "ok": false, "error": e, "topApps": [], "hourly": [], "trend": [] })
+        }
+    }
+}
+
+/// 网络流量（只读）：近 7 天按进程聚合 + 24 小时下行 + 日趋势。
+fn payload_net() -> serde_json::Value {
+    let today = pchabit_datad::today_local();
+    let start = pchabit_datad::date_shift(&today, -6);
+    match pchabit_datad::net_json(&pchabit_datad::default_db(), &start, &today) {
+        Ok(v) => {
+            log_line(&format!(
+                "net: {start}~{today} / 下 {} / 上 {} / {} 进程 / {:.1} ms",
+                v["totalDownText"].as_str().unwrap_or(""),
+                v["totalUpText"].as_str().unwrap_or(""),
+                v["processes"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("net: 读取失败 {e}"));
+            serde_json::json!({
+                "ok": false, "error": e, "processes": [], "hourlyDown": [], "daily": []
+            })
+        }
+    }
+}
+
+/// 键鼠活动（只读）：近 7 天按键 / 点击 / 滚动 / 分布 / 排行。
+fn payload_input() -> serde_json::Value {
+    let today = pchabit_datad::today_local();
+    let start = pchabit_datad::date_shift(&today, -6);
+    match pchabit_datad::input_json(&pchabit_datad::default_db(), &start, &today) {
+        Ok(v) => {
+            log_line(&format!(
+                "input: {start}~{today} / {} 键 / {} 击 / {} 滚 / {:.1} ms",
+                v["keys"].as_i64().unwrap_or(0),
+                v["clicks"].as_i64().unwrap_or(0),
+                v["scroll"].as_i64().unwrap_or(0),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("input: 读取失败 {e}"));
+            serde_json::json!({
+                "ok": false, "error": e, "topKeys": [], "topClicks": [],
+                "hourlyKeys": [], "hourlyClicks": []
+            })
+        }
+    }
+}
+
+/// 历史报告（只读）：`DailySummaries` 按自然周聚合。
+fn payload_reports() -> serde_json::Value {
+    match pchabit_datad::reports_json(&pchabit_datad::default_db()) {
+        Ok(v) => {
+            log_line(&format!(
+                "reports: {} 周 / 最新 {} / {:.1} ms",
+                v["count"].as_i64().unwrap_or(0),
+                v["weeks"][0]["label"].as_str().unwrap_or(""),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("reports: 读取失败 {e}"));
+            serde_json::json!({ "ok": false, "error": e, "count": 0, "weeks": [] })
+        }
+    }
+}
+
+/// 数据概览（只读）：库文件体积、各表行数、备份记录。
+fn payload_data() -> serde_json::Value {
+    match pchabit_datad::data_json(&pchabit_datad::default_db()) {
+        Ok(v) => {
+            log_line(&format!(
+                "data: {} + wal {} / {} 张表 / {} 条备份 / {:.1} ms",
+                v["sizeText"].as_str().unwrap_or(""),
+                v["walText"].as_str().unwrap_or(""),
+                v["tables"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["backups"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("data: 读取失败 {e}"));
+            serde_json::json!({ "ok": false, "error": e, "tables": [], "backups": [] })
         }
     }
 }
@@ -655,7 +780,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.1.0";
+const VERSION: &str = "4.2.0";
 
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]

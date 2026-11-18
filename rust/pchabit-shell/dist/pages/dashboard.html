@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 仪表盘</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
+
+  .row { display:grid; grid-template-columns:1.1fr .9fr; gap:12px; align-items:start; }
+  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
+    border-bottom:1px solid #223049; white-space:nowrap; }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
+  tbody tr:hover { background:#16233a; }
+  .nm { color:#93c5fd; }
+
+  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; align-items:end; height:64px; }
+  .hours i { display:block; border-radius:2px 2px 0 0; background:#2563eb; min-height:1px; }
+  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
+    font-size:9px; color:#475569; text-align:center; }
+
+  .trend { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .trend > div { text-align:center; }
+  .trend .b { height:46px; display:flex; align-items:flex-end; }
+  .trend .b i { display:block; width:100%; background:#2563eb; border-radius:3px; min-height:2px; }
+  .trend .l { font-size:9px; color:#64748b; }
+  .trend .v { font-size:9px; color:#94a3b8; }
+  .empty { color:#64748b; padding:8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>仪表盘</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="row">
+  <div>
+    <section style="margin-bottom:12px">
+      <h2>今日应用排行 <em>Top 8 · 按活跃时长</em></h2>
+      <table>
+        <thead><tr><th>应用</th><th class="r">时长</th><th class="r">占比</th></tr></thead>
+        <tbody id="apps"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>24 小时活跃 <em>按会话开始时间累计分钟</em></h2>
+      <div class="hours" id="hours"></div>
+      <div class="hlbl" id="hlbl"></div>
+    </section>
+  </div>
+
+  <div>
+    <section style="margin-bottom:12px">
+      <h2>近 7 天 <em>活跃分钟</em></h2>
+      <div class="trend" id="trend"></div>
+    </section>
+
+    <section>
+      <h2>今日节奏</h2>
+      <table>
+        <thead><tr><th>项目</th><th class="r">值</th></tr></thead>
+        <tbody id="pace"></tbody>
+      </table>
+    </section>
+  </div>
+</div>
+
+<script>
+  function fmtM(v) {
+    var m = Math.round(v || 0);
+    if (m < 60) return m + ' 分钟';
+    if (m < 1440) return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+    return Math.round(m / 60) + ' 小时';
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function n0(v) { return (v == null ? '—' : Math.round(v) + '%'); }
+
+  function renderDashboard(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    document.getElementById('meta').textContent =
+      (d.label || '') + ' ' + (d.weekday || '') + '　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
+
+    var delta = d.deltaPercent;
+    var deltaTxt = (delta == null) ? '' : (delta > 0 ? '+' : '') + delta.toFixed(1) + '% 较昨日';
+
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    [
+      ['活跃总时长', fmtM(d.totalMinutes), deltaTxt || '含并行会话'],
+      ['使用应用', d.appCount + ' 个', d.sessions + ' 次会话'],
+      ['专注时段', d.focusCount + ' 段', '≥ 25 分钟连续'],
+      ['键盘', (d.keys || 0).toLocaleString(), '次按键'],
+      ['鼠标点击', (d.clicks || 0).toLocaleString(), '次'],
+      ['滚动', (d.scroll || 0).toLocaleString(), '格'],
+      ['网页时长', fmtM(d.webMinutes), '含并行标签页'],
+      ['网络下行', d.netDownText || '-', '上行 ' + (d.netUpText || '-')],
+      ['CPU 均值', n0(d.cpuLoadAvg), '今日硬件采样'],
+      ['GPU 均值', n0(d.gpuLoadAvg), '今日硬件采样'],
+      ['GPU 峰值温度', (d.gpuTempMax == null ? '—' : d.gpuTempMax.toFixed(0) + ' °C'), '今日最高'],
+      ['首个 / 最近活跃', (d.firstActive || '—') + ' → ' + (d.lastActive || '—'),
+        d.recent && d.recent.app ? '最近 ' + d.recent.app + ' ' + d.recent.at : ''],
+    ].forEach(function (k) {
+      var b = el('div', 'kpi');
+      b.appendChild(el('div', 'n', k[0]));
+      var v = el('div', 'v', k[1]);
+      if (String(k[1]).length > 9) { v.style.fontSize = '12px'; v.title = k[1]; }
+      b.appendChild(v);
+      b.appendChild(el('div', 's', k[2]));
+      kp.appendChild(b);
+    });
+
+    // Top 应用
+    var tb = document.getElementById('apps');
+    tb.innerHTML = '';
+    var apps = d.topApps || [];
+    if (!apps.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', 'empty', '今天还没有应用会话');
+      td0.colSpan = 3; tr0.appendChild(td0); tb.appendChild(tr0);
+    }
+    apps.forEach(function (a) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', 'nm', a.name));
+      tr.appendChild(el('td', 'r', fmtM(a.minutes)));
+      tr.appendChild(el('td', 'r', (a.share || 0).toFixed(1) + '%'));
+      tb.appendChild(tr);
+    });
+
+    // 24 小时
+    var hours = document.getElementById('hours');
+    var hlbl = document.getElementById('hlbl');
+    hours.innerHTML = ''; hlbl.innerHTML = '';
+    var arr = d.hourly || [];
+    var maxV = arr.reduce(function (m, h) { return Math.max(m, h || 0); }, 1) || 1;
+    arr.forEach(function (h, i) {
+      var bar = el('i');
+      var hh = Math.max(1, ((h || 0) / maxV) * 58);
+      bar.style.height = hh + 'px';
+      bar.style.background = (h || 0) > 0 ? '#2563eb' : '#182234';
+      bar.title = i + ':00 · ' + fmtM(h);
+      hours.appendChild(bar);
+      hlbl.appendChild(el('span', null, i % 3 === 0 ? String(i) : ''));
+    });
+
+    // 7 天趋势
+    var tr2 = document.getElementById('trend');
+    tr2.innerHTML = '';
+    var trend = d.trend || [];
+    var maxD = trend.reduce(function (m, x) { return Math.max(m, x.minutes || 0); }, 1) || 1;
+    trend.forEach(function (x) {
+      var box = el('div');
+      box.appendChild(el('div', 'v', fmtM(x.minutes)));
+      var b = el('div', 'b');
+      var fill = el('i');
+      fill.style.height = Math.max(2, ((x.minutes || 0) / maxD) * 44) + 'px';
+      b.appendChild(fill);
+      box.appendChild(b);
+      box.appendChild(el('div', 'l', x.label || ''));
+      box.title = (x.date || '') + ' · 来源 ' + (x.source || '');
+      tr2.appendChild(box);
+    });
+
+    // 今日节奏
+    var pace = document.getElementById('pace');
+    pace.innerHTML = '';
+    [
+      ['活跃分钟 / 昨日', Math.round(d.totalMinutes) + ' / ' + Math.round(d.yesterdayMinutes || 0)],
+      ['会话数', (d.sessions || 0).toLocaleString()],
+      ['应用数', (d.appCount || 0).toLocaleString()],
+      ['专注段', (d.focusCount || 0).toLocaleString()],
+      ['网页分钟', Math.round(d.webMinutes || 0).toLocaleString()],
+      ['键盘 / 点击 / 滚动', (d.keys || 0) + ' / ' + (d.clicks || 0) + ' / ' + (d.scroll || 0)],
+      ['最近活动', (d.recent && d.recent.app ? d.recent.app + ' ' + d.recent.at : '—')],
+    ].forEach(function (r) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', null, r[0]));
+      tr.appendChild(el('td', 'r', String(r[1])));
+      pace.appendChild(tr);
+    });
+
+    return 'ok: ' + fmtM(d.totalMinutes) + ' / ' + d.appCount + ' 应用 / ' +
+      (d.keys || 0) + ' 键';
+  }
+
+  window.renderDashboard = renderDashboard;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__DASH_DATA__) {
+      try { window.__DASH_RESULT__ = renderDashboard(window.__DASH_DATA__); }
+      catch (e) { window.__DASH_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 数据概览</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; word-break:break-all; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; }
+  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
+
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
+    border-bottom:1px solid #223049; white-space:nowrap; }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
+  tbody tr:hover { background:#16233a; }
+  .tb { color:#93c5fd; }
+  .ok { color:#22c55e; }
+  .bad { color:#f87171; }
+  .note { color:#64748b; font-size:10px; margin-top:8px; }
+  .empty { color:#64748b; padding:8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>数据概览</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="row">
+  <section>
+    <h2>数据表 <em id="tn"></em></h2>
+    <table><thead><tr><th>表</th><th class="r">行数</th></tr></thead>
+      <tbody id="tables"></tbody></table>
+    <div class="note">只读统计 · 备份与清理请在 PChabit 主程序里做</div>
+  </section>
+
+  <section>
+    <h2>最近备份 <em id="bn"></em></h2>
+    <table><thead><tr><th>文件</th><th class="r">大小</th><th class="r">时间</th></tr></thead>
+      <tbody id="backups"></tbody></table>
+  </section>
+</div>
+
+<script>
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function n(v) { return (v || 0).toLocaleString(); }
+
+  function renderData(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    document.getElementById('meta').textContent =
+      d.path || '';
+
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    var tables = d.tables || [];
+    var totalRows = tables.reduce(function (s, t) { return s + (t.rows || 0); }, 0);
+    [
+      ['数据库文件', d.sizeText || '-', '主库'],
+      ['WAL 日志', d.walText || '-', '未 checkpoint'],
+      ['共享内存', d.shmText || '-', '-shm'],
+      ['合计占用', d.totalText || '-', '库 + wal + shm'],
+      ['数据表', tables.length + ' 张', '全部行数 ' + n(totalRows)],
+      ['备份记录', (d.backups || []).length + ' 条', '最近 10 条'],
+      ['统计耗时', (d.ms || 0).toFixed(0) + ' ms', '壳内 Rust 直读'],
+    ].forEach(function (k) {
+      var b = el('div', 'kpi');
+      b.appendChild(el('div', 'n', k[0]));
+      b.appendChild(el('div', 'v', k[1]));
+      b.appendChild(el('div', 's', k[2]));
+      kp.appendChild(b);
+    });
+
+    var tb = document.getElementById('tables');
+    tb.innerHTML = '';
+    document.getElementById('tn').textContent = tables.length + ' 张表';
+    if (!tables.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', 'empty', '没有读到数据表');
+      td0.colSpan = 2; tr0.appendChild(td0); tb.appendChild(tr0);
+    }
+    var maxR = tables.reduce(function (m, t) { return Math.max(m, t.rows || 0); }, 1) || 1;
+    tables.forEach(function (t) {
+      var tr = document.createElement('tr');
+      var td = el('td');
+      td.appendChild(el('span', 'tb', t.table));
+      td.title = n(t.rows) + ' 行';
+      var bar = document.createElement('div');
+      bar.style.cssText = 'height:3px;background:#1e3a5f;border-radius:2px;margin-top:3px;';
+      var fill = el('i');
+      fill.style.cssText = 'display:block;height:3px;background:#3b82f6;border-radius:2px;' +
+        'width:' + Math.max(2, ((t.rows || 0) / maxR) * 100) + '%';
+      bar.appendChild(fill);
+      td.appendChild(bar);
+      tr.appendChild(td);
+      tr.appendChild(el('td', 'r', n(t.rows)));
+      tb.appendChild(tr);
+    });
+
+    var bt = document.getElementById('backups');
+    bt.innerHTML = '';
+    var backups = d.backups || [];
+    document.getElementById('bn').textContent = backups.length + ' 条';
+    if (!backups.length) {
+      var tr1 = document.createElement('tr');
+      var td1 = el('td', 'empty', '还没有备份记录');
+      td1.colSpan = 3; tr1.appendChild(td1); bt.appendChild(tr1);
+    }
+    backups.forEach(function (b) {
+      var tr = document.createElement('tr');
+      var td = el('td');
+      var name = String(b.path || '').split('\\').pop();
+      td.appendChild(el('span', b.exists ? 'ok' : 'bad', name));
+      td.title = (b.path || '') + (b.exists ? '' : '（文件已不存在）') +
+        (b.automatic ? ' · 自动' : ' · 手动') + (b.description ? ' · ' + b.description : '');
+      tr.appendChild(td);
+      tr.appendChild(el('td', 'r', b.sizeText || '-'));
+      tr.appendChild(el('td', 'r', String(b.createdAt || '').slice(5, 16)));
+      bt.appendChild(tr);
+    });
+
+    return 'ok: ' + tables.length + ' 表 / ' + (d.sizeText || '') + ' / ' +
+      backups.length + ' 备份';
+  }
+
+  window.renderData = renderData;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__DATA_DATA__) {
+      try { window.__DATA_RESULT__ = renderData(window.__DATA_DATA__); }
+      catch (e) { window.__DATA_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

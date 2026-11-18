@@ -14,10 +14,10 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **4.1.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
+| 当前版本 | **4.2.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核、`rust/pchabit-datad` 数据面、`rust/pchabit-shell` Tauri 2 壳预览） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
-| 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，十页：五个图表/分析页 + 时间线 + 分类管理 + 应用详情 + 设置概览 + 便签 + 网页访问），默认入口仍是 WPF 版 |
+| 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，**16 个页面**：仪表盘 + 五图表/分析页 + 时间线 + 网页访问 + 网络流量 + 键鼠活动 + 历史报告 + 分类管理 + 应用详情 + 设置概览 + 便签 + 数据管理），默认入口仍是 WPF 版 |
 
 ### 关键约束（硬性）
 

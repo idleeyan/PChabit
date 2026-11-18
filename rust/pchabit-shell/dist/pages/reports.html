@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 历史报告</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; }
+  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
+
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
+    border-bottom:1px solid #223049; white-space:nowrap; position:sticky; top:0; background:#121a29; }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:4px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; white-space:nowrap; }
+  tbody tr:hover { background:#16233a; }
+  .wk { color:#93c5fd; }
+  .ratio { display:inline-block; height:3px; background:#1e3a5f; border-radius:2px;
+    vertical-align:middle; margin-left:6px; }
+  .ratio i { display:block; height:3px; background:#22c55e; border-radius:2px; }
+  .note { color:#64748b; font-size:10px; margin-top:8px; }
+  .empty { color:#64748b; padding:8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>历史报告</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<section>
+  <h2>按周汇总 <em>周一为起点 · 最新在上</em></h2>
+  <table>
+    <thead><tr>
+      <th>周</th><th class="r">天数</th><th class="r">活跃</th><th class="r">日均</th>
+      <th class="r">专注</th><th class="r">专注比</th><th class="r">网页</th>
+      <th class="r">按键</th><th class="r">点击</th><th class="r">切换</th>
+    </tr></thead>
+    <tbody id="weeks"></tbody>
+  </table>
+  <div class="note">
+    网页分钟含并行标签页重复计时，数值会明显大于自然时间，不与活跃时长直接比较。
+  </div>
+</section>
+
+<script>
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function fmtM(v) {
+    var m = Math.round(v || 0);
+    if (m < 60) return m + 'm';
+    if (m < 1440) return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+    return Math.round(m / 60) + 'h';
+  }
+  function n(v) { return (v || 0).toLocaleString(); }
+
+  function renderReports(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    var weeks = d.weeks || [];
+    document.getElementById('meta').textContent =
+      weeks.length + ' 周记录　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
+
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    var last = weeks[0] || {};
+    var totalActive = weeks.reduce(function (s, w) { return s + (w.activeMinutes || 0); }, 0);
+    var totalDays = weeks.reduce(function (s, w) { return s + (w.days || 0); }, 0);
+    [
+      ['最新周', last.label || '—', (last.days || 0) + ' 天有记录'],
+      ['最新周活跃', fmtM(last.activeMinutes), '日均 ' + fmtM(last.avgActiveMinutes)],
+      ['最新周专注比', (last.focusRatio || 0).toFixed(1) + '%', fmtM(last.focusMinutes)],
+      ['统计周数', String(weeks.length), '含本周'],
+      ['有记录天数', totalDays + ' 天', '合计'],
+      ['累计活跃', fmtM(totalActive), '所有周相加'],
+    ].forEach(function (k) {
+      var b = el('div', 'kpi');
+      b.appendChild(el('div', 'n', k[0]));
+      b.appendChild(el('div', 'v', k[1]));
+      b.appendChild(el('div', 's', k[2]));
+      kp.appendChild(b);
+    });
+
+    var tb = document.getElementById('weeks');
+    tb.innerHTML = '';
+    if (!weeks.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', 'empty', '还没有周汇总（DailySummaries 为空）');
+      td0.colSpan = 10; tr0.appendChild(td0); tb.appendChild(tr0);
+    }
+    weeks.forEach(function (w, i) {
+      var tr = document.createElement('tr');
+      var tdW = el('td');
+      tdW.appendChild(el('span', 'wk', w.label || ''));
+      tdW.title = (w.start || '') + ' ~ ' + (w.end || '');
+      tr.appendChild(tdW);
+      tr.appendChild(el('td', 'r', String(w.days || 0)));
+      tr.appendChild(el('td', 'r', fmtM(w.activeMinutes)));
+      tr.appendChild(el('td', 'r', fmtM(w.avgActiveMinutes)));
+      tr.appendChild(el('td', 'r', fmtM(w.focusMinutes)));
+      var tdR = el('td', 'r');
+      tdR.appendChild(el('span', null, (w.focusRatio || 0).toFixed(1) + '%'));
+      var bar = el('span', 'ratio');
+      var fill = el('i');
+      fill.style.width = Math.max(0, Math.min(100, w.focusRatio || 0)) + '%';
+      bar.style.width = '36px';
+      bar.appendChild(fill);
+      tdR.appendChild(bar);
+      tr.appendChild(tdR);
+      tr.appendChild(el('td', 'r', fmtM(w.webMinutes)));
+      tr.appendChild(el('td', 'r', n(w.keys)));
+      tr.appendChild(el('td', 'r', n(w.clicks)));
+      tr.appendChild(el('td', 'r', n(w.switches)));
+      if (i === 0) tr.style.background = '#16233a';
+      tb.appendChild(tr);
+    });
+
+    return 'ok: ' + weeks.length + ' 周 / 最新 ' + (last.label || '') + ' / ' +
+      fmtM(last.activeMinutes);
+  }
+
+  window.renderReports = renderReports;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__REP_DATA__) {
+      try { window.__REP_RESULT__ = renderReports(window.__REP_DATA__); }
+      catch (e) { window.__REP_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

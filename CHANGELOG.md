@@ -2,6 +2,51 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.2.0] - 2026-11-18
+
+### 壳补齐最后一页：仪表盘 / 网络流量 / 键鼠活动 / 历史报告 / 数据管理
+
+P4 收尾版。这五页是 WPF 里仅剩的、还没搬进壳的只读页面，补齐后壳的 16 个页面覆盖了
+WPF 的全部只读视图（写操作仍只有分类管理与便签归属 WPF 侧）。
+
+新增 5 个 `pchabit-datad` 子命令（全部只读、不带事务）：
+
+- `dashboard`：今日 KPI（活跃分钟 / 应用数 / 会话数 / ≥25 分钟专注段 / 首个与最近活跃时间 /
+  键 / 击 / 滚动）、24 小时活跃、Top8 应用（含占比）、今日网页分钟、今日网络下行与上行、
+  CPU 与 GPU 均值、GPU 峰值温度、7 天趋势、最近一次活动；
+- `net`：`--date a~b`（缺省近 7 天），`ProcessNetworkUsages` 按进程聚合上行与下行、
+  24 小时下行、日趋势、采样峰值；
+- `input`：键盘与鼠标的 7 天合计、24 小时双序列、按键与点击各 Top10、位移（像素→米按 96 DPI 粗算）；
+- `reports`：`DailySummaries` 按自然周汇总（周一为起点），含天数 / 活跃 / 日均 / 专注 /
+  专注比 / 网页 / 键 / 击 / 切换；
+- `data`：库文件与 `-wal`/`-shm` 体积、11 张表行数、最近 10 条备份（含文件是否还在）。
+
+写这五个命令时对上四处口径，其中三处是**原来的取数方式会让页面显示错**的真问题：
+
+- **键盘与鼠标的「今日」永远是 0**。`KeyboardSessions.Date` / `MouseSessions.Date` 存的是
+  `2026-11-18 00:00:00`（带时间），`WHERE Date = ?1` 拿 `2026-11-18` 比永远不等。
+  改成 `substr(Date,1,10)` 前缀匹配后，今日确实有 11 行 / 1294 次按键。
+- **仪表盘的今日 KPI 不能读 `DailySummaries`**。今天这一行是 `ActiveMinutes=0.0`、
+  `WebMinutes=0.0`、`TotalKeys=0`，`MetricsVersion` 还比昨天落后一版——日汇总要等当天结束才回填。
+  所以今日网页分钟从 `WebSessions` 现算（`ActiveDuration>0 ? Active : Duration`，ticks/6e8），
+  网络从 `ProcessNetworkUsages` 当天行累加，CPU/GPU 从 `HardwareSamples` 当天
+  `AVG(CpuLoadAvg)` / `AVG(GpuLoadAvg)` / `MAX(GpuTempMax)` 现算；`DailySummaries` 只在 7 天趋势里用。
+- **网络「峰值」被脏样本带飞**。`NetworkTrafficSamples.PeakDownBps` 近 7 天的 `MAX` 是
+  `7.09e11`（约 700 GB/s），上游也到 `1.22e12`，明显不是真实带宽。卡片改成 **99 分位**
+  （`ORDER BY col LIMIT 1 OFFSET floor(cnt*0.99)`），实测下行峰值 47.7 MB/s、上行 7.1 MB/s；
+  近期样本本身正常（23:31 `BytesDown=17413471 / PeakDownBps=342738`，约 334 KB/s）。
+- 鼠标位移 0.0 米、网络上行 72.9 GB 都是真实数据：`MouseSessions.TotalMoveDistance` 全库为 0
+  （部署版的键鼠钩子不产出位移），上行大头是 `verysync`（82 GB）与 `AdguardSvc`（67 GB）。
+
+壳侧：`app.html` 换成 16 个导航按钮，默认入口从「硬件趋势」改成「仪表盘」；五页同样走
+「窗口创建时一次算好载荷 → `initialization_script` 注入 `window.__PAGES__` → 渲染期不碰 IPC」
+的路径，刷新按钮重算全部 16 页。
+
+实测（部署版）：五页各自 6~25 ms，十六页载荷 439.8 ms；仪表盘当日 385 分钟 / 28 应用 / 1306 键，
+网络近 7 天下行 78.21 GB / 上行 72.98 GB / 15 进程，键鼠 114341 键 / 50008 击 / 82598 滚，
+历史 16 周（最新 11-16 ~ 11-22 活跃 866.9 分钟、专注比 40.8%），数据 199.0 MB + wal 5.5 MB / 11 表 / 5 备份。
+测试 186 通过 0 失败。
+
 ## [4.1.0] - 2026-11-18
 
 ### 壳补「时间线」页（第十页，带换天）

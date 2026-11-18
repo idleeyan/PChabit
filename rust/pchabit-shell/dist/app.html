@@ -37,23 +37,29 @@
 <div id="app">
   <nav>
     <div class="brand">PChabit<span>Tauri 壳 · P4</span></div>
+    <button data-page="dashboard">仪表盘</button>
     <button data-page="hardware">硬件趋势</button>
     <button data-page="activity">每小时活动</button>
     <button data-page="timeline">时间线</button>
     <button data-page="category">分类构成</button>
     <button data-page="sankey">应用切换关系</button>
     <button data-page="analytics">活动分析</button>
+    <button data-page="web">网页访问</button>
+    <button data-page="net">网络流量</button>
+    <button data-page="input">键鼠活动</button>
+    <button data-page="reports">历史报告</button>
     <button data-page="admin">分类管理</button>
     <button data-page="detail">应用详情</button>
     <button data-page="settings">设置概览</button>
     <button data-page="notes">便签</button>
+    <button data-page="data">数据管理</button>
     <div class="spacer"></div>
     <div class="ver" id="ver"></div>
     <div class="foot" id="foot">—</div>
   </nav>
   <main>
     <header>
-      <b id="title">硬件趋势</b><span id="meta"></span>
+      <b id="title">仪表盘</b><span id="meta"></span>
       <span class="spacer"></span>
       <button id="refresh" title="重新查库并重算五页载荷">刷新</button>
     </header>
@@ -66,11 +72,15 @@
                 analytics:'pages/analytics.html', admin:'pages/categories.html',
                 detail:'pages/detail.html', settings:'pages/settings.html',
                 notes:'pages/notes.html', web:'pages/web.html',
-                timeline:'pages/timeline.html' };
+                timeline:'pages/timeline.html', dashboard:'pages/dashboard.html',
+                net:'pages/net.html', input:'pages/input.html',
+                reports:'pages/reports.html', data:'pages/data.html' };
   var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
                 sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
                 detail:'应用详情', settings:'设置概览',
-                notes:'便签', web:'网页访问', timeline:'时间线' };
+                notes:'便签', web:'网页访问', timeline:'时间线',
+                dashboard:'仪表盘', net:'网络流量', input:'键鼠活动',
+                reports:'历史报告', data:'数据管理' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -126,6 +136,36 @@
       if (w.renderWeb) {
         try { w.__WEB_RESULT__ = w.renderWeb(d); }
         catch (e) { w.__WEB_RESULT__ = 'error: ' + e.message; }
+      }
+    } else if (page === 'dashboard') {
+      w.__DASH_DATA__ = d;
+      if (w.renderDashboard) {
+        try { w.__DASH_RESULT__ = w.renderDashboard(d); }
+        catch (e) { w.__DASH_RESULT__ = 'error: ' + e.message; }
+      }
+    } else if (page === 'net') {
+      w.__NET_DATA__ = d;
+      if (w.renderNet) {
+        try { w.__NET_RESULT__ = w.renderNet(d); }
+        catch (e) { w.__NET_RESULT__ = 'error: ' + e.message; }
+      }
+    } else if (page === 'input') {
+      w.__INPUT_DATA__ = d;
+      if (w.renderInput) {
+        try { w.__INPUT_RESULT__ = w.renderInput(d); }
+        catch (e) { w.__INPUT_RESULT__ = 'error: ' + e.message; }
+      }
+    } else if (page === 'reports') {
+      w.__REP_DATA__ = d;
+      if (w.renderReports) {
+        try { w.__REP_RESULT__ = w.renderReports(d); }
+        catch (e) { w.__REP_RESULT__ = 'error: ' + e.message; }
+      }
+    } else if (page === 'data') {
+      w.__DATA_DATA__ = d;
+      if (w.renderData) {
+        try { w.__DATA_RESULT__ = w.renderData(d); }
+        catch (e) { w.__DATA_RESULT__ = 'error: ' + e.message; }
       }
     }
   }
@@ -244,6 +284,29 @@
         meta.textContent = (ws.totalVisits || 0) + ' 次访问 · ' + (ws.uniqueDomains || 0) +
           ' 个域名（只读）';
         extra = ' ' + ((frame.contentWindow.__WEB_RESULT__) || '');
+      } else if (page === 'dashboard') {
+        meta.textContent = (d && d.label ? d.label : '') +
+          (d && d.weekday ? ' ' + d.weekday : '') + ' · ' +
+          ((d && d.appCount) || 0) + ' 个应用 · ' +
+          ((d && d.sessions) || 0) + ' 次会话';
+        extra = ' ' + ((frame.contentWindow.__DASH_RESULT__) || '');
+      } else if (page === 'net') {
+        var nr = (d && d.range) || {};
+        meta.textContent = (nr.start || '') + ' ~ ' + (nr.end || '') + ' · 下 ' +
+          ((d && d.totalDownText) || '-') + ' / 上 ' + ((d && d.totalUpText) || '-') +
+          '（只读）';
+        extra = ' ' + ((frame.contentWindow.__NET_RESULT__) || '');
+      } else if (page === 'input') {
+        meta.textContent = ((d && d.keyRows) || 0) + ' 行键盘记录 · ' +
+          (((d && d.topKeys) || []).length) + ' 个应用（只读）';
+        extra = ' ' + ((frame.contentWindow.__INPUT_RESULT__) || '');
+      } else if (page === 'reports') {
+        meta.textContent = ((d && d.count) || 0) + ' 周汇总 · 周一为起点（只读）';
+        extra = ' ' + ((frame.contentWindow.__REP_RESULT__) || '');
+      } else if (page === 'data') {
+        meta.textContent = ((d && d.sizeText) || '-') + ' + wal ' + ((d && d.walText) || '-') +
+          ' · ' + (((d && d.tables) || []).length) + ' 张表（只读）';
+        extra = ' ' + ((frame.contentWindow.__DATA_RESULT__) || '');
       }
       note(page + ' 已渲染' + extra);
 
@@ -337,7 +400,7 @@
 
   // 命令行直开：app.html?p=sankey　自测刷新：再加 &auto=1
   var q = new URLSearchParams(location.search).get('p');
-  load(ASSET[q] ? q : 'hardware');
+  load(ASSET[q] ? q : 'dashboard');
   if (new URLSearchParams(location.search).get('auto') === '1') {
     setTimeout(refresh, 2500);
   }
