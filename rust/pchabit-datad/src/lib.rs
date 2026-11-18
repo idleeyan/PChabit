@@ -28,8 +28,22 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "detail" => run_detail(db),
         "xlsx" => run_xlsx(),
         "analytics" => run_analytics(db),
+        "sankey" => run_sankey(db, date),
         _ => run_probe(db, date),
     }
+}
+
+/// `sankey` 子命令：`--date` 传 `2026-11-18` 或 `2026-11-12~2026-11-18` 区间。
+fn run_sankey(db: &Path, range: &str) -> Result<(), String> {
+    let today = today_local();
+    let (start, end) = match range.split_once('~') {
+        Some((a, b)) => (a.trim().to_string(), b.trim().to_string()),
+        None if !range.trim().is_empty() => (range.trim().to_string(), range.trim().to_string()),
+        None => (date_shift(&today, -6), today.clone()),
+    };
+    let payload = sankey_json(db, &start, &end, 15)?;
+    println!("{}", serde_json::to_string(&payload).map_err(|e| e.to_string())?);
+    Ok(())
 }
 
 /// 分析页报告（库 API）：不打印，直接返回 JSON，供壳 / 测试调用。
@@ -87,6 +101,159 @@ pub fn category_colors(db: &Path) -> Result<std::collections::BTreeMap<String, S
         }
     }
     Ok(map)
+}
+
+/// 应用切换关系（桑基图）：节点 = 应用使用分钟数，连线 = 切换次数。
+///
+/// 口径与 C# `SankeyAggregator` 对齐：
+/// - 按 `StartTime` 升序遍历会话，进程名去掉 `.exe` 作为显示名；
+/// - 相邻两次会话进程不同、且间隔 ≤ 30 秒，记一次切换；
+/// - 时长前 `top_n` 的应用为独立节点，其余并入「其他应用」；
+/// - 正反向切换到同一对节点时合并计数，自环丢弃。
+pub fn sankey_json(
+    db: &Path,
+    start_day: &str,
+    end_day: &str,
+    top_n: usize,
+) -> Result<serde_json::Value, String> {
+    use std::collections::{BTreeMap, HashMap};
+
+    let t0 = Instant::now();
+    let conn = open_readonly(db)?;
+    let start = format!("{start_day} 00:00:00");
+    let end_exclusive = format!("{} 00:00:00", date_shift(end_day, 1));
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT StartTime, EndTime, Duration, ProcessName, Category \
+             FROM AppSessions WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime",
+        )
+        .map_err(|e| e.to_string())?;
+
+    struct Row {
+        start: f64,
+        end: f64,
+        minutes: f64,
+        name: String,
+        category: String,
+    }
+
+    let rows: Vec<Row> = stmt
+        .query_map([&start, &end_exclusive], |r| {
+            let st: String = r.get::<_, Option<String>>(0)?.unwrap_or_default();
+            let et: String = r.get::<_, Option<String>>(1)?.unwrap_or_default();
+            let ticks: i64 = r.get::<_, Option<i64>>(2)?.unwrap_or(0);
+            let proc: String = r.get::<_, Option<String>>(3)?.unwrap_or_default();
+            let cat: String = r.get::<_, Option<String>>(4)?.unwrap_or_default();
+            Ok(Row {
+                start: parse_dt(&st).map(|d| d.secs).unwrap_or(-1.0),
+                end: parse_dt(&et).map(|d| d.secs).unwrap_or(-1.0),
+                minutes: ticks as f64 / 6e8,
+                name: proc
+                    .trim_end_matches(".exe")
+                    .trim_end_matches(".EXE")
+                    .to_string(),
+                category: cat,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .filter(|r| !r.name.trim().is_empty())
+        .collect();
+
+    let mut usage: BTreeMap<String, f64> = BTreeMap::new();
+    let mut cat_hits: HashMap<String, BTreeMap<String, usize>> = HashMap::new();
+    let mut transitions: BTreeMap<(String, String), i64> = BTreeMap::new();
+
+    let mut prev: Option<(String, f64)> = None;
+    for r in &rows {
+        *usage.entry(r.name.clone()).or_insert(0.0) += r.minutes;
+        if !r.category.trim().is_empty() {
+            *cat_hits
+                .entry(r.name.clone())
+                .or_default()
+                .entry(r.category.clone())
+                .or_insert(0) += 1;
+        }
+        if let Some((pname, pend)) = &prev {
+            if pname != &r.name && r.start >= 0.0 && *pend >= 0.0 && r.start - *pend <= 30.0 {
+                *transitions
+                    .entry((pname.clone(), r.name.clone()))
+                    .or_insert(0) += 1;
+            }
+        }
+        prev = Some((r.name.clone(), r.end));
+    }
+
+    let mut sorted: Vec<(String, f64)> = usage.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let top: Vec<String> = sorted.iter().take(top_n).map(|(k, _)| k.clone()).collect();
+    let mut nodes = Vec::new();
+    let mut other_minutes = 0.0;
+    for (name, mins) in &sorted {
+        if top.contains(name) {
+            let category = cat_hits
+                .get(name)
+                .and_then(|m| m.iter().max_by_key(|(_, c)| **c).map(|(k, _)| k.clone()))
+                .unwrap_or_else(|| "其他".to_string());
+            nodes.push(serde_json::json!({
+                "name": name,
+                "value": mins.round() as i64,
+                "category": category,
+            }));
+        } else {
+            other_minutes += mins;
+        }
+    }
+    nodes.push(serde_json::json!({
+        "name": "其他应用",
+        "value": other_minutes.round() as i64,
+        "category": "其他",
+    }));
+
+    let other = "其他应用".to_string();
+    let mut merged: BTreeMap<(String, String), i64> = BTreeMap::new();
+    for ((a, b), count) in &transitions {
+        let src = if top.contains(a) { a.clone() } else { other.clone() };
+        let dst = if top.contains(b) { b.clone() } else { other.clone() };
+        if src == dst {
+            continue;
+        }
+        if let Some(v) = merged.get_mut(&(dst.clone(), src.clone())) {
+            *v += count;
+            continue;
+        }
+        *merged.entry((src, dst)).or_insert(0) += count;
+    }
+
+    let mut links: Vec<serde_json::Value> = merged
+        .into_iter()
+        .map(|((s, d), c)| serde_json::json!({ "source": s, "target": d, "value": c }))
+        .collect();
+    links.sort_by(|a, b| {
+        b["value"]
+            .as_i64()
+            .unwrap_or(0)
+            .cmp(&a["value"].as_i64().unwrap_or(0))
+    });
+
+    let total_switch: i64 = links.iter().filter_map(|l| l["value"].as_i64()).sum();
+    let summary = format!(
+        "{} ~ {} · {} 个应用 · {} 条流向 · 总切换 {} 次",
+        start_day,
+        end_day,
+        nodes.len(),
+        links.len(),
+        total_switch
+    );
+
+    Ok(serde_json::json!({
+        "nodes": nodes,
+        "links": links,
+        "summary": summary,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
 }
 
 // ==================== 探针 ====================

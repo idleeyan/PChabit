@@ -206,6 +206,26 @@ fn payload_category() -> Vec<serde_json::Value> {
     items
 }
 
+/// 桑基图：`{ nodes:[{name,value,category}], links:[{source,target,value}] }`
+fn payload_sankey() -> serde_json::Value {
+    let today = pchabit_datad::today_local();
+    let start = pchabit_datad::date_shift(&today, -6);
+    match pchabit_datad::sankey_json(&pchabit_datad::default_db(), &start, &today, 15) {
+        Ok(v) => {
+            log_line(&format!(
+                "sankey: {} 节点 / {} 流向",
+                v["nodes"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["links"].as_array().map(|a| a.len()).unwrap_or(0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("sankey: 计算失败 {e}"));
+            serde_json::json!({ "nodes": [], "links": [] })
+        }
+    }
+}
+
 /// 页面定义：`dist/pages` 下的资产文件名 + 注入的 JS（数据落到页面约定的全局变量）。
 fn build_page(page: &str) -> Result<(String, String, String), String> {
     let (asset, title, script) = match page {
@@ -244,6 +264,17 @@ fn build_page(page: &str) -> Result<(String, String, String), String> {
                       __TAURI__.core.invoke('note', {{msg: 'category ' + r}}); \
                     }} catch (e) {{ __TAURI__.core.invoke('note', {{msg: 'category 报错 ' + e.message}}); }} }}, 0); }}); }})({});",
                 serde_json::to_string(&payload_category()).unwrap_or_else(|_| "[]".into())
+            ),
+        ),
+        "sankey" => (
+            "sankey.html",
+            "应用切换关系",
+            format!(
+                "(function(d){{ document.addEventListener('DOMContentLoaded', function(){{ \
+                    setTimeout(function(){{ try {{ var r = renderSankey(d); \
+                      __TAURI__.core.invoke('note', {{msg: 'sankey ' + r}}); \
+                    }} catch (e) {{ __TAURI__.core.invoke('note', {{msg: 'sankey 报错 ' + e.message}}); }} }}, 0); }}); }})({});",
+                serde_json::to_string(&payload_sankey()).unwrap_or_else(|_| "{\"nodes\":[],\"links\":[]}".into())
             ),
         ),
         other => return Err(format!("未知页面：{other}")),
