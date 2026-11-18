@@ -1,0 +1,18 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PChabit Shell",
+  "version": "0.1.0",
+  "identifier": "com.pchabit.shell",
+  "build": {
+    "frontendDist": "./dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false
+  }
+}
