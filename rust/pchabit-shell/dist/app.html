@@ -46,7 +46,6 @@
     <button data-page="detail">应用详情</button>
     <button data-page="settings">设置概览</button>
     <button data-page="notes">便签</button>
-    <button data-page="insights">AI 洞察</button>
     <div class="spacer"></div>
     <div class="ver" id="ver"></div>
     <div class="foot" id="foot">—</div>
@@ -65,11 +64,11 @@
                 category:'pages/piechart.html', sankey:'pages/sankey.html',
                 analytics:'pages/analytics.html', admin:'pages/categories.html',
                 detail:'pages/detail.html', settings:'pages/settings.html',
-                notes:'pages/notes.html', insights:'pages/insights.html' };
+                notes:'pages/notes.html', web:'pages/web.html' };
   var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
                 sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
                 detail:'应用详情', settings:'设置概览',
-                notes:'便签', insights:'AI 洞察' };
+                notes:'便签', web:'网页访问' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -114,11 +113,11 @@
     } else if (page === 'notes') {
       w.__NOTES_DATA__ = d;
       if (w.renderNotes) w.__NOTES_RESULT__ = w.renderNotes(d);
-    } else if (page === 'insights') {
-      w.__INSIGHTS_DATA__ = d;
-      if (w.renderInsights) {
-        try { w.__INSIGHTS_RESULT__ = w.renderInsights(d); }
-        catch (e) { w.__INSIGHTS_RESULT__ = 'error: ' + e.message; }
+    } else if (page === 'web') {
+      w.__WEB_DATA__ = d;
+      if (w.renderWeb) {
+        try { w.__WEB_RESULT__ = w.renderWeb(d); }
+        catch (e) { w.__WEB_RESULT__ = 'error: ' + e.message; }
       }
     }
   }
@@ -228,10 +227,11 @@
         var notesN = (d && d.items) || [];
         meta.textContent = notesN.length + ' 条便签（只读，编辑请在 PChabit 里进行）';
         extra = ' ' + ((frame.contentWindow.__NOTES_RESULT__) || '');
-      } else if (page === 'insights') {
-        var snaps = (d && d.items) || [];
-        meta.textContent = snaps.length + ' 份历史快照（只读，不调用模型）';
-        extra = ' ' + ((frame.contentWindow.__INSIGHTS_RESULT__) || '');
+      } else if (page === 'web') {
+        var ws = (d && d.summary) || {};
+        meta.textContent = (ws.totalVisits || 0) + ' 次访问 · ' + (ws.uniqueDomains || 0) +
+          ' 个域名（只读）';
+        extra = ' ' + ((frame.contentWindow.__WEB_RESULT__) || '');
       }
       note(page + ' 已渲染' + extra);
 

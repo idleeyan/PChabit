@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 网页访问</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
+  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
+  h1 { font-size:15px; font-weight:600; margin:0; }
+  .hint { color:#94a3b8; font-size:11px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(122px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .row { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; align-items:start; }
+  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
+
+  table { width:100%; border-collapse:collapse; }
+  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
+    border-bottom:1px solid #223049; white-space:nowrap; }
+  thead th.r, td.r { text-align:right; }
+  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
+  tbody tr:hover { background:#16233a; }
+  .dm { color:#93c5fd; }
+  .bar { height:3px; background:#1e3a5f; border-radius:2px; margin-top:3px; }
+  .bar i { display:block; height:3px; background:#3b82f6; border-radius:2px; }
+
+  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; }
+  .hours i { display:block; height:34px; border-radius:3px; background:#182234; }
+  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
+    font-size:9px; color:#475569; text-align:center; }
+
+  .trend { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-top:4px; }
+  .trend > div { text-align:center; }
+  .trend .b { height:44px; display:flex; align-items:flex-end; }
+  .trend .b i { display:block; width:100%; background:#2563eb; border-radius:3px; min-height:2px; }
+  .trend .l { font-size:9px; color:#64748b; }
+  .trend .v { font-size:9px; color:#94a3b8; }
+
+  ul.recent { list-style:none; margin:0; padding:0; max-height:360px; overflow:auto; }
+  ul.recent li { padding:5px 0; border-bottom:1px solid #1a2436; }
+  ul.recent .t1 { display:flex; gap:8px; align-items:baseline; }
+  ul.recent .dom { color:#93c5fd; flex:none; }
+  ul.recent .ttl { color:#cbd5e1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  ul.recent .t2 { color:#64748b; font-size:10px; display:flex; gap:8px; }
+  .empty { color:#64748b; padding:8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>网页访问</h1>
+  <span class="hint" id="meta">加载中…</span>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="row">
+  <div>
+    <section style="margin-bottom:12px">
+      <h2>网站访问排行 <em>近 20 个域名 · 按有效浏览时长 · 右键可改分类（WPF 端）</em></h2>
+      <table>
+        <thead><tr>
+          <th>域名</th><th class="r">访问</th><th class="r">时长</th>
+          <th class="r">下行</th><th class="r">占比</th>
+        </tr></thead>
+        <tbody id="domains"></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>最近访问记录 <em id="recentn"></em></h2>
+      <ul class="recent" id="recent"></ul>
+    </section>
+  </div>
+
+  <div>
+    <section style="margin-bottom:12px">
+      <h2>小时分布 <em>按会话开始时间</em></h2>
+      <div class="hours" id="hours"></div>
+      <div class="hlbl" id="hlbl"></div>
+    </section>
+
+    <section>
+      <h2>每日趋势</h2>
+      <div class="trend" id="trend"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+  // 会话时长按会话累加，并行标签页会重复计，所以不换算成「天」（会显得离谱）
+  function fmtMins(v) {
+    var m = Math.round(v || 0);
+    if (m < 60) return m + ' 分钟';
+    if (m < 1440) return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+    return Math.round(m / 60) + ' 小时';
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  var LEVEL = ['#182234', '#1e3a5f', '#1d4d7a', '#2563a8', '#3b82f6'];
+
+  function renderWeb(d) {
+    if (!d || d.ok === false) {
+      document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
+      return 'error';
+    }
+    var s = d.summary || {};
+    document.getElementById('meta').textContent =
+      ((d.range && d.range.start) || '') + ' ~ ' + ((d.range && d.range.end) || '') +
+      '　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
+
+    // KPI
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    [
+      ['总访问次数', (s.totalVisits || 0).toLocaleString(), '次会话'],
+      ['总浏览时长', fmtMins(s.totalMinutes), '含并行标签页'],
+      ['独立域名', (s.uniqueDomains || 0).toLocaleString(), '个'],
+      ['平均时长', Math.round(s.avgSeconds || 0) + ' 秒', '每次'],
+      ['活跃时段', s.peakHourLabel || '-', '会话最多'],
+      ['最常访问', s.topDomain || '-', '按会话数'],
+      ['有效浏览率', (s.focusRatioPercent || 0) + '%', '有效 / 自然'],
+    ].forEach(function (k, i) {
+      var b = el('div', 'kpi');
+      b.appendChild(el('div', 'n', k[0]));
+      var big = i === 5;
+      var v = el('div', 'v', k[1]);
+      if (big) { v.style.fontSize = '12px'; v.title = k[1]; }
+      b.appendChild(v);
+      b.appendChild(el('div', 'n', k[2]));
+      kp.appendChild(b);
+    });
+
+    // 域名排行
+    var tb = document.getElementById('domains');
+    tb.innerHTML = '';
+    var domains = d.domains || [];
+    if (!domains.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = el('td', 'empty', '这段时间没有网页记录');
+      td0.colSpan = 5;
+      tr0.appendChild(td0);
+      tb.appendChild(tr0);
+    }
+    var maxShare = domains.reduce(function (m, x) { return Math.max(m, x.sharePercent || 0); }, 1);
+    domains.forEach(function (x) {
+      var tr = document.createElement('tr');
+      var tdDom = el('td');
+      tdDom.appendChild(el('span', 'dm', x.domain));
+      var bar = el('div', 'bar');
+      var fill = el('i');
+      fill.style.width = Math.max(2, ((x.sharePercent || 0) / maxShare) * 100) + '%';
+      bar.appendChild(fill);
+      tdDom.appendChild(bar);
+      tr.appendChild(tdDom);
+      tr.appendChild(el('td', 'r', (x.visits || 0).toString()));
+      tr.appendChild(el('td', 'r', fmtMins(x.minutes)));
+      tr.appendChild(el('td', 'r', x.downText || '-'));
+      tr.appendChild(el('td', 'r', (x.sharePercent || 0).toFixed(1) + '%'));
+      tr.appendChild(el('td', 'r'));
+      tb.appendChild(tr);
+      tr.title = x.category + ' · 平均 ' + Math.round(x.avgSeconds || 0) + ' 秒 · 最近 ' +
+        (x.lastVisit || '').slice(0, 16);
+    });
+
+    // 小时
+    var hours = document.getElementById('hours');
+    var hlbl = document.getElementById('hlbl');
+    hours.innerHTML = ''; hlbl.innerHTML = '';
+    var arr = d.hourly || [];
+    var maxV = arr.reduce(function (m, h) { return Math.max(m, h.visits || 0); }, 1);
+    arr.forEach(function (h, i) {
+      var cell = el('i');
+      var lv = h.visits > 0 ? Math.min(4, Math.ceil((h.visits / maxV) * 4)) : 0;
+      cell.style.background = LEVEL[lv];
+      cell.title = h.label + ' · ' + h.visits + ' 次 · ' + fmtMins(h.minutes);
+      hours.appendChild(cell);
+      hlbl.appendChild(el('span', null, i % 3 === 0 ? String(h.hour) : ''));
+    });
+
+    // 日趋势
+    var tr2 = document.getElementById('trend');
+    tr2.innerHTML = '';
+    var days = d.daily || [];
+    var maxD = days.reduce(function (m, x) { return Math.max(m, x.visits || 0); }, 1);
+    days.forEach(function (x) {
+      var box = el('div');
+      box.appendChild(el('div', 'v', (x.visits || 0) + ' 次'));
+      var bar = el('div', 'b');
+      var fill = el('i');
+      fill.style.height = Math.max(2, ((x.visits || 0) / maxD) * 100) + '%';
+      bar.appendChild(fill);
+      box.appendChild(bar);
+      box.appendChild(el('div', 'l', x.label || ''));
+      box.title = fmtMins(x.minutes) + ' · ' + (x.domains || 0) + ' 个域名';
+      tr2.appendChild(box);
+    });
+
+    // 最近访问
+    var ul = document.getElementById('recent');
+    ul.innerHTML = '';
+    var recent = d.recent || [];
+    document.getElementById('recentn').textContent = recent.length + ' 条';
+    if (!recent.length) ul.appendChild(el('li', 'empty', '暂无记录'));
+    recent.forEach(function (r) {
+      var li = document.createElement('li');
+      var t1 = el('div', 't1');
+      t1.appendChild(el('span', 'dom', r.domain));
+      t1.appendChild(el('span', 'ttl', r.title || r.url || ''));
+      var t2 = el('div', 't2');
+      t2.appendChild(el('span', null, (r.date || '').slice(5) + ' ' + (r.clock || '')));
+      t2.appendChild(el('span', null, r.durationText));
+      t2.appendChild(el('span', null, r.category));
+      if (r.clicks) t2.appendChild(el('span', null, r.clicks + ' 点击'));
+      li.appendChild(t1);
+      li.appendChild(t2);
+      if (r.url) li.title = r.url;
+      ul.appendChild(li);
+    });
+
+    return 'ok: ' + (s.totalVisits || 0) + ' 次 / ' + (s.uniqueDomains || 0) + ' 域名 / ' +
+      fmtMins(s.totalMinutes);
+  }
+
+  window.renderWeb = renderWeb;
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__WEB_DATA__) {
+      try { window.__WEB_RESULT__ = renderWeb(window.__WEB_DATA__); }
+      catch (e) { window.__WEB_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

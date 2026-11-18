@@ -319,7 +319,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "admin" => "categories.html",
         "detail" => "detail.html",
         "notes" => "notes.html",
-        "insights" => "insights.html",
+        "web" => "web.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -341,7 +341,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         }
         "settings" => serde_json::json!({ "settings": payload_settings() }),
         "notes" => payload_notes(),
-        "insights" => payload_insights(),
+        "web" => payload_web(),
         "detail" => serde_json::json!({
             "apps": pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
                 .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }))
@@ -382,7 +382,7 @@ fn all_pages() -> serde_json::Value {
         "detail": serde_json::json!({ "apps": apps }),
         "settings": payload_settings(),
         "notes": payload_notes(),
-        "insights": payload_insights(),
+        "web": payload_web(),
     });
     log_line(&format!(
         "全部载荷就绪（{} 页）：{:.1} ms",
@@ -443,17 +443,28 @@ fn payload_notes() -> serde_json::Value {
     v
 }
 
-/// AI 洞察快照（只读）：库里已有 WPF 调完模型落下的结果，壳不调 API、不碰 Key。
-fn payload_insights() -> serde_json::Value {
-    let v = pchabit_datad::insights_json(&pchabit_datad::default_db()).unwrap_or_else(|e| {
-        log_line(&format!("insights: 读取失败 {e}"));
-        serde_json::json!({ "count": 0, "items": [] })
-    });
-    log_line(&format!(
-        "insights: {} 份快照",
-        v["count"].as_i64().unwrap_or(0)
-    ));
-    v
+/// 网页访问（只读）：近 7 天会话聚合、域名排行、小时/日分布、最近记录、流量归因。
+fn payload_web() -> serde_json::Value {
+    let today = pchabit_datad::today_local();
+    let start = pchabit_datad::date_shift(&today, -6);
+    match pchabit_datad::web_json(&pchabit_datad::default_db(), &start, &today) {
+        Ok(v) => {
+            log_line(&format!(
+                "web: {start}~{today} / {} 次访问 / {} 个域名 / {:.1} ms",
+                v["summary"]["totalVisits"].as_i64().unwrap_or(0),
+                v["summary"]["uniqueDomains"].as_i64().unwrap_or(0),
+                v["ms"].as_f64().unwrap_or(0.0)
+            ));
+            v
+        }
+        Err(e) => {
+            log_line(&format!("web: 读取失败 {e}"));
+            serde_json::json!({
+                "ok": false, "error": e, "summary": {}, "domains": [], "hourly": [],
+                "daily": [], "recent": []
+            })
+        }
+    }
 }
 
 /// 分类管理：分类清单（含停用项）+ 近 7 天出现过的进程及其当前分类。
@@ -608,7 +619,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "3.98.0";
+const VERSION: &str = "3.99.0";
 
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]

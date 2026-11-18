@@ -14,7 +14,7 @@
 
 mod analytics;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -35,7 +35,7 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "newcat" => run_newcat(db),
         "activecat" => run_activecat(db),
         "notes" => run_notes(db),
-        "insights" => run_insights(db),
+        "web" => run_web(db, date),
         _ => run_probe(db, date),
     }
 }
@@ -46,8 +46,15 @@ fn run_notes(db: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn run_insights(db: &Path) -> Result<(), String> {
-    let v = insights_json(db)?;
+/// `web` 子命令：`--date` 传 `2026-11-18` 或 `2026-11-12~2026-11-18`，缺省近 7 天。
+fn run_web(db: &Path, range: &str) -> Result<(), String> {
+    let today = today_local();
+    let (start, end) = match range.split_once('~') {
+        Some((a, b)) => (a.trim().to_string(), b.trim().to_string()),
+        None if !range.trim().is_empty() => (range.trim().to_string(), range.trim().to_string()),
+        None => (date_shift(&today, -6), today.clone()),
+    };
+    let v = web_json(db, &start, &end)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
 }
@@ -1438,14 +1445,18 @@ fn write_cell(
 // ==================== 口径工具 ====================
 
 /// 归一化进程名：去空白、去 .exe 后缀、小写。
+///
+/// 注意：不能直接 `p[p.len()-4..]` 判断后缀——进程名可能以中文结尾（如「某工具」），
+/// 按字节切会落在多字节字符中间直接 panic。先按字节比较尾部，再切。
 pub(crate) fn normalize_process_name(process_name: &str) -> String {
     let p = process_name.trim();
-    let p = if p.len() >= 4 && p[p.len() - 4..].eq_ignore_ascii_case(".exe") {
+    let bytes = p.as_bytes();
+    let stripped = if bytes.len() >= 4 && bytes[bytes.len() - 4..].eq_ignore_ascii_case(b".exe") {
         &p[..p.len() - 4]
     } else {
         p
     };
-    p.to_lowercase()
+    stripped.to_lowercase()
 }
 
 /// 分类兜底色（与 C# DefaultPalette 一致）。
@@ -1940,11 +1951,9 @@ fn run_activecat(db: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// ==================== 便签与 AI 洞察（只读） ====================
+// ==================== 便签（只读） ====================
 //
 // 便签：`StickyNotes` 里 `IsDeleted = 0` 的行，置顶优先、更新时间倒序。
-// AI 洞察：`AiInsightSnapshots` 是 WPF 调完模型后落库的快照，壳只读渲染，
-// 不需要 API Key 也不发请求。
 
 /// 便签清单：`[{id, color, content, pinned, archived, createdAt, updatedAt}]`
 pub fn notes_json(db: &Path) -> Result<serde_json::Value, String> {
@@ -1976,54 +1985,6 @@ pub fn notes_json(db: &Path) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "count": items.len(), "items": items }))
 }
 
-/// 把库里存的 JSON 文本安全解析成值；空或坏数据退回 null。
-fn parse_json_field(v: Option<String>) -> serde_json::Value {
-    match v {
-        Some(s) if !s.trim().is_empty() => {
-            serde_json::from_str(&s).unwrap_or(serde_json::Value::Null)
-        }
-        _ => serde_json::Value::Null,
-    }
-}
-
-/// AI 洞察快照清单（最新在前）：`{count, items:[{id, periodKey, periodLabel,
-/// periodStart, periodEnd, model, promptVersion, createdAt, summary,
-/// findings, plan, diagnosis, risks}]}`
-pub fn insights_json(db: &Path) -> Result<serde_json::Value, String> {
-    if !db.exists() {
-        return Err(format!("数据库不存在：{}", db.display()));
-    }
-    let conn = open_readonly(db)?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT Id, PeriodKey, PeriodLabel, PeriodStart, PeriodEnd, Summary, \
-             FindingsJson, PlanJson, DiagnosisJson, RisksJson, Model, PromptVersion, CreatedAt \
-             FROM AiInsightSnapshots ORDER BY CreatedAt DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok(serde_json::json!({
-                "id": r.get::<_, Option<String>>(0).unwrap_or_default(),
-                "periodKey": r.get::<_, Option<String>>(1).unwrap_or_default(),
-                "periodLabel": r.get::<_, Option<String>>(2).unwrap_or_default(),
-                "periodStart": r.get::<_, Option<String>>(3).unwrap_or_default(),
-                "periodEnd": r.get::<_, Option<String>>(4).unwrap_or_default(),
-                "summary": r.get::<_, Option<String>>(5).unwrap_or_default(),
-                "findings": parse_json_field(r.get::<_, Option<String>>(6).unwrap_or(None)),
-                "plan": parse_json_field(r.get::<_, Option<String>>(7).unwrap_or(None)),
-                "diagnosis": parse_json_field(r.get::<_, Option<String>>(8).unwrap_or(None)),
-                "risks": parse_json_field(r.get::<_, Option<String>>(9).unwrap_or(None)),
-                "model": r.get::<_, Option<String>>(10).unwrap_or_default(),
-                "promptVersion": r.get::<_, Option<String>>(11).unwrap_or_default(),
-                "createdAt": r.get::<_, Option<String>>(12).unwrap_or_default(),
-            }))
-        })
-        .map_err(|e| e.to_string())?;
-    let items: Vec<serde_json::Value> = rows.filter_map(|r| r.ok()).collect();
-    Ok(serde_json::json!({ "count": items.len(), "items": items }))
-}
-
 /// `yyyy-MM-dd HH:mm:ss.fffffff`（本地时间，固定 UTC+8）
 fn now_stamp() -> String {
     let ms = std::time::SystemTime::now()
@@ -2041,4 +2002,473 @@ fn now_stamp() -> String {
         "{} {h:02}:{m:02}:{s:02}.{frac:07}",
         civil_from_days(days)
     )
+}
+
+// ==================== 网页访问（只读） ====================
+//
+// 口径逐条对齐 WPF `WebDetailsViewModel`：
+// - 有效浏览时长：`ActiveDuration > 0` 时用它，否则退回 `Duration`（都是 100ns ticks，1 分钟 = 6e8）
+// - 汇总里 `focusRatio = 有效分钟 / 自然分钟`
+// - 小时分布用 `Duration`（不是有效时长），与 WPF 一致
+// - 域名分类：先查 `WebsiteDomainMappings`（最长 pattern 优先、后缀匹配），再退回内置关键词
+// - 流量归因：只算 chrome/msedge/firefox 的下行字节，按「同日同小时各域名有效秒数」权重拆分
+
+struct WebRow {
+    domain: String,
+    title: String,
+    url: String,
+    start_time: String,
+    date: String,
+    hour: i64,
+    duration_ticks: i64,
+    active_ticks: i64,
+    category_name: String,
+    clicks: i64,
+}
+
+impl WebRow {
+    fn eff_seconds(&self) -> f64 {
+        let ticks = if self.active_ticks > 0 {
+            self.active_ticks
+        } else {
+            self.duration_ticks
+        };
+        ticks as f64 / 10_000_000.0
+    }
+    fn duration_minutes(&self) -> f64 {
+        self.duration_ticks as f64 / 600_000_000.0
+    }
+}
+
+/// 从 `yyyy-MM-dd HH:mm:ss.fffffff` 取出日期与小时。
+fn parse_web_stamp(s: &str) -> Option<(String, i64)> {
+    if s.len() < 13 {
+        return None;
+    }
+    let date = s.get(0..10)?.to_string();
+    if date.len() != 10 {
+        return None;
+    }
+    let hour: i64 = s.get(11..13)?.parse().ok()?;
+    if !(0..=23).contains(&hour) {
+        return None;
+    }
+    Some((date, hour))
+}
+
+/// 域名与 pattern 的匹配规则，照抄 `WebsiteCategoryService.DomainMatches`：
+/// `*.x` 走后缀，其余要求完全相等或以 `.pattern` 结尾。
+fn domain_matches(domain: &str, pattern: &str) -> bool {
+    let pat = pattern.to_lowercase();
+    if let Some(suffix) = pat.strip_prefix("*.") {
+        domain.ends_with(&format!(".{suffix}")) || domain == suffix
+    } else {
+        domain == pat || domain.ends_with(&format!(".{pat}"))
+    }
+}
+
+/// 内置兜底关键词，照抄 `WebsiteCategoryService.GetDefaultCategory`。
+fn default_web_category(domain: &str) -> &'static str {
+    if domain.is_empty() {
+        return "浏览";
+    }
+    let d = domain.to_lowercase();
+    let hit = |keys: &[&str]| keys.iter().any(|k| d.contains(k));
+    if hit(&["google", "baidu", "bing", "sogou"]) {
+        return "搜索";
+    }
+    if hit(&["github", "gitlab", "stackoverflow", "csdn", "juejin", "segmentfault"]) {
+        return "开发";
+    }
+    if hit(&["youtube", "bilibili", "netflix", "youku", "iqiyi", "douyin"]) {
+        return "视频";
+    }
+    if hit(&[
+        "twitter", "weibo", "facebook", "instagram", "linkedin", "zhihu", "xiaohongshu", "douban",
+    ]) {
+        return "社交";
+    }
+    if hit(&["amazon", "taobao", "jd", "tmall", "pinduoduo"]) {
+        return "购物";
+    }
+    if hit(&["mail", "outlook", "gmail"]) {
+        return "邮件";
+    }
+    if hit(&["notion", "docs.qq", "yuque", "confluence", "feishu", "dingtalk"]) {
+        return "办公";
+    }
+    if hit(&["news", "bbc", "cnn", "sina", "sohu", "163"]) {
+        return "新闻";
+    }
+    "浏览"
+}
+
+/// 启用分类下的域名映射，按 pattern 长度倒序（长的先匹配）。
+fn load_web_category_map(conn: &Connection) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let sql = "SELECT m.DomainPattern, c.Name FROM WebsiteDomainMappings m \
+               JOIN WebsiteCategories c ON c.Id = m.CategoryId WHERE c.IsActive = 1";
+    if let Ok(mut stmt) = conn.prepare(sql) {
+        if let Ok(rows) = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            ))
+        }) {
+            for row in rows.filter_map(|r| r.ok()) {
+                if !row.0.trim().is_empty() {
+                    out.push(row);
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    out
+}
+
+/// 会话行上的物化分类优先，其次映射，最后内置关键词。
+fn resolve_web_category(
+    row: &WebRow,
+    map: &[(String, String)],
+) -> String {
+    if !row.category_name.trim().is_empty() {
+        return row.category_name.clone();
+    }
+    let lower = row.domain.to_lowercase();
+    for (pattern, name) in map {
+        if domain_matches(&lower, pattern) {
+            return name.clone();
+        }
+    }
+    default_web_category(&lower).to_string()
+}
+
+fn bytes_text(bytes: f64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    if bytes >= GB {
+        format!("{:.2} GB", bytes / GB)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes / MB)
+    } else if bytes >= KB {
+        format!("{:.0} KB", bytes / KB)
+    } else {
+        format!("{:.0} B", bytes)
+    }
+}
+
+/// 网页访问详情：近 N 天会话聚合 + 域名排行 + 小时/日分布 + 最近记录 + 流量归因。
+pub fn web_json(
+    db: &Path,
+    start_date: &str,
+    end_date: &str,
+) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let t0 = Instant::now();
+
+    let start_stamp = format!("{start_date} 00:00:00.0000000");
+    let end_next = date_shift(end_date, 1);
+    let end_stamp = format!("{end_next} 00:00:00.0000000");
+
+    let mut rows: Vec<WebRow> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT Domain, Title, Url, StartTime, Duration, ActiveDuration, \
+                 CategoryName, ClickCount FROM WebSessions \
+                 WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let mapped = stmt
+            .query_map([&start_stamp, &end_stamp], |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<String>>(2).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<String>>(3).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0),
+                    r.get::<_, Option<i64>>(5).unwrap_or(None).unwrap_or(0),
+                    r.get::<_, Option<String>>(6).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<i64>>(7).unwrap_or(None).unwrap_or(0),
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for (domain, title, url, start_time, dur, active, category_name, clicks) in
+            mapped.filter_map(|r| r.ok())
+        {
+            let Some((date, hour)) = parse_web_stamp(&start_time) else {
+                continue;
+            };
+            rows.push(WebRow {
+                domain,
+                title,
+                url,
+                start_time,
+                date,
+                hour,
+                duration_ticks: dur,
+                active_ticks: active,
+                category_name,
+                clicks,
+            });
+        }
+    }
+
+    let cat_map = load_web_category_map(&conn);
+
+    // ---------- 汇总 ----------
+    let total_visits = rows.len() as i64;
+    let total_minutes: f64 = rows.iter().map(|r| r.eff_seconds() / 60.0).sum();
+    let wall_minutes: f64 = rows.iter().map(|r| r.duration_minutes()).sum();
+    let mut domains_set: HashSet<String> = HashSet::new();
+    let mut hour_count = [0i64; 24];
+    let mut hour_minutes = [0f64; 24];
+    for r in &rows {
+        domains_set.insert(r.domain.clone());
+        hour_count[r.hour as usize] += 1;
+        hour_minutes[r.hour as usize] += r.duration_minutes();
+    }
+    let avg_seconds = if total_visits > 0 {
+        rows.iter().map(|r| r.eff_seconds()).sum::<f64>() / total_visits as f64
+    } else {
+        0.0
+    };
+    let focus_ratio = if wall_minutes > 0.0 {
+        total_minutes / wall_minutes
+    } else {
+        1.0
+    };
+    let peak_hour = hour_count
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, c)| **c)
+        .map(|(h, c)| if *c > 0 { h as i64 } else { -1 })
+        .unwrap_or(-1);
+
+    // ---------- 域名聚合 ----------
+    struct DomainAgg {
+        visits: i64,
+        eff_seconds: f64,
+        minutes: f64,
+        last_visit: String,
+        category: String,
+    }
+    let mut domain_aggs: HashMap<String, DomainAgg> = HashMap::new();
+    for r in &rows {
+        let category = resolve_web_category(r, &cat_map);
+        let e = domain_aggs.entry(r.domain.clone()).or_insert(DomainAgg {
+            visits: 0,
+            eff_seconds: 0.0,
+            minutes: 0.0,
+            last_visit: String::new(),
+            category,
+        });
+        e.visits += 1;
+        e.eff_seconds += r.eff_seconds();
+        e.minutes += r.eff_seconds() / 60.0;
+        if r.start_time > e.last_visit {
+            e.last_visit = r.start_time.clone();
+        }
+    }
+
+    // ---------- 流量归因 ----------
+    // 1) 浏览器下行按 (date, hour) 汇总
+    let mut down_by_hour: HashMap<(String, i64), f64> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT Date, Hour, ProcessName, BytesDown FROM ProcessNetworkUsages \
+                 WHERE Date >= ?1 AND Date <= ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let mapped = stmt
+            .query_map([start_date, end_date], |r| {
+                Ok((
+                    r.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<i64>>(1).unwrap_or(None).unwrap_or(-1),
+                    r.get::<_, Option<String>>(2).unwrap_or(None).unwrap_or_default(),
+                    r.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0),
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for (date, hour, process, down) in mapped.filter_map(|r| r.ok()) {
+            if down <= 0 || !(0..=23).contains(&hour) {
+                continue;
+            }
+            let norm = normalize_process_name(&process);
+            if !matches!(norm.as_str(), "chrome" | "msedge" | "firefox") {
+                continue;
+            }
+            *down_by_hour.entry((date, hour)).or_insert(0.0) += down as f64;
+        }
+    }
+
+    // 2) 各域名在各 (date, hour) 的有效秒数
+    let mut sec_by_domain_hour: HashMap<String, HashMap<(String, i64), f64>> = HashMap::new();
+    for r in &rows {
+        let sec = r.eff_seconds();
+        if sec <= 0.0 {
+            continue;
+        }
+        sec_by_domain_hour
+            .entry(r.domain.clone())
+            .or_default()
+            .entry((r.date.clone(), r.hour))
+            .and_modify(|v| *v += sec)
+            .or_insert(sec);
+    }
+
+    // 3) 每小时总有效秒（只统计该小时有浏览器流量的）
+    let mut total_sec_by_hour: HashMap<(String, i64), f64> = HashMap::new();
+    for by_hour in sec_by_domain_hour.values() {
+        for (key, sec) in by_hour {
+            if !down_by_hour.contains_key(key) {
+                continue;
+            }
+            *total_sec_by_hour.entry(key.clone()).or_insert(0.0) += *sec;
+        }
+    }
+
+    // 4) 按权重拆分下行字节
+    let mut down_by_domain: HashMap<String, f64> = HashMap::new();
+    for (domain, by_hour) in &sec_by_domain_hour {
+        for (key, sec) in by_hour {
+            let Some(down) = down_by_hour.get(key) else {
+                continue;
+            };
+            let Some(total_sec) = total_sec_by_hour.get(key) else {
+                continue;
+            };
+            if *total_sec <= 0.0 {
+                continue;
+            }
+            *down_by_domain.entry(domain.clone()).or_insert(0.0) += down * (sec / total_sec);
+        }
+    }
+
+    // ---------- 域名排行（按有效分钟 Top 20） ----------
+    let total_minutes_all = domain_aggs.values().map(|d| d.minutes).sum::<f64>();
+    let mut ranked: Vec<(&String, &DomainAgg)> = domain_aggs.iter().collect();
+    ranked.sort_by(|a, b| b.1.minutes.partial_cmp(&a.1.minutes).unwrap_or(std::cmp::Ordering::Equal));
+    let domains_json: Vec<serde_json::Value> = ranked
+        .iter()
+        .take(20)
+        .map(|(domain, agg)| {
+            let down = down_by_domain.get(*domain).copied().unwrap_or(0.0);
+            let share = if total_minutes_all > 0.0 {
+                round1(agg.minutes * 100.0 / total_minutes_all)
+            } else {
+                0.0
+            };
+            serde_json::json!({
+                "domain": domain,
+                "visits": agg.visits,
+                "minutes": round1(agg.minutes),
+                "avgSeconds": round1(agg.eff_seconds / agg.visits as f64),
+                "category": agg.category,
+                "lastVisit": agg.last_visit,
+                "sharePercent": share,
+                "downBytes": down,
+                "downText": bytes_text(down),
+            })
+        })
+        .collect();
+
+    // ---------- 小时 / 日分布 ----------
+    let hourly_json: Vec<serde_json::Value> = (0..24)
+        .map(|h| {
+            serde_json::json!({
+                "hour": h,
+                "label": format!("{h:02}:00"),
+                "visits": hour_count[h],
+                "minutes": round1(hour_minutes[h]),
+            })
+        })
+        .collect();
+
+    let mut daily: BTreeMap<String, (i64, f64, HashSet<String>)> = BTreeMap::new();
+    for r in &rows {
+        let e = daily.entry(r.date.clone()).or_insert((0, 0.0, HashSet::new()));
+        e.0 += 1;
+        e.1 += r.duration_minutes();
+        e.2.insert(r.domain.clone());
+    }
+    let daily_json: Vec<serde_json::Value> = daily
+        .iter()
+        .map(|(date, (visits, minutes, set))| {
+            let label = if date.len() >= 10 {
+                format!("{}/{}", &date[5..7], &date[8..10])
+            } else {
+                date.clone()
+            };
+            serde_json::json!({
+                "date": date,
+                "label": label,
+                "visits": visits,
+                "minutes": round1(*minutes),
+                "domains": set.len(),
+            })
+        })
+        .collect();
+
+    // ---------- 最近访问 ----------
+    let recent_json: Vec<serde_json::Value> = rows
+        .iter()
+        .take(50)
+        .map(|r| {
+            let mins = (r.eff_seconds() / 60.0).floor();
+            let secs = (r.eff_seconds() % 60.0).floor();
+            let duration_text = if mins > 0.0 || secs > 0.0 {
+                format!("{}分{}秒", mins as i64, secs as i64)
+            } else {
+                "-".to_string()
+            };
+            let clock = if r.start_time.len() >= 19 {
+                r.start_time[11..19].to_string()
+            } else {
+                r.start_time.clone()
+            };
+            serde_json::json!({
+                "domain": r.domain,
+                "title": r.title,
+                "url": r.url,
+                "date": r.date,
+                "clock": clock,
+                "durationText": duration_text,
+                "category": resolve_web_category(r, &cat_map),
+                "clicks": r.clicks,
+            })
+        })
+        .collect();
+
+    let top_domain = ranked
+        .iter()
+        .max_by_key(|(_, agg)| agg.visits)
+        .map(|(d, _)| (*d).clone())
+        .unwrap_or_default();
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "range": { "start": start_date, "end": end_date },
+        "summary": {
+            "totalVisits": total_visits,
+            "totalMinutes": round1(total_minutes),
+            "uniqueDomains": domains_set.len(),
+            "avgSeconds": round1(avg_seconds),
+            "focusRatioPercent": (focus_ratio * 100.0) as i64,
+            "peakHour": peak_hour,
+            "peakHourLabel": if peak_hour >= 0 { format!("{peak_hour}:00") } else { "-".to_string() },
+            "topDomain": top_domain,
+        },
+        "domains": domains_json,
+        "hourly": hourly_json,
+        "daily": daily_json,
+        "recent": recent_json,
+        "trafficBrowserOnly": true,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    }))
 }

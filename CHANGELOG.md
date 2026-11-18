@@ -2,6 +2,65 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.99.0] - 2026-11-18
+
+### 撤掉「AI 洞察」页（按实际功能状态）
+
+3.98.0 加的 AI 洞察页读的是 `AiInsightSnapshots`。用户指出 AI 相关内容在早前版本里
+已经删掉了——核对属实：3.57.0 把分析页里「AI 深度解读/洞察」整块删了，3.64 把设置页的
+AI 分区删了，WPF 界面早就不再展示 AI 洞察。壳里再挂一个历史快照页等于恢复已删功能，
+而且库里只有 2026-09-30 的两份旧快照，没有新数据。本版连同 `datad insights` 子命令一起移除。
+
+注：WPF 里的 AI 服务链（`AnalyticsAiService` / `WeeklyAiInsightService`）仍在注册，
+只是没有界面入口。要不要把这条链本身也清掉是另一个决定，需要单独确认。
+
+### 新增：壳补「网页访问」页（第九页）
+
+`WebSessions` 有 15 万行，之前完全没有界面。这次把 WPF「网页访问详情」的统计口径
+逐条搬到 Rust：
+
+- **有效浏览时长**：`ActiveDuration > 0` 时用它，否则退回 `Duration`（都是 100ns ticks，
+  1 分钟 = 6e8），与 C# `EffectiveMinutesValue` 一致。
+- **汇总**：总访问次数、总有效时长、独立域名数、平均每次秒数、活跃时段（会话最多的小时）、
+  最常访问域名（按会话数）、有效浏览率（有效分钟 / 自然分钟）。
+- **小时分布**用 `Duration` 而不是有效时长——和 WPF 一样，不"修正"成看起来更合理的口径。
+- **域名排行**：按有效时长 Top 20，带访问次数、时长、下行流量、占比、分类；分类解析顺序
+  是「物化 `CategoryName` → `WebsiteDomainMappings`（最长 pattern 优先、后缀匹配）→
+  内置关键词兜底」，逐条对齐 `WebsiteCategoryService`。
+- **流量归因**：只统计 chrome / msedge / firefox 的 `BytesDown`，按「同日同小时各域名
+  有效秒数」权重拆分到域名——这是估算值，页面上标了 `trafficBrowserOnly`。
+- **最近访问**：按开始时间倒序 50 条，带时长文案（`X分Y秒`）与分类。
+
+实测：7 天 5887 次访问 / 138 个域名，整份载荷 **14.3~15.8 ms**（release）。
+
+### 修：`normalize_process_name` 的多字节 panic（真 bug）
+
+`web` 第一次跑直接 panic：
+
+```
+thread 'main' panicked at src\lib.rs:1450:33:
+start byte index 21 is not a char boundary; it is inside '工'
+```
+
+原因是这个函数按字节做后缀判断：
+
+```rust
+if p.len() >= 4 && p[p.len() - 4..].eq_ignore_ascii_case(".exe")
+```
+
+进程名以中文结尾时（`ProcessNetworkUsages` 里确实存在），`p.len()-4` 会落在多字节字符
+中间，切片直接崩。**先比较再切**就没问题：
+
+```rust
+let bytes = p.as_bytes();
+if bytes.len() >= 4 && bytes[bytes.len() - 4..].eq_ignore_ascii_case(b".exe") {
+    &p[..p.len() - 4]   // 尾部 4 字节确定是 ASCII，切点必然在字符边界
+}
+```
+
+这个函数是 detail / stats / appcats 共用的口径工具，等于所有走进程名的入口都踩着一个
+中文名就崩的雷。此前的测试与实跑都只覆盖到 ASCII 进程名，所以一直没暴露。
+
 ## [3.98.0] - 2026-11-18
 
 ### 新增：壳补「便签」与「AI 洞察」两页（第九、十页）
