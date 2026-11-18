@@ -32,6 +32,8 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "categories" => run_categories(db),
         "appcats" => run_appcats(db),
         "setcat" => run_setcat(db),
+        "newcat" => run_newcat(db),
+        "activecat" => run_activecat(db),
         _ => run_probe(db, date),
     }
 }
@@ -1589,7 +1591,7 @@ pub(crate) fn civil_from_days(z: i64) -> String {
 // 并写 UpdatedAt，未命中则新增一行（CreatedAt/UpdatedAt 都写）。
 // 分类按 `IsActive = 1` 过滤，名称即唯一键（与 C# `CategoryExistsAsync` 一致）。
 
-/// 启用中的分类清单：`[{id,name,color,icon,sortOrder}]`
+/// 分类清单（含停用项）：`[{id,name,color,icon,sortOrder,active}]`
 pub fn categories_json(db: &Path) -> Result<serde_json::Value, String> {
     if !db.exists() {
         return Err(format!("数据库不存在：{}", db.display()));
@@ -1597,8 +1599,8 @@ pub fn categories_json(db: &Path) -> Result<serde_json::Value, String> {
     let conn = open_readonly(db)?;
     let mut stmt = conn
         .prepare(
-            "SELECT Id, Name, Color, Icon, SortOrder FROM ProgramCategories \
-             WHERE IsActive = 1 ORDER BY SortOrder, Name",
+            "SELECT Id, Name, Color, Icon, SortOrder, IsActive FROM ProgramCategories \
+             ORDER BY IsActive DESC, SortOrder, Name",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -1609,6 +1611,7 @@ pub fn categories_json(db: &Path) -> Result<serde_json::Value, String> {
                 "color": r.get::<_, Option<String>>(2).unwrap_or_default(),
                 "icon": r.get::<_, Option<String>>(3).unwrap_or_default(),
                 "sortOrder": r.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0),
+                "active": r.get::<_, Option<i64>>(5).unwrap_or(None).unwrap_or(0) != 0,
             }))
         })
         .map_err(|e| e.to_string())?;
@@ -1689,9 +1692,7 @@ pub fn set_app_category(db: &Path, req: &serde_json::Value) -> Result<serde_json
         return Err(format!("数据库不存在：{}", db.display()));
     }
 
-    let conn = Connection::open(db).map_err(|e| format!("打开数据库失败：{e}"))?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|e| e.to_string())?;
+    let conn = write_conn(db)?;
 
     let cat_id: i64 = conn
         .query_row(
@@ -1748,6 +1749,122 @@ pub fn set_app_category(db: &Path, req: &serde_json::Value) -> Result<serde_json
     }))
 }
 
+/// 新建分类：`{name, color?, icon?, description?}` → `{ok, id, name, color, icon}`
+///
+/// 口径对齐 C# `CategoryService.CreateCategoryAsync`：名称唯一（只在启用分类里查重，与
+/// `CategoryExistsAsync` 一致）、`IsSystem = 0`、`IsActive = 1`，SortOrder 排在最后。
+pub fn create_category(db: &Path, req: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let name = req
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "缺少 name".to_string())?;
+    let color = req
+        .get("color")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| default_color_for(&name));
+    let icon = req
+        .get("icon")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "📁".to_string());
+    let description = req
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+
+    let conn = write_conn(db)?;
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM ProgramCategories WHERE Name = ?1 AND IsActive = 1",
+            rusqlite::params![name],
+            |r| r.get::<_, i64>(0),
+        )
+        .map_err(|e| e.to_string())?
+        > 0;
+    if exists {
+        return Err(format!("分类「{name}」已存在"));
+    }
+
+    let sort_order: i64 = conn
+        .query_row(
+            "SELECT COALESCE(MAX(SortOrder), 0) FROM ProgramCategories",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
+        + 1;
+    let now = now_stamp();
+    conn.execute(
+        "INSERT INTO ProgramCategories \
+         (Name, Description, Color, Icon, SortOrder, IsSystem, IsActive, CreatedAt) \
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, 1, ?6)",
+        rusqlite::params![name, description, color, icon, sort_order, now],
+    )
+    .map_err(|e| format!("新增分类失败：{e}"))?;
+    let id: i64 = conn.last_insert_rowid();
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "id": id,
+        "name": name,
+        "color": color,
+        "icon": icon,
+        "sortOrder": sort_order,
+    }))
+}
+
+/// 启用/停用分类：`{id, active}` → `{ok, id, name, active}`
+///
+/// 停用对标 C# `CategoryService.DeleteCategoryAsync`（只把 `IsActive` 置 0，不删行）。
+pub fn set_category_active(db: &Path, req: &serde_json::Value) -> Result<serde_json::Value, String> {
+    let id = req
+        .get("id")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| "缺少 id".to_string())?;
+    let active = req
+        .get("active")
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| "缺少 active".to_string())?;
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+
+    let conn = write_conn(db)?;
+    let name: String = conn
+        .query_row(
+            "SELECT Name FROM ProgramCategories WHERE Id = ?1",
+            rusqlite::params![id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .map_err(|e| format!("找不到分类 Id={id}：{e}"))?
+        .unwrap_or_default();
+
+    conn.execute(
+        "UPDATE ProgramCategories SET IsActive = ?1, UpdatedAt = ?2 WHERE Id = ?3",
+        rusqlite::params![if active { 1 } else { 0 }, now_stamp(), id],
+    )
+    .map_err(|e| format!("更新分类状态失败：{e}"))?;
+
+    Ok(serde_json::json!({ "ok": true, "id": id, "name": name, "active": active }))
+}
+
+/// 可写连接：复用一个 busy_timeout，避免与正在运行的采集器抢锁直接失败。
+fn write_conn(db: &Path) -> Result<Connection, String> {
+    let conn = Connection::open(db).map_err(|e| format!("打开数据库失败：{e}"))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
+    Ok(conn)
+}
+
 fn run_categories(db: &Path) -> Result<(), String> {
     let v = categories_json(db)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
@@ -1776,6 +1893,30 @@ fn run_setcat(db: &Path) -> Result<(), String> {
     let req: serde_json::Value =
         serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
     let v = set_app_category(db, &req)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+fn run_newcat(db: &Path) -> Result<(), String> {
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let req: serde_json::Value =
+        serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
+    let v = create_category(db, &req)?;
+    println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+fn run_activecat(db: &Path) -> Result<(), String> {
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let req: serde_json::Value =
+        serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
+    let v = set_category_active(db, &req)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
     Ok(())
 }

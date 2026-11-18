@@ -11,10 +11,26 @@
   h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
   .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; }
 
-  .cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+  .cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
   .chip { display:flex; align-items:center; gap:5px; background:#141e30;
-    border:1px solid #223049; border-radius:14px; padding:3px 10px; font-size:11px; }
+    border:1px solid #223049; border-radius:14px; padding:3px 6px 3px 10px; font-size:11px; }
+  .chip.off { opacity:.45; }
   .dot { width:8px; height:8px; border-radius:50%; }
+  .chip .x { background:none; border:0; color:#64748b; cursor:pointer; font-size:11px;
+    padding:0 3px; line-height:1; }
+  .chip .x:hover { color:#f87171; }
+  .chip .on { background:none; border:0; color:#34d399; cursor:pointer; font-size:10px; padding:0 3px; }
+
+  .newrow { display:flex; gap:6px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .newrow input[type=text] { background:#141e30; border:1px solid #263349; color:#e2e8f0;
+    border-radius:6px; padding:4px 8px; font-size:12px; outline:none; }
+  .newrow input.nm { width:130px; }
+  .newrow input.ic { width:44px; text-align:center; }
+  .newrow input[type=color] { width:30px; height:26px; background:#141e30; border:1px solid #263349;
+    border-radius:5px; padding:0; cursor:pointer; }
+  .newrow button { background:#2563eb; border:1px solid #3b82f6; color:#fff; border-radius:6px;
+    padding:4px 12px; font-size:12px; cursor:pointer; }
+  .newrow button:hover { background:#1d4ed8; }
 
   .tools { display:flex; gap:8px; margin-bottom:10px; }
   .tools input { flex:1; background:#141e30; border:1px solid #263349; color:#e2e8f0;
@@ -41,6 +57,14 @@
   <div class="sub" id="sub">近 7 天出现过的进程，改分类会直接写入程序分类映射表</div>
 
   <div class="cats" id="cats"></div>
+
+  <div class="newrow">
+    <input class="nm" id="nn" type="text" placeholder="新分类名称" maxlength="20" />
+    <input class="ic" id="ni" type="text" placeholder="📁" maxlength="2" value="📁" />
+    <input id="nc" type="color" value="#22C55E" title="分类颜色" />
+    <button id="nadd">新建分类</button>
+    <span id="msg0" style="font-size:11px;color:#94a3b8"></span>
+  </div>
 
   <div class="tools">
     <input id="q" placeholder="搜索应用名或进程名…" />
@@ -77,12 +101,27 @@
     chipBox.innerHTML = '';
     cats.forEach(function (c) {
       var chip = document.createElement('span');
-      chip.className = 'chip';
+      chip.className = 'chip' + (c.active ? '' : ' off');
       var dot = document.createElement('i');
       dot.className = 'dot';
       dot.style.background = c.color || '#666';
       chip.appendChild(dot);
       chip.appendChild(document.createTextNode((c.icon || '') + ' ' + c.name));
+      if (c.active) {
+        var off = document.createElement('button');
+        off.className = 'x';
+        off.textContent = '×';
+        off.title = '停用这个分类（只置为不启用，不删数据）';
+        off.addEventListener('click', function () { toggleActive(c, false); });
+        chip.appendChild(off);
+      } else {
+        var on = document.createElement('button');
+        on.className = 'on';
+        on.textContent = '启用';
+        on.title = '重新启用';
+        on.addEventListener('click', function () { toggleActive(c, true); });
+        chip.appendChild(on);
+      }
       chipBox.appendChild(chip);
     });
 
@@ -179,6 +218,49 @@
       });
   }
 
+  function toggleActive(cat, active) {
+    var msg = document.getElementById('msg0');
+    msg.textContent = (active ? '启用中…' : '停用中…');
+    window.__TAURI__.core.invoke('set_category_active', { id: cat.id, active: active })
+      .then(function (r) {
+        msg.textContent = '已' + (active ? '启用' : '停用') + '：' + r.name;
+        reloadAdmin();
+      })
+      .catch(function (e) { msg.textContent = '失败：' + e; });
+  }
+
+  function createCat() {
+    var msg = document.getElementById('msg0');
+    var name = (document.getElementById('nn').value || '').trim();
+    var icon = (document.getElementById('ni').value || '').trim() || '📁';
+    var color = document.getElementById('nc').value || '#22C55E';
+    if (!name) { msg.textContent = '请先填名称'; return; }
+    msg.textContent = '创建中…';
+    window.__TAURI__.core.invoke('create_category', { name: name, color: color, icon: icon })
+      .then(function (r) {
+        msg.textContent = '已新建：「' + r.name + '」';
+        document.getElementById('nn').value = '';
+        reloadAdmin();
+      })
+      .catch(function (e) { msg.textContent = '失败：' + e; });
+  }
+
+  // 写完重新取一份分类管理数据（含进程列表），并让父页面也刷新其余页载荷
+  function reloadAdmin() {
+    return window.__TAURI__.core.invoke('page_data', { page: 'admin' }).then(function (d) {
+      window.__ADMIN_RESULT__ = render(d);
+      if (window.__PAGES__) window.__PAGES__.admin = d;
+      return window.__TAURI__.core.invoke('pages_data').then(function (p) {
+        window.__PAGES__ = p;
+        window.__PAGES__.admin = d;
+      });
+    }).then(function () {
+      window.__ADMIN_RESULT__ = 'ok: ' + ((DATA.apps && DATA.apps.items) || []).length + ' 进程 / ' +
+        ((DATA.categories || []).filter(function (c) { return c.active; }).length) + ' 分类';
+    }).catch(function (e) { document.getElementById('msg0').textContent = '刷新失败：' + e; });
+  }
+
+  document.getElementById('nadd').addEventListener('click', createCat);
   document.getElementById('q').addEventListener('input', drawRows);
 
   document.addEventListener('DOMContentLoaded', function () {

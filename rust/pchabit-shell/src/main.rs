@@ -374,7 +374,7 @@ fn pages_data() -> serde_json::Value {
     all_pages()
 }
 
-/// 分类管理：分类清单 + 近 7 天出现过的进程及其当前分类。
+/// 分类管理：分类清单（含停用项）+ 近 7 天出现过的进程及其当前分类。
 fn payload_admin() -> serde_json::Value {
     let db = pchabit_datad::default_db();
     let cats = pchabit_datad::categories_json(&db).unwrap_or_else(|e| {
@@ -385,12 +385,45 @@ fn payload_admin() -> serde_json::Value {
         log_line(&format!("admin: 进程列表读取失败 {e}"));
         serde_json::json!({ "days": 7, "items": [] })
     });
+    let active = cats
+        .as_array()
+        .map(|a| a.iter().filter(|c| c["active"].as_bool().unwrap_or(false)).count())
+        .unwrap_or(0);
     log_line(&format!(
-        "admin: {} 个分类 / {} 个进程",
+        "admin: {active} 个启用分类（共 {} 条）/ {} 个进程",
         cats.as_array().map(|a| a.len()).unwrap_or(0),
         apps["items"].as_array().map(|a| a.len()).unwrap_or(0)
     ));
     serde_json::json!({ "categories": cats, "apps": apps })
+}
+
+/// 新建分类。
+#[tauri::command]
+fn create_category(name: String, color: String, icon: String) -> Result<serde_json::Value, String> {
+    let db = pchabit_datad::default_db();
+    let req = serde_json::json!({ "name": name, "color": color, "icon": icon });
+    let v = pchabit_datad::create_category(&db, &req)?;
+    log_line(&format!(
+        "写库: 新建分类「{}」id={} 颜色 {}",
+        v["name"].as_str().unwrap_or(""),
+        v["id"].as_i64().unwrap_or(0),
+        v["color"].as_str().unwrap_or("")
+    ));
+    Ok(v)
+}
+
+/// 启用/停用分类。
+#[tauri::command]
+fn set_category_active(id: i64, active: bool) -> Result<serde_json::Value, String> {
+    let db = pchabit_datad::default_db();
+    let req = serde_json::json!({ "id": id, "active": active });
+    let v = pchabit_datad::set_category_active(&db, &req)?;
+    log_line(&format!(
+        "写库: 分类「{}」{}",
+        v["name"].as_str().unwrap_or(""),
+        if active { "启用" } else { "停用" }
+    ));
+    Ok(v)
 }
 
 /// 改一个进程的分类（写库）。
@@ -429,7 +462,15 @@ fn main() {
     let inject = format!("window.__PAGES__ = {pages};");
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![page_data, pages_data, note, set_category, categories])
+        .invoke_handler(tauri::generate_handler![
+            page_data,
+            pages_data,
+            note,
+            set_category,
+            create_category,
+            set_category_active,
+            categories
+        ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {
                 tauri::webview::PageLoadEvent::Started => "页面开始加载",

@@ -194,21 +194,43 @@
       }
       note(page + ' 已渲染' + extra);
 
-      // 自测钩子：?wtest=进程|分类 → 走一遍写库 + 重算载荷（配合 PCHABIT_DB 指向库副本）
+      // 自测钩子：?wtest=... 走一遍写库（配合 PCHABIT_DB 指向库副本）
+      //   进程名|分类名      改某进程的分类
+      //   cat:名称            新建分类
+      //   on:Id / off:Id      启用/停用分类
       var wtest = new URLSearchParams(location.search).get('wtest');
       if (page === 'admin' && wtest) {
-        var parts = wtest.split('|');
-        window.__TAURI__.core.invoke('set_category', { process: parts[0], category: parts[1] })
-          .then(function (r) {
-            note('wtest 写入 ' + r.processName + ' -> ' + r.category +
-              (r.created ? '（新增映射）' : '（更新映射）'));
-            return window.__TAURI__.core.invoke('pages_data');
-          })
-          .then(function (p) {
-            window.__PAGES__ = p;
-            note('wtest 载荷重算完成 ' + Object.keys(p).length + ' 页');
-          })
-          .catch(function (e) { note('wtest 失败：' + e); });
+        var call;
+        if (wtest.indexOf('cat:') === 0) {
+          call = window.__TAURI__.core.invoke('create_category', {
+            name: wtest.slice(4), color: '#22C55E', icon: '📚'
+          });
+        } else if (wtest.indexOf('on:') === 0 || wtest.indexOf('off:') === 0) {
+          var actArgs = {
+            id: parseInt(wtest.replace(/^on:|^off:/, ''), 10),
+            active: wtest.indexOf('on:') === 0
+          };
+          note('wtest 参数 ' + JSON.stringify(actArgs));
+          call = window.__TAURI__.core.invoke('set_category_active', actArgs);
+        } else {
+          var parts = wtest.split('|');
+          call = window.__TAURI__.core.invoke('set_category', { process: parts[0], category: parts[1] });
+        }
+        call.then(function (r) {
+          note('wtest 结果 ' + JSON.stringify(r));
+          return window.__TAURI__.core.invoke('page_data', { page: 'admin' });
+        })
+        .then(function (d) {
+          var cats = (d.categories || []).filter(function (c) { return c.active; }).length;
+          note('wtest 重读 admin: ' + ((d.apps && d.apps.items) || []).length +
+            ' 进程 / ' + cats + ' 启用分类（共 ' + (d.categories || []).length + ' 条）');
+          return window.__TAURI__.core.invoke('pages_data');
+        })
+        .then(function (p) {
+          window.__PAGES__ = p;
+          note('wtest 载荷重算完成 ' + Object.keys(p).length + ' 页');
+        })
+        .catch(function (e) { note('wtest 失败：' + e); });
       }
     } catch (e) {
       meta.textContent = '渲染失败：' + e.message;
