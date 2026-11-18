@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 应用详情</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
+  #app { display:flex; height:100vh; }
+  aside { width:248px; flex:none; background:#0b1220; border-right:1px solid #1f2937;
+    display:flex; flex-direction:column; }
+  aside .top { padding:10px 10px 6px; }
+  aside input { width:100%; box-sizing:border-box; background:#141e30; border:1px solid #263349;
+    color:#e2e8f0; border-radius:6px; padding:5px 8px; font-size:12px; outline:none; }
+  aside input:focus { border-color:#3b82f6; }
+  aside ul { list-style:none; margin:0; padding:0 6px 10px; overflow:auto; flex:1; }
+  aside li { padding:5px 8px; border-radius:6px; cursor:pointer; display:flex;
+    justify-content:space-between; gap:8px; }
+  aside li:hover { background:#16233a; }
+  aside li.on { background:#1d2f4d; }
+  aside li .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  aside li .mn { color:#64748b; font-size:10px; flex:none; }
+
+  main { flex:1; min-width:0; padding:14px 16px 20px; overflow:auto; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
+  .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; }
+  .kpis { display:grid; grid-template-columns:repeat(auto-fill, minmax(118px,1fr)); gap:8px; margin-bottom:14px; }
+  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
+  .kpi .n { color:#94a3b8; font-size:10px; }
+  .kpi .v { font-size:15px; font-weight:600; }
+  .kpi .d { font-size:10px; }
+  .up { color:#34d399; } .down { color:#f87171; } .flat { color:#94a3b8; }
+
+  .row { display:grid; grid-template-columns:1.2fr .8fr; gap:12px; }
+  @media (max-width:820px){ .row{ grid-template-columns:1fr; } }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1; }
+
+  .heat { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; }
+  .heat i { height:26px; border-radius:3px; background:#182234; display:block; }
+  .heatlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
+    font-size:9px; color:#475569; text-align:center; }
+  .trend { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .trend > div { text-align:center; }
+  .trend .bar { height:46px; display:flex; align-items:flex-end; }
+  .trend .bar i { display:block; width:100%; background:#2563eb; border-radius:3px; min-height:2px; }
+  .trend .lb { font-size:9px; color:#64748b; }
+  .trend .vv { font-size:9px; color:#94a3b8; }
+
+  table { width:100%; border-collapse:collapse; }
+  td { padding:3px 0; border-bottom:1px solid #1b2436; font-size:11px; }
+  td.k { color:#94a3b8; }
+  td.v { text-align:right; }
+  ul.titles { list-style:none; margin:0; padding:0; }
+  ul.titles li { font-size:11px; color:#cbd5e1; padding:4px 0; border-bottom:1px solid #1b2436;
+    word-break:break-all; }
+  .empty { color:#64748b; padding:10px 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside>
+    <div class="top"><input id="q" placeholder="搜索应用…" /></div>
+    <ul id="list"></ul>
+  </aside>
+  <main>
+    <h1 id="name">选择一个应用</h1>
+    <div class="sub" id="sub">左侧是近 7 天出现过的进程，点一下看详情</div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="row">
+      <section>
+        <h2>24 小时分布（近 7 天累计）</h2>
+        <div class="heat" id="heat"></div>
+        <div class="heatlbl" id="heatlbl"></div>
+        <h2 style="margin-top:14px">每日趋势</h2>
+        <div class="trend" id="trend"></div>
+      </section>
+      <section>
+        <h2>运行画像</h2>
+        <table id="facts"></table>
+        <h2 style="margin-top:14px">窗口标题 Top 5</h2>
+        <ul class="titles" id="titles"></ul>
+      </section>
+    </div>
+  </main>
+</div>
+<script>
+  var APPS = [];
+  var CUR = null;
+
+  function fmtMins(v) {
+    var m = Math.round(v || 0);
+    if (m < 60) return m + ' 分钟';
+    return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  var LEVEL = ['#182234', '#1e3a5f', '#1d4d7a', '#2563a8', '#3b82f6'];
+
+  function renderList() {
+    var kw = (document.getElementById('q').value || '').trim().toLowerCase();
+    var ul = document.getElementById('list');
+    ul.innerHTML = '';
+    var shown = 0;
+    APPS.forEach(function (a) {
+      if (kw && (a.appName || '').toLowerCase().indexOf(kw) < 0 &&
+          (a.processName || '').toLowerCase().indexOf(kw) < 0) return;
+      shown++;
+      var li = el('li', CUR && CUR.processName === a.processName ? 'on' : '');
+      li.appendChild(el('span', 'nm', a.appName || a.processName));
+      li.appendChild(el('span', 'mn', Math.round(a.minutes) + 'm'));
+      li.addEventListener('click', function () { select(a); });
+      ul.appendChild(li);
+    });
+    if (!shown) ul.appendChild(el('li', 'empty', '没有匹配的应用'));
+  }
+
+  function select(a) {
+    CUR = a;
+    renderList();
+    document.getElementById('name').textContent = a.appName || a.processName;
+    document.getElementById('sub').textContent = '加载中…';
+    window.__TAURI__.core.invoke('app_detail', {
+      process: a.processName,
+      appName: a.appName || '',
+      category: a.category || '',
+    }).then(function (d) {
+      window.__DETAIL_RESULT__ = renderDetail(d, a);
+    }).catch(function (e) {
+      document.getElementById('sub').textContent = '详情加载失败：' + e;
+      window.__DETAIL_RESULT__ = 'error: ' + e;
+    });
+  }
+
+  function renderDetail(d, a) {
+    document.getElementById('sub').textContent =
+      a.processName + '　分类 ' + (d.category || '未分类') + '　近 7 天';
+
+    // KPI
+    var kp = document.getElementById('kpis');
+    kp.innerHTML = '';
+    [
+      ['总时长', fmtMins(d.totalMinutes), d.deltaText, d.deltaDirection],
+      ['会话数', String(d.sessions || 0), '', 'flat'],
+      ['最长一次', fmtMins(d.longestSessionMinutes), '', 'flat'],
+      ['平均每次', fmtMins(d.avgMinutes), '', 'flat'],
+      ['专注次数', String(d.focusCount || 0), fmtMins(d.focusMinutes) + ' 专注', 'flat'],
+      ['键鼠', d.hasKeyMouse ? String(Math.round(d.mouseClicks || 0)) + ' 点击' : '无按键记录', '', 'flat'],
+    ].forEach(function (k) {
+      var box = el('div', 'kpi');
+      box.appendChild(el('div', 'n', k[0]));
+      box.appendChild(el('div', 'v', k[1]));
+      if (k[2] !== '' && k[2] != null) {
+        var dd = el('div', 'd ' + (k[3] === 'up' ? 'up' : k[3] === 'down' ? 'down' : 'flat'), k[2]);
+        box.appendChild(dd);
+      }
+      kp.appendChild(box);
+    });
+
+    // 24h
+    var heat = document.getElementById('heat');
+    var lbl = document.getElementById('heatlbl');
+    heat.innerHTML = ''; lbl.innerHTML = '';
+    var hours = d.hourly || [];
+    var maxH = hours.reduce(function (m, h) { return Math.max(m, h.minutes || 0); }, 1);
+    hours.forEach(function (h, i) {
+      var cell = el('i');
+      var lv = h.minutes > 0 ? Math.min(4, Math.ceil((h.minutes / maxH) * 4)) : 0;
+      cell.style.background = LEVEL[lv];
+      cell.title = h.label + ' 点 · ' + Math.round(h.minutes || 0) + ' 分钟';
+      heat.appendChild(cell);
+      if (i % 3 === 0) lbl.appendChild(el('span', null, h.label));
+      else lbl.appendChild(el('span', null, ''));
+    });
+
+    // 日趋势
+    var tr = document.getElementById('trend');
+    tr.innerHTML = '';
+    var days = d.dailyTrend || [];
+    var maxD = days.reduce(function (m, x) { return Math.max(m, x.minutes || 0); }, 1);
+    days.forEach(function (x) {
+      var box = el('div');
+      var bar = el('div', 'bar');
+      var fill = el('i');
+      fill.style.height = Math.max(2, ((x.minutes || 0) / maxD) * 100) + '%';
+      bar.appendChild(fill);
+      box.appendChild(el('div', 'vv', Math.round(x.minutes || 0) + 'm'));
+      box.appendChild(bar);
+      box.appendChild(el('div', 'lb', x.dateLabel));
+      tr.appendChild(box);
+    });
+
+    // 运行画像
+    var tb = document.getElementById('facts');
+    tb.innerHTML = '';
+    function fact(k, v) {
+      var row = document.createElement('tr');
+      row.appendChild(el('td', 'k', k));
+      row.appendChild(el('td', 'v', v));
+      tb.appendChild(row);
+    }
+    fact('有硬件归属', d.hasHardware ? '是' : '否');
+    if (d.hasHardware) {
+      fact('CPU 平均', (d.cpuLoadAvg != null ? d.cpuLoadAvg.toFixed(1) + '%' : '—'));
+      fact('GPU 平均', (d.gpuLoadAvg != null ? d.gpuLoadAvg.toFixed(1) + '%' : '—'));
+      fact('GPU 峰值温度', (d.gpuTempMax != null ? d.gpuTempMax.toFixed(0) + ' °C' : '—'));
+    }
+    if (d.hasKeyMouse) {
+      fact('鼠标点击', Math.round(d.mouseClicks || 0) + ' 次');
+      fact('滚轮', Math.round(d.mouseScrolls || 0) + ' 次');
+      if (d.mouseMoveDistance != null) fact('移动距离', Math.round(d.mouseMoveDistance) + ' px');
+    }
+    if (d.hasInput && d.keyPresses != null) {
+      fact('按键', Math.round(d.keyPresses) + ' 次');
+      if (d.keysPerHour != null) fact('每小时按键', d.keysPerHour.toFixed(1));
+    }
+
+    // 标题
+    var ul = document.getElementById('titles');
+    ul.innerHTML = '';
+    var titles = d.topWindowTitles || [];
+    if (!titles.length) ul.appendChild(el('li', 'empty', '暂无标题记录'));
+    titles.forEach(function (t) { ul.appendChild(el('li', null, t)); });
+
+    return 'ok: ' + fmtMins(d.totalMinutes) + ' / ' + (d.sessions || 0) + ' 会话';
+  }
+
+  document.getElementById('q').addEventListener('input', renderList);
+
+  window.renderDetail = function (payload) {
+    APPS = (payload && payload.apps && payload.apps.items) || [];
+    renderList();
+    if (APPS.length) select(APPS[0]);
+    return 'ok: ' + APPS.length + ' 个应用';
+  };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__DETAIL_DATA__) {
+      try { window.__DETAIL_RESULT__ = window.renderDetail(window.__DETAIL_DATA__); }
+      catch (e) { window.__DETAIL_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+</script>
+</body>
+</html>

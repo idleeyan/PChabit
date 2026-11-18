@@ -317,6 +317,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "sankey" => "sankey.html",
         "analytics" => "analytics.html",
         "admin" => "categories.html",
+        "detail" => "detail.html",
         other => return Err(format!("未知页面：{other}")),
     };
     let asset = dist_dir().join("pages").join(file);
@@ -331,7 +332,11 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
     let data = match page.as_str() {
         "activity" => payload_activity(),
         "sankey" => payload_sankey(),
-        "admin" => payload_admin(),
+        "admin" => {
+            let apps = pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
+                .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }));
+            payload_admin(apps)
+        }
         _ => {
             let report = payload_analytics();
             match page.as_str() {
@@ -348,17 +353,24 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
     Ok(data)
 }
 
-/// 一次算好全部五页载荷：启动注入与手动刷新共用同一份逻辑。
+/// 一次算好全部载荷：启动注入与手动刷新共用同一份逻辑。
 fn all_pages() -> serde_json::Value {
     let t0 = std::time::Instant::now();
     let report = payload_analytics(); // 硬件与分类都从这份报告里取，避免重复计算
+    // 进程清单只查一次，分类管理页与应用详情页共用
+    let apps = pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
+        .unwrap_or_else(|e| {
+            log_line(&format!("apps: 进程列表读取失败 {e}"));
+            serde_json::json!({ "days": 7, "items": [] })
+        });
     let pages = serde_json::json!({
         "hardware": payload_hardware(&report),
         "activity": payload_activity(),
         "category": payload_category(&report),
         "sankey": payload_sankey(),
         "analytics": report,
-        "admin": payload_admin(),
+        "admin": payload_admin(apps.clone()),
+        "detail": serde_json::json!({ "apps": apps }),
         "settings": payload_settings(),
     });
     log_line(&format!(
@@ -375,17 +387,46 @@ fn pages_data() -> serde_json::Value {
     all_pages()
 }
 
+/// 单应用详情：近 7 天 vs 前 7 天，含会话聚合、键鼠、硬件归属、标题 Top5、日趋势。
+#[tauri::command]
+fn app_detail(process: String, app_name: String, category: String) -> Result<serde_json::Value, String> {
+    let today = pchabit_datad::today_local();
+    let cur_start = pchabit_datad::date_shift(&today, -6);
+    let prev_end = pchabit_datad::date_shift(&today, -7);
+    let prev_start = pchabit_datad::date_shift(&today, -13);
+    let req = serde_json::json!({
+        "curStart": format!("{cur_start} 00:00:00.0000000"),
+        "curEnd": format!("{today} 23:59:59.9999999"),
+        "prevStart": format!("{prev_start} 00:00:00.0000000"),
+        "prevEnd": format!("{prev_end} 23:59:59.9999999"),
+        "dayStart": format!("{cur_start} 00:00:00.0000000"),
+        "dayEnd": format!("{today} 23:59:59.9999999"),
+        "hwStart": cur_start,
+        "hwEnd": today,
+        "processName": process,
+        "appName": app_name,
+        "category": category,
+    });
+    let t0 = std::time::Instant::now();
+    let v = pchabit_datad::detail_json(&pchabit_datad::default_db(), &req)?;
+    log_line(&format!(
+        "detail {}: {:.1} ms / {:.0} 分钟 / {} 会话",
+        v["processName"].as_str().unwrap_or(""),
+        t0.elapsed().as_secs_f64() * 1000.0,
+        v["totalMinutes"].as_f64().unwrap_or(0.0),
+        v["sessions"].as_i64().unwrap_or(0)
+    ));
+    Ok(v)
+}
+
 /// 分类管理：分类清单（含停用项）+ 近 7 天出现过的进程及其当前分类。
-fn payload_admin() -> serde_json::Value {
+fn payload_admin(apps: serde_json::Value) -> serde_json::Value {
     let db = pchabit_datad::default_db();
     let cats = pchabit_datad::categories_json(&db).unwrap_or_else(|e| {
         log_line(&format!("admin: 分类读取失败 {e}"));
         serde_json::Value::Array(vec![])
     });
-    let apps = pchabit_datad::app_categories_json(&db, 7).unwrap_or_else(|e| {
-        log_line(&format!("admin: 进程列表读取失败 {e}"));
-        serde_json::json!({ "days": 7, "items": [] })
-    });
+    let apps = apps;
     let active = cats
         .as_array()
         .map(|a| a.iter().filter(|c| c["active"].as_bool().unwrap_or(false)).count())
@@ -530,7 +571,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "3.96.0";
+const VERSION: &str = "3.97.0";
 
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]
@@ -553,6 +594,7 @@ fn main() {
             set_category,
             create_category,
             set_category_active,
+            app_detail,
             categories
         ])
         .on_page_load(|webview, payload| {

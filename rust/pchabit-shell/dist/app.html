@@ -43,6 +43,7 @@
     <button data-page="sankey">应用切换关系</button>
     <button data-page="analytics">活动分析</button>
     <button data-page="admin">分类管理</button>
+    <button data-page="detail">应用详情</button>
     <button data-page="settings">设置概览</button>
     <div class="spacer"></div>
     <div class="ver" id="ver"></div>
@@ -61,10 +62,10 @@
   var ASSET = { hardware:'pages/hardware-trend.html', activity:'pages/activity-trend.html',
                 category:'pages/piechart.html', sankey:'pages/sankey.html',
                 analytics:'pages/analytics.html', admin:'pages/categories.html',
-                settings:'pages/settings.html' };
+                detail:'pages/detail.html', settings:'pages/settings.html' };
   var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
                 sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
-                settings:'设置概览' };
+                detail:'应用详情', settings:'设置概览' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -103,6 +104,9 @@
     } else if (page === 'settings') {
       w.__SET_DATA__ = d;
       if (w.renderSettings) w.__SET_RESULT__ = w.renderSettings(d);
+    } else if (page === 'detail') {
+      w.__DETAIL_DATA__ = d;
+      if (w.renderDetail) w.__DETAIL_RESULT__ = w.renderDetail(d);
     }
   }
 
@@ -200,6 +204,10 @@
         var adminArr = (d && d.apps && d.apps.items) || [];
         meta.textContent = adminArr.length + ' 个进程 · 分类可直接改（写入数据库）';
         extra = ' ' + ((frame.contentWindow.__ADMIN_RESULT__) || '');
+      } else if (page === 'detail') {
+        var appsN = (d && d.apps && d.apps.items) || [];
+        meta.textContent = appsN.length + ' 个应用 · 点选查看详情';
+        extra = ' ' + ((frame.contentWindow.__DETAIL_RESULT__) || '');
       } else if (page === 'settings') {
         meta.textContent = (d && d.count ? d.count : 0) + ' 项设置（只读，敏感项已打码）';
         extra = ' ' + ((frame.contentWindow.__SET_RESULT__) || '');
