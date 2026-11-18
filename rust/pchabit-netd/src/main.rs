@@ -13,6 +13,7 @@
 
 #![windows_subsystem = "console"]
 
+mod gpu;
 mod iphelper;
 mod json;
 mod netstate;
@@ -30,9 +31,10 @@ fn main() {
 
     match mode.as_str() {
         "probe" => probe::run(),
+        "nvml-probe" => gpu::run_probe(),
         "daemon" => run_daemon(args.collect()),
         other => {
-            eprintln!("未知模式：{other}（可用：probe / daemon）");
+            eprintln!("未知模式：{other}（可用：probe / nvml-probe / daemon）");
             std::process::exit(2);
         }
     }
@@ -75,6 +77,21 @@ fn run_daemon(argv: Vec<String>) {
 
     let state = Arc::new(Mutex::new(netstate::NetState::new(exclude_names)));
 
+    // GPU 采样线程：1 Hz，与网络采样互不阻塞；无 N 卡时第一拍即判定不可用
+    let gpu_state: pipe::GpuShare = Arc::new(Mutex::new(gpu::GpuSnapshot::default()));
+    let gpu_pub = Arc::clone(&gpu_state);
+    std::thread::spawn(move || {
+        let mut sampler = gpu::GpuSampler::new();
+        loop {
+            let ms = sampler.tick();
+            *gpu_pub.lock().unwrap() = sampler.snapshot();
+            if verbose {
+                eprintln!("[netd] gpu {:.3}ms avail={}", ms, sampler.snapshot().available);
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+    });
+
     // 采样线程：1 Hz，独立于 IPC 线程
     let sampler_state = Arc::clone(&state);
     std::thread::spawn(move || loop {
@@ -100,7 +117,7 @@ fn run_daemon(argv: Vec<String>) {
     });
 
     // IPC 主线程（阻塞等待宿主连接）
-    pipe::serve(state);
+    pipe::serve(state, gpu_state);
     std::process::exit(0);
 }
 

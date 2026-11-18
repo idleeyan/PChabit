@@ -14,6 +14,13 @@ internal sealed class RustNetClient : IDisposable
     private const string PipeName = "pchabit-netd-v1";
     private const int ReadTimeoutMs = 2000;
 
+    /// <summary>
+    /// 进程内共享的单一连接。管道服务端同一时刻只服务一个客户端（见 pipe.rs 的 serve 循环），
+    /// 因此网络采样与 GPU 探针必须共用同一条连接，不能各自新建。
+    /// 生命周期跟随进程；内核自带 90 秒空闲退出，无需宿主显式 STOP。
+    /// </summary>
+    internal static RustNetClient Shared { get; } = new RustNetClient();
+
     private readonly object _gate = new();
     private readonly Queue<string> _pending = new();
     private NamedPipeClientStream? _pipe;

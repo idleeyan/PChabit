@@ -62,12 +62,12 @@ public sealed partial class ProcessNetworkMonitor
 
         if (!RustSamplerEnabled) return;
 
-        var client = new RustNetClient();
+        // 与 GPU 探针共用同一条管道连接（服务端同一时刻只服务一个客户端）
+        var client = RustNetClient.Shared;
         var health = client.Send("PING");
         if (health == null)
         {
             Log.Warning("Rust 采样内核不可用，回退到内置 C# 采样");
-            client.Dispose();
             return;
         }
 
@@ -87,7 +87,9 @@ public sealed partial class ProcessNetworkMonitor
             _rust = null;
             _rustChecked = true;
         }
-        client?.Dispose();
+        // 连接为进程级共享（GPU 探针也在用），不在此处 Dispose；
+        // 内核自带 90 秒空闲退出，宿主退出后自动回收。
+        _ = client;
     }
 
     private bool RustActive

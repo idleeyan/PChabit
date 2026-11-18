@@ -32,6 +32,9 @@ namespace PChabit.HardwareMonitor.Hardware
         private readonly PerformanceCounterManager _perfCounterManager;
 
         private readonly Dictionary<string, float> _lastValidMap = new();
+
+        /// <summary>GPU 传感器探针（Rust 内核 NVML）。接管后本拍跳过 LHM 的 GPU Update（85.7 ms → 2.7 ms）。</summary>
+        private readonly RustGpuProbe _gpuProbe = new();
         
         // 状态标记 (防止并发重载)
         private volatile bool _isReloading = false;
@@ -112,6 +115,8 @@ namespace PChabit.HardwareMonitor.Hardware
 
         public float? Get(string key)
         {
+            // GPU 指标优先走 Rust 内核（NVML 直读）；未接管时自动落回 LHM。
+            if (_gpuProbe.TryGet(key, out var probeValue)) return probeValue;
             return _isOpening ? _valueProvider.GetStartupValue(key) : _valueProvider.GetValue(key);
         }
 
@@ -172,6 +177,9 @@ namespace PChabit.HardwareMonitor.Hardware
 
                 _valueProvider.OnUpdateTickStarted();
 
+                // GPU 探针每拍刷新一次快照（管道往返约 0.2 ms）；未接管时此行不影响 LHM
+                if (requirements.NeedGpu) _gpuProbe.Tick();
+
                 lock (_lock)
                 {
                     // [Optimization] 极简维护
@@ -191,6 +199,8 @@ namespace PChabit.HardwareMonitor.Hardware
                         // [Fix #290] 显卡防闪退保护：双显卡切换时 Update 可能抛出异常
                         if (IsGpu(hw) && requirements.NeedGpu) 
                         { 
+                            // Rust 内核已接管 GPU 读数：跳过 LHM 的驱动级全量采样（实测 85.7 ms/拍）
+                            if (_gpuProbe.Active) continue;
                             if (!requirements.ForceAll && !ShouldUpdateGpuHardware(hw)) continue;
 
                             try { hw.Update(); }
