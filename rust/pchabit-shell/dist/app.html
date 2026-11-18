@@ -20,6 +20,7 @@
   nav button:hover { background:#16233a; }
   nav button.active { background:#1d2f4d; border-color:#3b82f6; color:#fff; }
   nav .foot { margin-top:auto; font-size:11px; color:#475569; padding:8px; }
+  nav .ver { font-size:10px; color:#334155; padding:0 8px 8px; }
 
   main { flex:1; min-width:0; display:flex; flex-direction:column; }
   header { height:40px; flex:none; display:flex; align-items:center; gap:12px;
@@ -42,6 +43,9 @@
     <button data-page="sankey">应用切换关系</button>
     <button data-page="analytics">活动分析</button>
     <button data-page="admin">分类管理</button>
+    <button data-page="settings">设置概览</button>
+    <div class="spacer"></div>
+    <div class="ver" id="ver"></div>
     <div class="foot" id="foot">—</div>
   </nav>
   <main>
@@ -56,9 +60,11 @@
 <script>
   var ASSET = { hardware:'pages/hardware-trend.html', activity:'pages/activity-trend.html',
                 category:'pages/piechart.html', sankey:'pages/sankey.html',
-                analytics:'pages/analytics.html', admin:'pages/categories.html' };
+                analytics:'pages/analytics.html', admin:'pages/categories.html',
+                settings:'pages/settings.html' };
   var TITLE = { hardware:'硬件趋势', activity:'每小时活动', category:'分类构成',
-                sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理' };
+                sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
+                settings:'设置概览' };
 
   var frame = document.getElementById('frame');
   var current = null;
@@ -94,6 +100,9 @@
     } else if (page === 'admin') {
       w.__ADMIN_DATA__ = d;
       if (w.renderAdmin) w.__ADMIN_RESULT__ = w.renderAdmin(d);
+    } else if (page === 'settings') {
+      w.__SET_DATA__ = d;
+      if (w.renderSettings) w.__SET_RESULT__ = w.renderSettings(d);
     }
   }
 
@@ -191,6 +200,9 @@
         var adminArr = (d && d.apps && d.apps.items) || [];
         meta.textContent = adminArr.length + ' 个进程 · 分类可直接改（写入数据库）';
         extra = ' ' + ((frame.contentWindow.__ADMIN_RESULT__) || '');
+      } else if (page === 'settings') {
+        meta.textContent = (d && d.count ? d.count : 0) + ' 项设置（只读，敏感项已打码）';
+        extra = ' ' + ((frame.contentWindow.__SET_RESULT__) || '');
       }
       note(page + ' 已渲染' + extra);
 
@@ -243,6 +255,7 @@
   });
 
   var pages = window.__PAGES__ || {};
+  document.getElementById('ver').textContent = 'v' + (window.__VER__ || '—') + ' · 预览';
   document.getElementById('foot').textContent =
     '数据：壳内 Rust 直读 SQLite · ' + Object.keys(pages).length + ' 页已注入';
 

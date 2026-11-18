@@ -220,3 +220,4 @@ rust/pchabit-datad/target/
 rust/pchabit-shell/dist/pages/*
 !rust/pchabit-shell/dist/pages/analytics.html
 !rust/pchabit-shell/dist/pages/categories.html
+!rust/pchabit-shell/dist/pages/settings.html

@@ -359,6 +359,7 @@ fn all_pages() -> serde_json::Value {
         "sankey": payload_sankey(),
         "analytics": report,
         "admin": payload_admin(),
+        "settings": payload_settings(),
     });
     log_line(&format!(
         "全部载荷就绪（{} 页）：{:.1} ms",
@@ -450,6 +451,87 @@ fn categories() -> Result<serde_json::Value, String> {
     pchabit_datad::categories_json(&pchabit_datad::default_db())
 }
 
+/// 设置概览（只读）：读 `%LOCALAPPDATA%\PChabit\settings.json`，敏感项打码。
+///
+/// 设置写成两份会互相覆盖，所以壳只显示不改；真正的写入仍归 WPF 版。
+fn payload_settings() -> serde_json::Value {
+    let path = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => {
+            log_line(&format!("settings: 读取失败 {e}"));
+            return serde_json::json!({
+                "path": path.display().to_string(),
+                "items": [],
+                "error": format!("{e}"),
+            });
+        }
+    };
+    let v: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            log_line(&format!("settings: 解析失败 {e}"));
+            return serde_json::json!({
+                "path": path.display().to_string(),
+                "items": [],
+                "error": format!("{e}"),
+            });
+        }
+    };
+
+    // 敏感项：只显示"已设置"，不回显任何内容（也不进日志）
+    let secret_keys = ["password", "apikey", "token", "secret"];
+    let items: Vec<serde_json::Value> = v
+        .as_object()
+        .map(|o| {
+            o.iter()
+                .map(|(k, val)| {
+                    let lower = k.to_lowercase();
+                    let is_secret = secret_keys.iter().any(|s| lower.contains(s));
+                    let set = match val {
+                        serde_json::Value::Null => false,
+                        serde_json::Value::String(s) => !s.trim().is_empty(),
+                        _ => true,
+                    };
+                    if is_secret {
+                        serde_json::json!({
+                            "key": k,
+                            "kind": "secret",
+                            "masked": true,
+                            "set": set,
+                        })
+                    } else {
+                        let kind = match val {
+                            serde_json::Value::Bool(_) => "bool",
+                            serde_json::Value::Number(_) => "number",
+                            _ => "string",
+                        };
+                        serde_json::json!({ "key": k, "kind": kind, "value": val })
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let masked = items.iter().filter(|i| i["masked"].as_bool().unwrap_or(false)).count();
+    log_line(&format!(
+        "settings: {} 项（{} 项敏感已打码）",
+        items.len(),
+        masked
+    ));
+    serde_json::json!({
+        "path": path.display().to_string(),
+        "count": items.len(),
+        "maskedCount": masked,
+        "items": items,
+    })
+}
+
+// 壳的版本号（与 WPF 版对齐，发布时一起改）
+const VERSION: &str = "3.96.0";
+
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]
     let mut argv = std::env::args().skip(1);
@@ -459,7 +541,9 @@ fn main() {
     // 五页数据在窗口创建时一次算好，注入 window.__PAGES__：
     // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
     let pages = all_pages();
-    let inject = format!("window.__PAGES__ = {pages};");
+    let inject = format!(
+        "window.__PAGES__ = {pages};window.__VER__ = '{VERSION}';"
+    );
 
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![

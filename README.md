@@ -21,6 +21,8 @@
 - **Rust 采样内核**：进程网络采样、GPU 传感器读取、前台窗口监控由独立 Rust 进程（`rust/pchabit-netd`）承担；可用 `PCHABIT_RUST_NETSAMPLER=0` / `PCHABIT_RUST_GPU=0` / `PCHABIT_RUST_APPMON=0` 分别关闭
 - **Rust 数据面**：应用统计（查询 + 聚合 + 环比）、应用详情（会话 + 键鼠切片 + 硬件归属）、分析页计算（KPI / 日历 / 热力 / 构成 / 洞察 / 硬件画像）与 Excel 导出（xlsx 生成）全部由 `rust/pchabit-datad` 承担；统计、详情、分析页在 Rust 不可用时回退 C# 引擎，导出则直接报错（不再有 EPPlus 兜底，产品已无带许可证的表格库依赖）。可用 `PCHABIT_RUST_STATS=0` / `PCHABIT_RUST_DETAIL=0` / `PCHABIT_RUST_ANALYTICS=0` / `PCHABIT_RUST_XLSX=0` 分别关闭
 
+- **Tauri 壳预览（P4-1）**：发布包内 `Shell\PChabitShell.exe` 是一个 Tauri 2 的单窗口壳，七页（硬件趋势 / 每小时活动 / 分类构成 / 应用切换关系 / 活动分析 / 分类管理 / 设置概览），数据由壳内的 Rust 直接读 SQLite，七页冷启动约 0.47 s、体积 4.6 MB。分类可在壳里直接改；设置页只读且对口令与 API Key 打码。默认入口仍是 WPF 版。
+
 ### 数据分析与复盘
 
 - **复盘驾驶舱**：多源 KPI、构成 / 节奏分析、时序图

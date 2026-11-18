@@ -1,13 +1,20 @@
 [package]
 name = "pchabit-shell"
-version = "0.1.0"
+version = "3.96.0"
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["wry"] }
 serde_json = "1"
 # P4-1：壳直接复用数据面库，不再起子进程做 IPC
 pchabit-datad = { path = "../pchabit-datad" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = "s"
+panic = "abort"

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>PChabit 设置概览</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; background:#0f172a; color:#e2e8f0;
+    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
+  #wrap { padding:14px 16px 24px; }
+  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
+  .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; word-break:break-all; }
+  .hint { background:#16233a; border-left:3px solid #3b82f6; border-radius:8px;
+    padding:8px 10px; color:#94a3b8; font-size:11px; margin-bottom:14px; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1; }
+  .row { display:flex; justify-content:space-between; gap:10px; padding:3px 0;
+    border-bottom:1px solid #1b2436; }
+  .row:last-child { border-bottom:0; }
+  .k { color:#94a3b8; font-size:11px; }
+  .v { font-size:11px; text-align:right; word-break:break-all; }
+  .on { color:#34d399; } .off { color:#64748b; }
+  .mask { color:#f59e0b; }
+  .unset { color:#475569; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>设置概览</h1>
+  <div class="sub" id="path"></div>
+  <div class="hint">这里只读。设置文件由 WPF 版读写，壳不去碰，避免两边互相覆盖。</div>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+  // 分组靠固定表，未知键归到"其他"
+  var GROUPS = [
+    ['通用', ['StartWithWindows','MinimizeToTray','ShowNotifications','AutoStartMonitoring','CurrentTheme','CurrentLanguage','DailyUsageGoalHours']],
+    ['采集', ['MonitoringInterval','IdleThreshold','TrackKeyboard','TrackMouse','TrackWebBrowsing','AnonymizeData','RetentionDays','DataRetentionDays','AutoCleanupEnabled','ArchiveBeforeCleanup']],
+    ['网络与同步', ['WebSocketPort','WebDAVEnabled','WebDAVUrl','WebDAVUsername','WebDAVLastSync','BrowserSyncEnabled','BrowserHistoryIngestEnabled','BrowserSyncIntervalMinutes','BrowserAutoPush']],
+    ['备份', ['BackupPath','AutoBackupEnabled','AutoBackupIntervalHours','MaxBackupCount','MaxCloudBackupCount']],
+    ['任务栏', ['TaskbarEnabled','TaskbarShowCpu','TaskbarShowMemory','TaskbarShowGpu','TaskbarShowNet','TaskbarShowDisk','TaskbarShowTemp','TaskbarShowUsage']],
+    ['桌面组件', ['DesktopWidgetEnabled','DesktopWidgetTopmost','DesktopWidgetClickThrough','DesktopWidgetScreen','DesktopWidgetWidth','DesktopWidgetHeight']],
+    ['AI', ['AiInsightsEnabled','AiEndpointMode','AiModel','AiLocalModel','AiCloudModel','AiTimeoutSeconds','AiStrictPrivacy','AiAutoWeeklyInsight']],
+    ['便签', ['StickyNotesEnabled','StickyNotesHotkeyNew','StickyNotesHotkeyBoard','StickyNotesSyncEnabled','StickyNotesRetentionDays']]
+  ];
+
+  function fmt(it) {
+    if (it.kind === 'secret') {
+      var e = document.createElement('span');
+      e.className = it.set ? 'mask' : 'unset';
+      e.textContent = it.set ? '已设置（不回显）' : '未设置';
+      return e;
+    }
+    if (it.kind === 'bool') {
+      var b = document.createElement('span');
+      b.className = it.value ? 'on' : 'off';
+      b.textContent = it.value ? '开' : '关';
+      return b;
+    }
+    var s = document.createElement('span');
+    s.textContent = (it.value === null || it.value === undefined) ? '—' : String(it.value);
+    if (s.textContent === '' || s.textContent === '—') s.className = 'unset';
+    return s;
+  }
+
+  function render(d) {
+    if (!d) return 'error: no data';
+    document.getElementById('path').textContent =
+      d.path + '　' + (d.count || 0) + ' 项' + (d.error ? '　读取失败：' + d.error : '') +
+      '　敏感打码 ' + (d.maskedCount || 0) + ' 项';
+    if (d.error) return 'error: ' + d.error;
+
+    var byKey = {};
+    (d.items || []).forEach(function (i) { byKey[i.key] = i; });
+
+    var grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    var used = {};
+
+    GROUPS.forEach(function (g) {
+      var known = g[1].filter(function (k) { return byKey[k]; });
+      if (!known.length) return;
+      known.forEach(function (k) { used[k] = true; });
+      grid.appendChild(section(g[0], known.map(function (k) { return byKey[k]; })));
+    });
+
+    var others = (d.items || []).filter(function (i) { return !used[i.key]; });
+    if (others.length) grid.appendChild(section('其他', others));
+
+    return 'ok: ' + (d.count || 0) + ' 项 / ' + grid.children.length + ' 组';
+  }
+
+  function section(title, items) {
+    var s = document.createElement('section');
+    var h = document.createElement('h2');
+    h.textContent = title;
+    s.appendChild(h);
+    items.forEach(function (it) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      var k = document.createElement('span');
+      k.className = 'k';
+      k.textContent = it.key;
+      var v = document.createElement('span');
+      v.className = 'v';
+      v.appendChild(fmt(it));
+      row.appendChild(k);
+      row.appendChild(v);
+      s.appendChild(row);
+    });
+    return s;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.__SET_DATA__) {
+      try { window.__SET_RESULT__ = render(window.__SET_DATA__); }
+      catch (e) { window.__SET_RESULT__ = 'error: ' + e.message; }
+    }
+  });
+
+  window.renderSettings = function (d) {
+    window.__SET_DATA__ = d;
+    return render(d);
+  };
+</script>
+</body>
+</html>

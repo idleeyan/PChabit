@@ -2,6 +2,43 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [3.96.0] - 2026-11-18
+
+### 新增：Tauri 壳预览版（P4-1）随包发布
+
+P4（UI 换壳）推进到能用的程度：Tauri 2 壳七个页面全部搬通，数据由壳内的 Rust 直接读 SQLite，
+不再经 WPF 中转。壳以**预览**形式放进发布包（`Shell\PChabitShell.exe`），默认入口仍是 WPF 版。
+
+**页面**（左侧导航，单窗口 + iframe，图表资产零改动）：
+
+- 硬件趋势 / 每小时活动 / 分类构成 / 应用切换关系 —— 复用 WPF 的四个 HTML，只喂数据
+- 活动分析 —— 壳里新写的页面（11 张 KPI 卡、近两周日历、24h 分布、分类横条、Top 变化、洞察）
+- 分类管理 —— 新写的写操作页：104 个进程的分类下拉、新建分类、启用/停用分类
+- 设置概览 —— 只读，敏感项（WebDAV 密码 / 两个 AI Key）自动打码，设置写入仍归 WPF 版
+
+**壳的性能**（release，lto + strip，4.6 MB）：七页载荷冷启动 **465.7 ms**（debug 版 1189.9 ms）。
+
+### 关键实现选择
+
+- **数据在窗口创建时一次算完，注入 `window.__PAGES__`**，渲染阶段完全不碰 IPC。
+  第一版在 iframe 的 load 回调里 `invoke(...)`，硬件/分类/桑基正常，活动页必崩
+  `Maximum call stack size exceeded`——换 `postMessage`、子窗口 `eval`、try/catch 打点都无效，
+  改注入后四页一次全过。
+- **页面资产必须走 `WebviewUrl::App`（asset 协议）**，用 `External("file:///…")` 指 WPF 的 Assets
+  能加载、`on_page_load` 也有事件，但页面里 `invoke` 永远不返回。
+- **饼图补齐两个口径**：按分类（全部分类，对齐 C# `CategoryShares`）、按应用（Top 8 + 其他 `#8B5CF6`，
+  对齐 `PieSlices`）。之前壳吃的是 `analytics.categoryShares`，那份会丢掉不足 5 分钟的分类
+  （实测少 3 个分类、合计 4.4 分钟），饼图改走 `stats` 全量。
+- **写操作口径照抄 C# `CategoryService`**：`ProcessName` 大小写不敏感 upsert、时间戳 7 位小数、
+  停用只把 `IsActive` 置 0 不删行、名称在启用分类里查重。
+- **`pchabit-datad` 拆成 lib + bin**，壳直接 `path` 依赖复用同一份实现；`default_db()` 支持
+  `PCHABIT_DB` 覆盖，写测试全部指向库副本，真实库零写入。
+
+### 已知边界
+
+- 壳只读 + 分类管理写；设置写入、便签、AI 等仍只在 WPF 版。
+- 双跑期尚未定：壳与 WPF 并行多久、何时切换默认入口。
+
 ## [3.95.0] - 2026-11-18
 
 ### 变更：前台窗口采样从 1 Hz 提到 500 ms（P2 尾巴）
