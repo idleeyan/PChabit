@@ -36,6 +36,7 @@ fn main() {
     let result = match mode.as_str() {
         "stats" => run_stats(&db),
         "detail" => run_detail(&db),
+        "xlsx" => run_xlsx(),
         _ => run_probe(&db, &date),
     };
 
@@ -984,6 +985,173 @@ fn ymd_from_days(z: i64) -> (i64, i64, i64) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = if m <= 2 { y + 1 } else { y };
     (year, m, d)
+}
+
+// ==================== XLSX 写出 ====================
+
+/// 通用工作簿写出：C# 负责组织数据（它持有领域对象），Rust 负责生成文件。
+///
+/// 请求：
+/// ```json
+/// {"file":"C:\\x\\a.xlsx","sheets":[{"name":"概览","title":"标题","widths":[20,50],
+///   "kv":[["导出时间","2026-11-18 20:00:00"]],"headers":["ID","进程名"],"rows":[[1,"a.exe"]]}]}
+/// ```
+/// 支持：标题合并居中加粗、键值区块、表头灰底加粗、列宽、冻结表头。数值写为数字并带 0.00 格式。
+fn run_xlsx() -> Result<(), String> {
+    use rust_xlsxwriter::{Format, Workbook};
+
+    let mut buf = String::new();
+    std::io::stdin()
+        .read_to_string(&mut buf)
+        .map_err(|e| e.to_string())?;
+    let req: serde_json::Value =
+        serde_json::from_str(&buf).map_err(|e| format!("请求 JSON 解析失败: {e}"))?;
+
+    let file = req
+        .get("file")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "缺少字段 file".to_string())?
+        .to_string();
+
+    let t0 = Instant::now();
+    let mut wb = Workbook::new();
+
+    let title_fmt = Format::new().set_bold().set_font_size(16);
+    let num_fmt = Format::new().set_num_format("0.00");
+    let header_fmt = Format::new()
+        .set_bold()
+        .set_background_color(rust_xlsxwriter::Color::RGB(0xD9D9D9));
+
+    let sheets = req
+        .get("sheets")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "缺少字段 sheets".to_string())?
+        .clone();
+
+    let mut written_rows = 0usize;
+
+    for s in sheets {
+        let name = s.get("name").and_then(|v| v.as_str()).unwrap_or("Sheet");
+        let ws = wb.add_worksheet();
+        ws.set_name(name).map_err(|e| e.to_string())?;
+
+        let widths: Vec<f64> = s
+            .get("widths")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|x| x.as_f64()).collect())
+            .unwrap_or_default();
+        for (i, w) in widths.iter().enumerate() {
+            ws.set_column_width(i as u16, *w).map_err(|e| e.to_string())?;
+        }
+
+        let mut row: u32 = 0;
+
+        if let Some(title) = s.get("title").and_then(|v| v.as_str()) {
+            let cols = widths.len().max(2) as u16;
+            ws.merge_range(row, 0, row, cols - 1, title, &title_fmt)
+                .map_err(|e| e.to_string())?;
+            row += 2;
+        }
+
+        if let Some(kv) = s.get("kv").and_then(|v| v.as_array()) {
+            for item in kv {
+                let arr = item.as_array();
+                if let Some(arr) = arr {
+                    if let Some(label) = arr.first().and_then(|v| v.as_str()) {
+                        ws.write_string(row, 0, label).map_err(|e| e.to_string())?;
+                    }
+                    if let Some(v) = arr.get(1) {
+                        write_cell(ws, row, 1, v, &num_fmt, &header_fmt)?;
+                    }
+                }
+                row += 1;
+            }
+            row += 1;
+        }
+
+        let mut header_rows = 0u16;
+        if let Some(headers) = s.get("headers").and_then(|v| v.as_array()) {
+            if !headers.is_empty() {
+                for (c, h) in headers.iter().enumerate() {
+                    let text = h.as_str().unwrap_or("");
+                    ws.write_string_with_format(row, c as u16, text, &header_fmt)
+                        .map_err(|e| e.to_string())?;
+                }
+                header_rows = 1;
+                row += 1;
+            }
+        }
+
+        if let Some(rows) = s.get("rows").and_then(|v| v.as_array()) {
+            for r in rows {
+                if let Some(cells) = r.as_array() {
+                    for (c, v) in cells.iter().enumerate() {
+                        write_cell(ws, row, c as u16, v, &num_fmt, &header_fmt)?;
+                    }
+                    written_rows += 1;
+                }
+                row += 1;
+            }
+        }
+
+        if header_rows > 0 {
+            ws.set_freeze_panes(header_rows as u32, 0)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    if let Some(parent) = std::path::Path::new(&file).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    wb.save(&file).map_err(|e| format!("保存失败: {e}"))?;
+
+    let bytes = std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0);
+    let payload = serde_json::json!({
+        "ok": true,
+        "path": file,
+        "bytes": bytes,
+        "rows": written_rows,
+        "ms": t0.elapsed().as_secs_f64() * 1000.0,
+    });
+    println!("{}", serde_json::to_string(&payload).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+fn write_cell(
+    ws: &mut rust_xlsxwriter::Worksheet,
+    row: u32,
+    col: u16,
+    v: &serde_json::Value,
+    num_fmt: &rust_xlsxwriter::Format,
+    _header_fmt: &rust_xlsxwriter::Format,
+) -> Result<(), String> {
+    match v {
+        serde_json::Value::Null => Ok(()),
+        serde_json::Value::Bool(b) => ws
+            .write_string(row, col, if *b { "是" } else { "否" })
+            .map_err(|e| e.to_string())
+            .map(|_| ()),
+        serde_json::Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                ws.write_number_with_format(row, col, f, num_fmt)
+                    .map_err(|e| e.to_string())
+                    .map(|_| ())
+            } else {
+                ws.write_string(row, col, &n.to_string())
+                    .map_err(|e| e.to_string())
+                    .map(|_| ())
+            }
+        }
+        serde_json::Value::String(s) => ws
+            .write_string(row, col, s)
+            .map_err(|e| e.to_string())
+            .map(|_| ()),
+        other => ws
+            .write_string(row, col, &other.to_string())
+            .map_err(|e| e.to_string())
+            .map(|_| ()),
+    }
 }
 
 // ==================== 口径工具 ====================

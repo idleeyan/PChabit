@@ -19,7 +19,7 @@
 - **应用 × 硬件融合画像**：查看某个应用运行期间的硬件占用情况
 - **进程级流量排行**：点击任务栏网速小窗弹出浮窗，按进程实时 ↓/↑ 排序并给出今日累计（按进程归因需管理员权限）
 - **Rust 采样内核**：进程网络采样、GPU 传感器读取、前台窗口监控由独立 Rust 进程（`rust/pchabit-netd`）承担；可用 `PCHABIT_RUST_NETSAMPLER=0` / `PCHABIT_RUST_GPU=0` / `PCHABIT_RUST_APPMON=0` 分别关闭
-- **Rust 数据面**：应用统计（查询 + 聚合 + 环比）与应用详情（会话 + 键鼠切片 + 硬件归属）由 `rust/pchabit-datad` 只读直接查 SQLite 完成，缺失或异常时回退 C# 引擎；可用 `PCHABIT_RUST_STATS=0` / `PCHABIT_RUST_DETAIL=0` 分别关闭
+- **Rust 数据面**：应用统计（查询 + 聚合 + 环比）、应用详情（会话 + 键鼠切片 + 硬件归属）与 Excel 导出（xlsx 生成）由 `rust/pchabit-datad` 承担，缺失或异常时回退 C# 实现；可用 `PCHABIT_RUST_STATS=0` / `PCHABIT_RUST_DETAIL=0` / `PCHABIT_RUST_XLSX=0` 分别关闭
 
 ### 数据分析与复盘
 
