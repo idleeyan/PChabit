@@ -53,34 +53,4 @@ public class HabitTrajectoryAndFeedbackTests
         var days = Enumerable.Range(1, 5).Select(i => Day(i)).ToList();
         HabitTrajectoryBuilder.Build(days).Should().BeEmpty();
     }
-
-    [Fact]
-    public void PlanFeedback_CountsStatus()
-    {
-        var items = new List<AiPlanItem>
-        {
-            new() { Title = "A", Status = "done" },
-            new() { Title = "B", Status = "skipped" },
-            new() { Title = "C", Status = "pending" }
-        };
-        var fb = AiPlanFeedbackBuilder.FromPlan(items);
-        fb.Total.Should().Be(3);
-        fb.Done.Should().Be(1);
-        fb.Skipped.Should().Be(1);
-        fb.OftenDone.Should().Contain("A");
-        fb.OftenSkipped.Should().Contain("B");
-    }
-
-    [Fact]
-    public void MarkdownExporter_IncludesSections()
-    {
-        var raw = """{"summary":"本周专注下滑","findings":[{"title":"f","detail":"d"}],"plan":[{"title":"早收工","detail":"x"}],"risks":["r"]}""";
-        var parsed = PChabit.Infrastructure.Formatters.AnalyticsAiResponseParser.Parse(raw);
-        var md = PChabit.Infrastructure.Formatters.AiInsightMarkdownExporter.Export(
-            "本周", new DateTime(2026, 9, 22), new DateTime(2026, 9, 29), parsed);
-        md.Should().Contain("结论");
-        md.Should().Contain("周计划");
-        md.Should().Contain("早收工");
-        md.Should().Contain("风险");
-    }
 }

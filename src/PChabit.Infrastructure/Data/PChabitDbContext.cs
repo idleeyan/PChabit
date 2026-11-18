@@ -21,7 +21,6 @@ public class PChabitDbContext : DbContext
     public DbSet<EfficiencyScore> EfficiencyScores { get; set; }
     public DbSet<WorkPattern> WorkPatterns { get; set; }
     public DbSet<InsightReport> InsightReports { get; set; }
-    public DbSet<AiInsightSnapshot> AiInsightSnapshots { get; set; }
     public DbSet<DailySummary> DailySummaries { get; set; }
 
     public DbSet<BrowserSyncMeta> BrowserSyncMetas { get; set; }
@@ -61,7 +60,6 @@ public class PChabitDbContext : DbContext
         ConfigureEfficiencyScore(modelBuilder);
         ConfigureWorkPattern(modelBuilder);
         ConfigureInsightReport(modelBuilder);
-        ConfigureAiInsightSnapshot(modelBuilder);
         ConfigureDailySummary(modelBuilder);
             ConfigureBrowserHistory(modelBuilder);
             ConfigureAppDailyStats(modelBuilder);
@@ -343,24 +341,6 @@ public class PChabitDbContext : DbContext
                 v => Guid.Parse(v));
             entity.HasIndex(e => e.ReportType);
             entity.HasIndex(e => e.StartDate);
-        });
-    }
-
-    private static void ConfigureAiInsightSnapshot(ModelBuilder modelBuilder)
-    {
-        modelBuilder.Entity<AiInsightSnapshot>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasConversion(
-                v => v.ToString(),
-                v => Guid.Parse(v));
-            entity.HasIndex(e => e.PeriodKey);
-            entity.HasIndex(e => e.CreatedAt);
-
-            entity.Property(e => e.CreatedAt)
-                .HasConversion(
-                    v => v.ToString("yyyy-MM-dd HH:mm:ss"),
-                    v => DateTime.SpecifyKind(DateTime.Parse(v), DateTimeKind.Unspecified));
         });
     }
 

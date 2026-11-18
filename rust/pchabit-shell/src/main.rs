@@ -619,7 +619,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "3.99.0";
+const VERSION: &str = "4.0.0";
 
 fn main() {
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]

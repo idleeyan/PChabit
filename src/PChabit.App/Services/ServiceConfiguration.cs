@@ -113,7 +113,6 @@ public static class ServiceConfiguration
         // 数据导出服务（原在 AddTaiInfrastructure 中但该方法未被调用）
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
         services.AddSingleton<IExportFormatter, MarkdownExportFormatter>();
-        services.AddSingleton<IExportFormatter, AiPromptExportFormatter>();
         services.AddSingleton<IExportFormatter, CsvExportFormatter>();
         services.AddSingleton<IExportFormatter, ExcelExportFormatter>();
         services.AddScoped<IExportService, ExportService>();
@@ -131,11 +130,6 @@ public static class ServiceConfiguration
         services.AddTransient<NetworkTrafficViewModel>();
         services.AddTransient<TimelineViewModel>();
         services.AddTransient<AnalyticsViewModel>();
-        services.AddSingleton<IAiChatService, AiChatService>();
-        services.AddSingleton<AiSettingsSyncService>();
-        services.AddSingleton<IAnalyticsAiService, AnalyticsAiService>();
-        services.AddSingleton<IAiInsightHistoryService, AiInsightHistoryService>();
-        services.AddSingleton<IWeeklyAiInsightService, WeeklyAiInsightService>();
         services.AddTransient<DataManagementViewModel>();
         services.AddTransient<DetailDialogViewModel>();
         services.AddTransient<AppStatsViewModel>();

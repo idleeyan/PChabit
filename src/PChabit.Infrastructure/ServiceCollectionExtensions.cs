@@ -37,7 +37,6 @@ public static class ServiceCollectionExtensions
         
         services.AddSingleton<IExportFormatter, JsonExportFormatter>();
         services.AddSingleton<IExportFormatter, MarkdownExportFormatter>();
-        services.AddSingleton<IExportFormatter, AiPromptExportFormatter>();
         services.AddSingleton<IExportFormatter, CsvExportFormatter>();
         services.AddSingleton<IExportFormatter, ExcelExportFormatter>();
         services.AddScoped<IExportService, ExportService>();

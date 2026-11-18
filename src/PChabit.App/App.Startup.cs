@@ -55,22 +55,6 @@ public partial class App : Microsoft.UI.Xaml.Application
             _dataCollectionService.Start();
             Log.Information("数据收集服务已启动");
 
-            // 周自动 AI 解读（延迟 2 分钟，避免抢启动 IO）
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(TimeSpan.FromMinutes(2));
-                    var weekly = _serviceProvider!.GetService<Infrastructure.Services.IWeeklyAiInsightService>();
-                    if (weekly is not null)
-                        await weekly.TryRunWeeklyAsync();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning(ex, "周自动 AI 解读调度失败");
-                }
-            });
-
             // 硬件监控（LiteMonitor 核心移植）
             _hardwareMonitorService = _serviceProvider!.GetRequiredService<HardwareMonitorService>();
             _hardwareMonitorService.Start();

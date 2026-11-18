@@ -76,35 +76,6 @@ public interface ISettingsService
     /// <summary>尺寸记忆：窗口物理高，-1 表示未保存。</summary>
     int DesktopWidgetHeight { get; set; }
 
-    /// <summary>分析页「AI 深度解读」总开关（默认关）。仅上传聚合指标。</summary>
-    bool AiInsightsEnabled { get; set; }
-    /// <summary>OpenAI 兼容 BaseUrl，如 https://api.openai.com/v1 或本地 Ollama。</summary>
-    string AiBaseUrl { get; set; }
-    string AiApiKey { get; set; }
-    string AiModel { get; set; }
-    /// <summary>AI Provider：zhipu | deepseek | lmstudio | custom</summary>
-    string AiProvider { get; set; }
-    /// <summary>AI 解读超时（秒）。本地大模型推理慢，默认 300；范围 30–900。</summary>
-    int AiTimeoutSeconds { get; set; }
-    /// <summary>追问用快捷模型（空则与 AiModel 相同）。</summary>
-    string AiModelFast { get; set; }
-    // ===== 双端点（本地 LM Studio + 云端）=====
-    /// <summary>本地端点 Base URL，如 http://127.0.0.1:1234/v1</summary>
-    string AiLocalBaseUrl { get; set; }
-    /// <summary>本地模型名</summary>
-    string AiLocalModel { get; set; }
-    /// <summary>云端 Base URL（空则回退 AiBaseUrl）</summary>
-    string AiCloudBaseUrl { get; set; }
-    /// <summary>云端 API Key</summary>
-    string AiCloudApiKey { get; set; }
-    /// <summary>云端模型（空则回退 AiModel）</summary>
-    string AiCloudModel { get; set; }
-    /// <summary>端点模式：cloud | local | dual（解读云端、追问本地）</summary>
-    string AiEndpointMode { get; set; }
-    /// <summary>严格隐私：出域指标包不含应用/分类显示名，仅数值与标签。</summary>
-    bool AiStrictPrivacy { get; set; }
-    /// <summary>每周自动跑一次 AI 解读（需先启用 AI）。</summary>
-    bool AiAutoWeeklyInsight { get; set; }
     /// <summary>书签库整树自动推送到浏览器。</summary>
     bool BrowserAutoPush { get; set; }
 

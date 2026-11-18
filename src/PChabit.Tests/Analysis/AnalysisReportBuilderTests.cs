@@ -69,22 +69,4 @@ public class AnalysisReportBuilderTests
         q.HardwareSampleMinutes.Should().Be(1);
         q.Summary.Should().Contain("硬件");
     }
-
-    [Fact]
-    public void BuildAiPayload_IsValidJson_WithoutSensitiveFields()
-    {
-        var payload = AnalysisReportBuilder.BuildAiPayload(SampleReport());
-        payload.Should().Contain("Kpis");
-        payload.Should().Contain("Hardware");
-        payload.Should().NotContain("WindowTitle");
-        payload.Should().NotContain("http://");
-        System.Text.Json.JsonDocument.Parse(payload); // 不抛即合法
-    }
-
-    [Fact]
-    public void SystemPrompt_MentionsJsonAndChinese()
-    {
-        AnalysisReportBuilder.SystemPrompt.Should().Contain("简体中文");
-        AnalysisReportBuilder.SystemPrompt.Should().Contain("JSON");
-    }
 }

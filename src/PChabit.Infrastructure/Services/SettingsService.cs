@@ -7,6 +7,19 @@ public partial class SettingsService : ISettingsService
     private readonly string _settingsPath;
     private AppSettings _settings;
 
+    public bool BrowserAutoPush
+    {
+        get => _settings.BrowserAutoPush;
+        set
+        {
+            if (_settings.BrowserAutoPush != value)
+            {
+                _settings.BrowserAutoPush = value;
+                SettingsChanged?.Invoke(this, new SettingsChangedEventArgs { PropertyName = nameof(BrowserAutoPush) });
+            }
+        }
+    }
+
     public bool StartWithWindows 
     { 
         get => _settings.StartWithWindows; 

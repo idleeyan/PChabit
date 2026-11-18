@@ -27,7 +27,7 @@ namespace PChabit.Infrastructure.Services;
 ///   PUT  /api/apps/description {"process":"xx","description":"..."}  修改应用说明
 ///   GET  /api/summary?period=today        分析汇总（KPI/热力/构成/洞察/键鼠网页硬件流量）
 ///   GET  /api/settings                    全部设置（camelCase key）
-///   PUT  /api/settings {"key":"AiBaseUrl","value":"..."}  修改设置（白名单属性 + 类型转换，自动 Save）
+///   PUT  /api/settings {"key":"StartWithWindows","value":true}  修改设置（白名单属性 + 类型转换，自动 Save）
 /// </summary>
 public class AiCommandDispatcher
 {

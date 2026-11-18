@@ -138,10 +138,6 @@ public class PersonalBaselineBuilderTests
         var b = PersonalBaselineBuilder.Build(days);
         var devs = PersonalBaselineBuilder.ComputeDeviations(b, activeMinutes: 420, focusMinutes: 70, nightMinutes: 30, switchPerHour: 25);
         devs.Select(d => d.MetricId).Should().Contain(new[] { "activeMinutes", "focusMinutes", "nightMinutes", "switchPerHour" });
-
-        var summary = PersonalBaselineBuilder.ToAiSummary(b);
-        summary.Should().ContainKey("mature");
-        summary.Should().ContainKey("nightMinutesWeekday");
     }
 
     [Fact]

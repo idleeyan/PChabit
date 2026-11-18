@@ -52,31 +52,7 @@ public static class PersonalBaselineBuilder
             Mature: weekday.Count >= MinMatureWeekdays);
     }
 
-    /// <summary>把基线压成 AI 可读摘要（无原文）。</summary>
-    public static Dictionary<string, object> ToAiSummary(PersonalBaseline b)
-    {
-        static Dictionary<string, object> S(BaselineStat s) => new()
-        {
-            ["p50"] = s.P50,
-            ["p90"] = s.P90,
-            ["count"] = s.Count
-        };
-
-        return new Dictionary<string, object>
-        {
-            ["mature"] = b.Mature,
-            ["sampleDays"] = b.SampleDays,
-            ["activeMinutesWeekday"] = S(b.ActiveMinutesWeekday),
-            ["focusMinutesWeekday"] = S(b.FocusMinutesWeekday),
-            ["nightMinutesWeekday"] = S(b.NightMinutesWeekday),
-            ["switchPerHourWeekday"] = S(b.SwitchPerHourWeekday),
-            ["note"] = b.Mature
-                ? "偏离请相对 p50/p90 解读，不要用绝对好坏评判"
-                : "基线样本不足，只做描述，不下「异常」结论"
-        };
-    }
-
-    /// <summary>本周相对基线的关键偏离（供 ruleInsights / AI evidence）。</summary>
+    /// <summary>本周相对基线的关键偏离（供规则洞察使用）。</summary>
     public static List<AiDeviation> ComputeDeviations(
         PersonalBaseline baseline,
         double activeMinutes,

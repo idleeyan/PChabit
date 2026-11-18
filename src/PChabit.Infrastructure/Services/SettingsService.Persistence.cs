@@ -179,28 +179,6 @@ internal class AppSettings
     public int DesktopWidgetWidth { get; set; } = -1;
     public int DesktopWidgetHeight { get; set; } = -1;
 
-    public bool AiInsightsEnabled { get; set; } = false;
-    public string AiBaseUrl { get; set; } = "https://api.openai.com/v1";
-    public string AiApiKey { get; set; } = "";
-    public string AiModel { get; set; } = "glm-4-flash";
-    public string AiProvider { get; set; } = "zhipu";
-    /// <summary>AI 请求超时秒数；本地模型建议 ≥300。</summary>
-    public int AiTimeoutSeconds { get; set; } = 300;
-    /// <summary>追问用快捷模型；空表示与 AiModel 相同。</summary>
-    public string AiModelFast { get; set; } = "";
-    /// <summary>本地 LM Studio / Ollama 端点。</summary>
-    public string AiLocalBaseUrl { get; set; } = "http://127.0.0.1:1234/v1";
-    public string AiLocalModel { get; set; } = "local-model";
-    /// <summary>云端端点；空则回退 AiBaseUrl/AiModel。</summary>
-    public string AiCloudBaseUrl { get; set; } = "";
-    public string AiCloudApiKey { get; set; } = "";
-    public string AiCloudModel { get; set; } = "";
-    /// <summary>cloud | local | dual</summary>
-    public string AiEndpointMode { get; set; } = "cloud";
-    /// <summary>严格隐私：出域不含应用/分类显示名。</summary>
-    public bool AiStrictPrivacy { get; set; } = false;
-    /// <summary>每周自动 AI 解读。</summary>
-    public bool AiAutoWeeklyInsight { get; set; } = false;
     public bool BrowserAutoPush { get; set; } = false;
 
     // ===== 便签（3.24.0）=====

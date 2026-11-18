@@ -2,6 +2,35 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.0.0] - 2026-11-18
+
+### 清掉残留的 AI 服务链（WPF 侧）
+
+前几个版本已经把 AI 相关**界面**删掉了（3.57 分析页「AI 深度解读/洞察」整块、3.64 设置页
+AI 分区），但**服务链本身一直还在跑**：
+
+- `AnalyticsAiService` / `AiChatService` / `AiInsightHistoryService` / `WeeklyAiInsightService`
+  四个单例仍在 DI 里注册；
+- `WeeklyAiInsightService.TryRunWeeklyAsync()` 在启动 2 分钟后仍会被调度——**没有界面入口，
+  但只要你配过 API Key，它就会按周拿 Key 发请求**；
+- 仪表盘每次进页面还会调 `RequestAiSummaryAsync()` 覆盖今日速览；
+- `AppSettings` 里还有 15 个 `Ai*` 项、`AiInsightSnapshots` 实体与建表逻辑也都还在。
+
+本版把这些全部摘掉：删 15 个文件（4 个服务 + `OpenAiCompatibleChatClient` + `SettingsService.Ai.cs`
++ `AiContextPack` / `AiInsightDeduper` / `AiInsightMarkdownExporter` / `AiPromptExportFormatter`
++ `AiInsightSnapshot` 实体 + `AiEndpointSlot`），DI、启动调度、仪表盘、设置、DbContext、
+建表、导出格式列表同步清理。仪表盘「今日速览」保留纯本地规则摘要，不再有任何网络调用。
+
+**顺带发现的坑**：`SettingsService.Ai.cs` 里混着一个与 AI 无关的 `BrowserAutoPush`
+（浏览器书签自动推送），整文件删掉会让 `ISettingsService` 缺实现、编译直接失败。
+已把它搬回 `SettingsService.cs` 主体。
+
+**删除面**：`ai-prompt` 导出格式与 `/api/settings` 里的 AI 键白名单一起失效（PUT 未知键会返回 400）。
+`settings.json` 里已有的 15 个 `Ai*` 键**保留原样不主动删**（避免误删用户的 API Key），
+下次 WPF 保存设置时它们才会自然消失；壳的设置页仍会对这些键打码显示。
+
+测试从 212 降到 186（删掉 26 个只测 AI 解析/哨兵/历史的用例），全绿。
+
 ## [3.99.0] - 2026-11-18
 
 ### 撤掉「AI 洞察」页（按实际功能状态）

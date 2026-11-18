@@ -14,18 +14,14 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardSnapshot>
 {
     private readonly DashboardQueryService _queryService;
     private readonly IAppIconService _iconService;
-    private readonly Infrastructure.Services.IAnalyticsAiService _aiService;
-
     public DashboardViewModel(
         DashboardQueryService queryService,
-        IAppIconService iconService,
-        Infrastructure.Services.IAnalyticsAiService aiService) : base()
+        IAppIconService iconService) : base()
     {
         // D4 步骤 2b+3（3.71.0）：查库/聚合/衍生指标已下沉 DashboardQueryService，
         // VM 不再接触 IDbContextFactory 与 IEfficiencyCalculator（查询链随迁）。
         _queryService = queryService;
         _iconService = iconService;
-        _aiService = aiService;
         Title = "仪表盘";
     }
 
@@ -83,11 +79,11 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardSnapshot>
 
     // === 阶段 4：AI 速览与画像摘要（3.27.0）===
 
-    /// <summary>今日速览文本。未配置 AI 时为规则摘要（不显示空卡）。</summary>
+    /// <summary>今日速览文本（纯本地规则生成，不显示空卡）。</summary>
     [ObservableProperty]
     private string _todaySummary = "";
 
-    /// <summary>速览来源：AI / 规则 / 空。</summary>
+    /// <summary>速览来源标签（规则时显示，空摘要时隐藏）。</summary>
     [ObservableProperty]
     private string _summarySource = "";
 
@@ -321,7 +317,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardSnapshot>
         // 普通属性不会自动抬升 PropertyChanged，页面靠这个事件把新数据推给图表
         OnPropertyChanged(nameof(ChartJson));
 
-        // 阶段 4：规则摘要同步生成（AI 不可用时的降级路径，必须先有）
+        // 阶段 4：今日速览（纯本地规则，不调用任何模型）
         BuildRuleSummary(stats);
         BuildProfileSummary();
         RaiseDerivedFlags();
@@ -379,7 +375,7 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardSnapshot>
 
     /// <summary>
     /// 规则摘要：不依赖任何外部服务，纯本地计算。
-    /// 这是 AI 未配置时的降级路径——宁可给普通文本，也不给空卡片。
+    /// 宁可给普通文本，也不给空卡片。
     /// </summary>
     private void BuildRuleSummary(DashboardSnapshot stats)
     {
@@ -426,56 +422,6 @@ public partial class DashboardViewModel : DbSafeViewModel<DashboardSnapshot>
             : int.TryParse(FirstActiveTime.Split(':')[0], out var h3) && h3 < 9 ? "早型" : "均衡型";
 
         ProfileSummary = $"{chronotype} · 今日 {FirstActiveTime} – {LastActiveTime}";
-    }
-
-    /// <summary>
-    /// 请求 AI 生成今日速览。失败或未配置时静默保留规则摘要——
-    /// 速览是锦上添花，不能因为 AI 不可用就让用户看到错误。
-    /// </summary>
-    public async Task RequestAiSummaryAsync()
-    {
-        if (!_aiService.IsConfigured || IsSummaryLoading) return;
-
-        IsSummaryLoading = true;
-        try
-        {
-            var prompt = BuildAiPayload();
-            var reply = await _aiService.ChatFastAsync(
-                "你是一个简洁的中文助手。用一到两句话概括今天的电脑使用状态，给出一句可执行建议。" +
-                "不要罗列数字，不要空泛套话，总长度不超过 80 字。",
-                prompt);
-
-            if (!string.IsNullOrWhiteSpace(reply))
-            {
-                TodaySummary = reply.Trim();
-                SummarySource = "AI";
-                OnPropertyChanged(nameof(HasSummarySource));
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "仪表盘：AI 速览生成失败，保留规则摘要");
-        }
-        finally
-        {
-            IsSummaryLoading = false;
-        }
-    }
-
-    private string BuildAiPayload()
-    {
-        var top = TopApps.Count > 0
-            ? string.Join("、", TopApps.Take(3).Select(a => $"{a.Name}({a.Duration})"))
-            : "无";
-        return $"""
-            今日效率评分：{EfficiencyScore:F0}
-            活跃时长：{TodayActiveTime}
-            专注时长：{FocusMinutesText}
-            应用切换：{AppSwitchesText}
-            活跃时段：{ActiveWindowText}
-            相对平时：{DeviationText}
-            主要应用：{top}
-            """;
     }
 
     private static string SerializeChart(ChartSnapshot chart)

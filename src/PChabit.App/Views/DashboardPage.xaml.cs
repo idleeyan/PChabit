@@ -46,15 +46,6 @@ public sealed partial class DashboardPage : Page
             Log.Error(ex, "加载仪表盘数据失败");
         }
 
-        // 规则摘要已就绪后再请求 AI 覆盖（未配置 AI 时内部直接返回，不做任何网络调用）
-        try
-        {
-            await ViewModel.RequestAiSummaryAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "仪表盘 AI 速览请求失败");
-        }
     }
 
     private async void DashboardPage_Loaded(object sender, RoutedEventArgs e)

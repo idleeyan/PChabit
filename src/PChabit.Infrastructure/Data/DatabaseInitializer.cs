@@ -472,33 +472,6 @@ public static class DatabaseInitializer
             await createCmd.ExecuteNonQueryAsync();
             Log.Information("InsightReports 表创建成功");
         }
-
-        if (!tables.Contains("AiInsightSnapshots"))
-        {
-            Log.Information("创建 AiInsightSnapshots 表");
-            using var createCmd = connection.CreateCommand();
-            createCmd.CommandText = @"
-                CREATE TABLE AiInsightSnapshots (
-                    Id TEXT PRIMARY KEY,
-                    PeriodKey TEXT NOT NULL,
-                    PeriodLabel TEXT NOT NULL DEFAULT '',
-                    PeriodStart TEXT NOT NULL,
-                    PeriodEnd TEXT NOT NULL,
-                    Summary TEXT,
-                    FindingsJson TEXT,
-                    PlanJson TEXT,
-                    DiagnosisJson TEXT,
-                    RisksJson TEXT,
-                    Model TEXT,
-                    PromptVersion TEXT NOT NULL DEFAULT 'v2',
-                    CreatedAt TEXT NOT NULL
-                );
-                CREATE INDEX IX_AiInsightSnapshots_PeriodKey ON AiInsightSnapshots (PeriodKey);
-                CREATE INDEX IX_AiInsightSnapshots_CreatedAt ON AiInsightSnapshots (CreatedAt);";
-            await createCmd.ExecuteNonQueryAsync();
-            Log.Information("AiInsightSnapshots 表创建成功");
-        }
-
         if (!tables.Contains("DailySummaries"))
         {
             Log.Information("创建 DailySummaries 表");

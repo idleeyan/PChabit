@@ -40,7 +40,7 @@ public partial class DataManagementViewModel : ViewModelBase
     [ObservableProperty]
     private string _exportStatus = string.Empty;
 
-    public IReadOnlyList<string> ExportFormats { get; } = new[] { "json", "markdown", "csv", "ai-prompt" };
+    public IReadOnlyList<string> ExportFormats { get; } = new[] { "json", "markdown", "csv" };
 
     #endregion
     #region 数据导出（统一用 IExportService）
@@ -69,7 +69,6 @@ public partial class DataManagementViewModel : ViewModelBase
                 "json" => ".json",
                 "markdown" => ".md",
                 "csv" => ".csv",
-                "ai-prompt" => ".md",
                 _ => ".txt"
             };
 
