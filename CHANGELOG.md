@@ -2,6 +2,41 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.3.0] - 2026-11-19
+
+### 采集与壳合一：`pchabit-shell.exe --host` 自己当采集宿主
+
+P4 把只读视图全部搬进壳之后，写入侧还留在 WPF。这个版本新增独立 crate
+`rust/pchabit-collect`，把「netd 托管 + 硬件采样 + 前台会话 + 键鼠钩子 + 落库」整块接过来，
+壳带 `--host` 启动时就是采集宿主（不带仍是纯只读展示）。
+
+采集宿主干的事：
+
+- **netd 托管**：连不上就拉起（`--exclude-name` 排除自己与壳），启动时把库里今日每进程累计
+  回填给 netd，退出时发 `STOP`；
+- **硬件分钟桶**：CPU（`GetSystemTimes`）、内存（`GlobalMemoryStatusEx`）、GPU（netd `GPU`）、
+  网络（PDH 网卡计数器）合成 `HardwareSamples` 一分钟一行，`ON CONFLICT(Timestamp)` upsert；
+- **网络账**：每拍用网卡计数器测系统上下行 → `SYS` 推给 netd（它的系统累计只能靠宿主喂）→
+  `NetworkTrafficSamples` 分钟行 + `ProcessNetworkUsages` 小时行；
+- **应用会话**：netd `APP` 快照，进程或标题变化即切段写 `AppSessions`（时长仍按 100ns ticks）；
+- **键鼠钩子**：键盘与鼠标各一条线程 + 自己的消息循环，回调里只做内存累加，每 15 s 刷增量到
+  `KeyboardSessions` / `MouseSessions`（自动重复只计 `RepeatKeyPresses`、修饰键不计、连续输入段封段）。
+
+三个实测问题（写进 `docs/P5-collect-migration.md` §5）：
+
+1. **netd 的命名管道一次只服务一个客户端**。多线程各连一条会静默卡死（`app_loop` 一条会话都没写），
+   改成全宿主共用一条连接 + 串行化命令；
+2. **netd 的逐进程 ESTATS 在本机虚高三个数量级**（30 秒报 1.9 GB 上行，网卡真实 0.34 MB）。
+   宿主现在用「系统真实增量 / 逐进程合计」等比缩放，分布保留、总量对齐；
+3. **退出时最后一分钟会丢**（只有 20 秒兜底的那份）。`Host::stop()` 现在留 2.2 s 让采集线程收口，
+   最后一分钟的网络行与硬件行都会落库。
+
+单写者：`PChabit.exe` 在跑时采集宿主拒绝启动（两个宿主同时写会让同一分钟出现两份增量）。
+默认入口仍是 WPF 版，`--host` 为试用开关，切换步骤写在 `docs/P5-collect-migration.md` §9。
+
+实测（详见文档 §6）：注入输入后键盘 42 键 / 鼠标 5 击 5953 px；`00:16` 分钟行 CPU 18.8%、GPU 32%、
+内存 42.4%、网络上行 10.36 MB / 下行 6.69 MB；优雅退出后 netd 进程确实消失。
+
 ## [4.2.0] - 2026-11-18
 
 ### 壳补齐最后一页：仪表盘 / 网络流量 / 键鼠活动 / 历史报告 / 数据管理

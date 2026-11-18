@@ -1,0 +1,20 @@
+[package]
+name = "pchabit-collect"
+version = "4.3.0"
+edition = "2021"
+description = "PChabit 采集宿主：托管 netd、采样硬件/网络、记录应用会话与键鼠，直接写 SQLite"
+
+[[bin]]
+name = "pchabit-collect"
+path = "src/main.rs"
+
+[dependencies]
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

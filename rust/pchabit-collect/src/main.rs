@@ -1,0 +1,81 @@
+//! 采集宿主的命令行入口：用于自测（跑 N 秒后退出并打印统计）。
+//!
+//! 用法：
+//!   pchabit-collect --db <path> --seconds 30 [--no-hooks]
+//!   pchabit-collect --check                     # 只做环境检查（netd 可连、库可写）
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use pchabit_collect::{default_db, Config, Host};
+
+fn main() {
+    let mut args = std::env::args().skip(1);
+    let mut db = default_db();
+    let mut seconds: Option<u64> = None;
+    let mut hooks = true;
+    let mut check = false;
+
+    while let Some(a) = args.next() {
+        match a.as_str() {
+            "--db" => {
+                if let Some(v) = args.next() {
+                    db = std::path::PathBuf::from(v);
+                }
+            }
+            "--seconds" => {
+                seconds = args.next().and_then(|v| v.parse().ok());
+            }
+            "--no-hooks" => hooks = false,
+            "--check" => check = true,
+            _ => {}
+        }
+    }
+
+    let log = Arc::new(|msg: String| {
+        println!("[{}] {msg}", pchabit_collect::timefmt::stamp7(&pchabit_collect::timefmt::now()));
+    });
+
+    if check {
+        println!("库：{}", db.display());
+        println!("库存在：{}", db.exists());
+        match pchabit_collect::netd::find_netd() {
+            Some(p) => println!("netd：{}", p.display()),
+            None => println!("netd：未找到"),
+        }
+        println!("PChabit.exe 在跑：{}", pchabit_collect::win::process_running("PChabit.exe"));
+        return;
+    }
+
+    let cfg = Config {
+        db,
+        hooks,
+        log: log.clone(),
+        run_for: seconds,
+    };
+
+    let host = match Host::start(cfg) {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("启动失败：{e}");
+            std::process::exit(1);
+        }
+    };
+
+    match seconds {
+        Some(s) => {
+            // run_for 会让线程自己停；这里等到停止后再收尾
+            while host.is_running() {
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            host.stop();
+            println!("自测结束：跑了 {s} 秒");
+        }
+        None => {
+            println!("常驻模式，Ctrl+C 退出");
+            loop {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        }
+    }
+}

@@ -1,6 +1,6 @@
 [package]
 name = "pchabit-shell"
-version = "4.2.0"
+version = "4.3.0"
 edition = "2021"
 
 [build-dependencies]
@@ -11,6 +11,8 @@ tauri = { version = "2", features = ["wry"] }
 serde_json = "1"
 # P4-1：壳直接复用数据面库，不再起子进程做 IPC
 pchabit-datad = { path = "../pchabit-datad" }
+# P5-1：`--host` 时壳自己当采集宿主（netd 托管 + 采样 + 钩子 + 落库）
+pchabit-collect = { path = "../pchabit-collect" }
 
 [profile.release]
 lto = true

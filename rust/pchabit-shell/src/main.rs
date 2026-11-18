@@ -12,6 +12,7 @@
 
 use std::io::Write;
 use std::path::PathBuf;
+use tauri::Manager;
 
 /// 找壳自己的 `dist` 目录（页面资产由 build.rs 从 WPF 工程原样复制进来）。
 fn dist_dir() -> PathBuf {
@@ -780,13 +781,32 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.2.0";
+const VERSION: &str = "4.3.0";
+
+/// 壳里托管的采集宿主（`--host` 时才有值）
+struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
+
+impl HostState {
+    fn stop(&self) {
+        if let Ok(mut guard) = self.0.lock() {
+            if let Some(h) = guard.take() {
+                h.stop();
+            }
+        }
+    }
+}
 
 fn main() {
-    // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1]
-    let mut argv = std::env::args().skip(1);
-    let start_page = argv.next().unwrap_or_default();
-    let extra = argv.next().unwrap_or_default();
+    // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1] [--host]
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let host_mode = raw_args.iter().any(|a| a == "--host");
+    let positional: Vec<String> = raw_args
+        .iter()
+        .filter(|a| !a.starts_with("--"))
+        .cloned()
+        .collect();
+    let start_page = positional.first().cloned().unwrap_or_default();
+    let extra = positional.get(1).cloned().unwrap_or_default();
 
     // 五页数据在窗口创建时一次算好，注入 window.__PAGES__：
     // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
@@ -823,13 +843,54 @@ fn main() {
                 format!("app.html?p={start_page}&{extra}")
             };
 
-            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                .title("PChabit（P4-1 壳）")
-                .inner_size(1180.0, 720.0)
-                .min_inner_size(900.0, 560.0)
-                .center()
-                .initialization_script(&inject)
-                .build()?;
+            let window =
+                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
+                    .title("PChabit（P5 采集宿主）")
+                    .inner_size(1180.0, 720.0)
+                    .min_inner_size(900.0, 560.0)
+                    .center()
+                    .initialization_script(&inject)
+                    .build()?;
+
+            // 采集宿主随壳启动：单写者约束在 Host 内部（WPF 在跑就拒绝）
+            app.manage(HostState(std::sync::Mutex::new(None)));
+            if host_mode {
+                let db = pchabit_collect::default_db();
+                let log: pchabit_collect::host::LogFn = std::sync::Arc::new(|m: String| {
+                    log_line(&format!("[collect] {m}"));
+                });
+                let cfg = pchabit_collect::Config {
+                    db: db.clone(),
+                    hooks: true,
+                    log,
+                    run_for: None,
+                };
+                match pchabit_collect::Host::start(cfg) {
+                    Ok(h) => {
+                        log_line(&format!(
+                            "[collect] 采集宿主已随壳启动，库 {}",
+                            db.display()
+                        ));
+                        if let Some(state) = app.try_state::<HostState>() {
+                            *state.0.lock().unwrap() = Some(h);
+                        }
+                    }
+                    Err(e) => log_line(&format!("[collect] 采集宿主未启动：{e}")),
+                }
+            } else {
+                log_line("[collect] 未带 --host，本次只做只读展示");
+            }
+
+            window.on_window_event({
+                let handle = app.handle().clone();
+                move |e| {
+                    if let tauri::WindowEvent::CloseRequested { .. } = e {
+                        if let Some(state) = handle.try_state::<HostState>() {
+                            state.stop();
+                        }
+                    }
+                }
+            });
 
             Ok(())
         })
