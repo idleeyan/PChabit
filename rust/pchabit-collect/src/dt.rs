@@ -54,9 +54,10 @@ fn offset_ms() -> i64 {
             + (st.wSecond as i64) * 1000
             + st.wMilliseconds as i64;
         let now = utc_ms();
-        // 对齐到分钟，避免秒级抖动被算进偏移
+        // 对齐到分钟，避免秒级抖动被算进偏移（四舍五入到最近分钟，
+        // 截断会在 diff 略小于整分钟时整整差一分钟）
         let diff = local_as_utc - now;
-        (diff / 60_000) * 60_000
+        ((diff as f64 / 60_000.0).round() as i64) * 60_000
     })
 }
 
@@ -111,9 +112,49 @@ pub fn iso_to_local_ms(s: &str) -> Option<i64> {
     Some(if is_utc { to_local_ms(epoch) } else { epoch })
 }
 
+/// 解析库里的本地时间串（`2026-11-18 13:27:23`、`2026-11-18 13:27:23.594`、
+/// `2026-11-18 13:27:23.5941234` 都认），返回本地 epoch 毫秒。
+pub fn parse_stamp(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    if b.len() < 19 || b[10] != b' ' {
+        return None;
+    }
+    let num = |from: usize, to: usize| -> Option<i64> { s.get(from..to)?.parse::<i64>().ok() };
+    let year = num(0, 4)?;
+    let month = num(5, 7)?;
+    let day = num(8, 10)?;
+    let hour = num(11, 13)?;
+    let minute = num(14, 16)?;
+    let second = num(17, 19)?;
+    let ms = if b.len() > 20 && b[19] == b'.' {
+        let digits: String = s[20..].chars().take_while(|c| c.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            0
+        } else {
+            let mut v: i64 = digits.parse().ok()?;
+            if digits.len() >= 3 {
+                v /= 10i64.pow((digits.len() - 3) as u32);
+            } else {
+                for _ in digits.len()..3 {
+                    v *= 10;
+                }
+            }
+            v
+        }
+    } else {
+        0
+    };
+    Some(
+        days_from_civil(year, month, day) * 86_400_000
+            + hour * 3_600_000
+            + minute * 60_000
+            + second * 1000
+            + ms,
+    )
+}
+
 /// 本地 epoch 毫秒 → `yyyy-MM-dd HH:mm:ss.fffffff`
-pub fn stamp7_ms(local_ms: i64) -> String {
-    let (y, mo, d, h, mi, s, ms) = breakdown(local_ms);
+pub fn stamp7_ms(local_ms: i64) -> String {    let (y, mo, d, h, mi, s, ms) = breakdown(local_ms);
     format!(
         "{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}.{f:07}",
         f = ms * 10_000

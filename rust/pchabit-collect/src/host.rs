@@ -211,6 +211,12 @@ impl Host {
             std::thread::spawn(move || web_save_loop(ctx, web));
         }
 
+        // 线程 6：日汇总（每小时检查一次昨天；启动 10 s 后先跑一轮）
+        {
+            let ctx = Arc::clone(&ctx);
+            std::thread::spawn(move || daily_loop(ctx));
+        }
+
         let host = Host {
             ctx: Arc::clone(&ctx),
             shared_input,
@@ -762,6 +768,38 @@ fn flush_loop(ctx: Arc<Ctx>, shared: Option<Arc<InputShared>>) {
         if last_hour != Some(hour) {
             last_hour = Some(hour);
             ctx.say(format!("进入 {date} {}:00 时段", hour));
+        }
+    }
+}
+
+/// 日汇总：每小时检查一次「昨天」要不要重算（口径照抄 WPF 的 incomplete 判定）。
+/// 今日行不写（今日 KPI 一直是现算，与 4.2.0 起的做法一致）。
+fn daily_loop(ctx: Arc<Ctx>) {
+    // 先等 10 s，让分钟桶与前台会话先落一点数据再判
+    std::thread::sleep(Duration::from_secs(10));
+    loop {
+        if !ctx.running.load(Ordering::SeqCst) {
+            break;
+        }
+        {
+            let store = ctx.store.lock().unwrap();
+            let yesterday = crate::dt::date_ms(crate::dt::local_ms_now() - 86_400_000);
+            if crate::daily::needs_aggregate(&store, &yesterday) {
+                let now = crate::timefmt::stamp7(&crate::timefmt::now());
+                match crate::daily::aggregate_day(&store, &yesterday, &now, &ctx.log) {
+                    Ok((k, c, n)) => ctx.say(format!(
+                        "日汇总完成：{yesterday} 键 {k} / 点击 {c} / 应用 {n}"
+                    )),
+                    Err(e) => ctx.say(format!("日汇总失败（{yesterday}）：{e}")),
+                }
+            }
+        }
+        // 睡一小时，期间每 5 秒看一次停止标志
+        for _ in 0..720 {
+            if !ctx.running.load(Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_secs(5));
         }
     }
 }

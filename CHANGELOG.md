@@ -2,6 +2,56 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.5.0] - 2026-11-19
+
+### 采集面收口：日汇总（`DailySummaries` / `AppDailyStats`）也进 Rust
+
+4.4.0 之后采集面只剩「日汇总」还留在 WPF 的每小时维护任务里。这个版本把
+`DataCollectionService.Maintenance` + `Analysis` + `ActivityLabeler` 那套聚合整体搬到
+`pchabit-collect`，采集宿主现在能独立写出完整的一天。
+
+新增 `daily.rs`：
+
+- **键鼠**：`KeyboardSessions` 按 `Hour` 汇总 `TotalKeyPresses` 与 24 小时分布；
+  `MouseSessions` 三个点击列求和；
+- **应用**：`AppSessions` 有效分钟（`ActiveDuration` 优先，否则墙钟）→ 活跃分钟、`TopApps` 前 10、
+  专注分钟（生产力分类，映射优先再回退会话快照）、`AppSwitches`（会话数 − 1）；
+- **网页**：`WebSessions`（排除 `IsLegacy`）→ 页数、总时长、活跃时长、`WebMinutes`；
+- **硬件**：`HardwareSamples` 当日分钟样本 → `CpuLoadAvg` 均值、`CpuLoadP95`（最近秩法，升序第
+  `ceil(0.95n)` 项）、`GpuLoadAvg`、`GpuTempMax`、`MemLoadAvg`，一律保留 2 位；
+- **行为语义**：照抄 `ActivityLabeler.Label` 的九档判定（idle/meeting/game/comms/work-code/work-doc/AI/
+  web/浏览器标题/系统/媒体）与 `AggregateLabelMinutes`，产出 11 个键的 `LabelMinutesJson`；
+  浏览器应用会话在有网页会话时让位，避免双计；
+- **夜间与首末活跃**：23:00–次日 06:00 重叠分钟、`FirstActiveTime` / `LastActiveTime`；
+- **AppDailyStats**：按归一化进程名 upsert（分钟、会话数、带 25 分钟门槛的专注分钟、小时分布）。
+
+宿主侧新增线程每 60 分钟检查一次「昨天」（启动 10 s 后先跑一轮），判定照抄 WPF 的 `incomplete`
+（空壳行、缺 `FocusMinutesV2` 都会重算）；`NetBytesUp/Down` 与 `SearchCount` 不碰。
+`pchabit-collect --daily <yyyy-MM-dd>` 可单独重算某天，用于对账。
+
+**对账（副本库重算 2026-11-18，与 WPF 当天写的行逐列比）**：
+
+| 列 | WPF | Rust |
+|---|---|---|
+| TotalKeys / TotalMouseClicks | 1375 / 5777 | 1375 / 5777 |
+| ActiveMinutes | 391.33469 | 391.33475（差 6e-5，墙钟回退只剩毫秒精度） |
+| FocusMinutesV2 | 126.76200 | 126.76197 |
+| WebPages / WebMinutes | 311 / 2050.2 | 311 / 2050.2 |
+| AppSwitches | 845 | 845 |
+| CpuLoadAvg / P95 / GpuLoadAvg / GpuTempMax / MemLoadAvg | 35.91 / 69.94 / 28.36 / 70.0 / 43.84 | 全同 |
+| NightMinutes / First / Last | 22.0 / 13:27 / 23:51 | 全同 |
+| LabelMinutesJson | work-code 13.7、learn 114.8、browse-info 1799.9、browse-fun 372.7、admin 57.1、other 200.3 | 逐键相同 |
+| AppDailyStats | 30 行 | 30 行，分钟差 ≤1e-4 |
+
+对账过程中修掉两处**自己的**问题（也是照抄纪律的价值）：
+
+1. 标签必须用**会话快照分类**（C# `BuildLabelInputs` 传 `s.Category`），不能先做映射解析——
+   否则 Trae 这类「映射到办公、快照是开发」的进程会从 work-code 掉到 work-doc（实测 13.7→3.7 分钟）；
+2. 进程关键词表原样照抄，不要「顺手补几个」——多补的 `trae` / `360zip` 会让 admin 与 other 各偏 0.6 分钟。
+
+顺带修掉一个真 bug：`dt.rs` 的时区偏移用「截断到分钟」，当 `本地-UTC` 差略小于整分钟时会整体早
+**一分钟**（4.4.0 里写库时间戳就早 1 分钟），改成四舍五入到最近分钟，并补了 `parse_stamp` 与用例。
+
 ## [4.4.0] - 2026-11-19
 
 ### 采集面补齐：网页会话与磁盘活动也进 Rust 采集宿主

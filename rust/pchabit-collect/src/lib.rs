@@ -4,9 +4,9 @@
 //! 反过来宿主在跑时 WPF 版也不该再开（后续在壳里做互斥提示）。
 //!
 //! 还没搬完的部分（`docs/P5-collect-migration.md` 里有清单）：
-//! - `DailySummaries` / `AppDailyStats` 的日汇总；
 //! - 托盘、开机自启、默认入口切换。
 
+pub mod daily;
 pub mod dt;
 pub mod host;
 pub mod input;

@@ -3,6 +3,7 @@
 //! 用法：
 //!   pchabit-collect --db <path> --seconds 30 [--no-hooks] [--no-ws] [--ws-port 8765]
 //!   pchabit-collect --check                     # 只做环境检查（netd 可连、库可写、端口是否空闲）
+//!   pchabit-collect --db <path> --daily 2026-11-18   # 重算某天日汇总（对账用）
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,6 +18,7 @@ fn main() {
     let mut websync = true;
     let mut ws_port: u16 = 8765;
     let mut check = false;
+    let mut daily: Option<String> = None;
 
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -36,6 +38,7 @@ fn main() {
                 }
             }
             "--check" => check = true,
+            "--daily" => daily = args.next(),
             _ => {}
         }
     }
@@ -43,6 +46,26 @@ fn main() {
     let log = Arc::new(|msg: String| {
         println!("[{}] {msg}", pchabit_collect::timefmt::stamp7(&pchabit_collect::timefmt::now()));
     });
+
+    if let Some(date) = daily {
+        let store = match pchabit_collect::Store::open(&db) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("打开库失败：{e}");
+                std::process::exit(1);
+            }
+        };
+        let now = pchabit_collect::timefmt::stamp7(&pchabit_collect::timefmt::now());
+        let log_fn: pchabit_collect::host::LogFn = log.clone();
+        match pchabit_collect::daily::aggregate_day(&store, &date, &now, &log_fn) {
+            Ok((k, c, n)) => println!("日汇总完成：{date} 键 {k} / 点击 {c} / 应用 {n}"),
+            Err(e) => {
+                eprintln!("日汇总失败：{e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
 
     if check {
         println!("库：{}", db.display());

@@ -601,6 +601,281 @@ impl Store {
         }
         (cats, maps)
     }
+
+    // ==================== 日汇总（DailySummaries / AppDailyStats，4.5.0）====================
+
+    /// 程序分类映射：归一化进程名 → 分类名（只取 IsActive 的分类）。
+    pub fn prog_cat_map(&self) -> Vec<(String, String)> {
+        let mut maps = Vec::new();
+        if let Ok(mut stmt) = self.conn.prepare(
+            "SELECT m.ProcessName, c.Name FROM ProgramCategoryMappings m \
+             JOIN ProgramCategories c ON m.CategoryId = c.Id WHERE c.IsActive = 1",
+        ) {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            }) {
+                maps = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        maps
+    }
+
+    /// 键盘小时键量：`[(hour, keypresses)]`。`[from, to)` 为 `yyyy-MM-dd 00:00:00` 形态。
+    pub fn keyboard_hours(&self, from: &str, to: &str) -> Vec<(i64, i64)> {
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = self.conn.prepare(
+            "SELECT Hour, TotalKeyPresses FROM KeyboardSessions WHERE Date >= ?1 AND Date < ?2",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![from, to], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            }) {
+                out = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        out
+    }
+
+    pub fn mouse_clicks(&self, from: &str, to: &str) -> i64 {
+        self.conn
+            .query_row(
+                "SELECT COALESCE(SUM(LeftClickCount + RightClickCount + MiddleClickCount), 0) \
+                 FROM MouseSessions WHERE Date >= ?1 AND Date < ?2",
+                params![from, to],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+    }
+
+    pub fn app_sessions_in(&self, from: &str, to: &str) -> Vec<AppSessRow> {
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = self.conn.prepare(
+            "SELECT ProcessName, Category, WindowTitle, StartTime, EndTime, ActiveDuration \
+             FROM AppSessions WHERE StartTime >= ?1 AND StartTime < ?2 ORDER BY StartTime",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![from, to], |r| {
+                Ok(AppSessRow {
+                    process: r.get::<_, String>(0)?,
+                    category: r.get::<_, Option<String>>(1)?,
+                    title: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    start: r.get::<_, String>(3)?,
+                    end: r.get::<_, Option<String>>(4)?,
+                    active_ticks: r.get::<_, i64>(5)?,
+                })
+            }) {
+                out = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        out
+    }
+
+    pub fn web_sessions_in(&self, from: &str, to: &str) -> Vec<WebSessRow> {
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = self.conn.prepare(
+            "SELECT Title, Domain, CategoryName, Browser, Duration, ActiveDuration \
+             FROM WebSessions WHERE StartTime >= ?1 AND StartTime < ?2 AND IsLegacy = 0 \
+             ORDER BY StartTime",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![from, to], |r| {
+                Ok(WebSessRow {
+                    title: r.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    domain: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                    category: r.get::<_, Option<String>>(2)?,
+                    browser: r.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                    duration_ticks: r.get::<_, i64>(4)?,
+                    active_ticks: r.get::<_, i64>(5)?,
+                })
+            }) {
+                out = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        out
+    }
+
+    /// 某日硬件分钟样本：`[(cpu_avg, gpu_avg, gpu_temp_max, mem_avg)]`，空列跳过。
+    pub fn hardware_day(&self, date: &str) -> Vec<(Option<f64>, Option<f64>, Option<f64>, Option<f64>)> {
+        let mut out = Vec::new();
+        if let Ok(mut stmt) = self.conn.prepare(
+            "SELECT CpuLoadAvg, GpuLoadAvg, GpuTempMax, MemLoadAvg FROM HardwareSamples \
+             WHERE Timestamp LIKE ?1",
+        ) {
+            if let Ok(rows) = stmt.query_map(params![format!("{date}%")], |r| {
+                Ok((
+                    r.get::<_, Option<f64>>(0)?,
+                    r.get::<_, Option<f64>>(1)?,
+                    r.get::<_, Option<f64>>(2)?,
+                    r.get::<_, Option<f64>>(3)?,
+                ))
+            }) {
+                out = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        out
+    }
+
+    /// 读某日已有汇总行，用于「是否已经聚合过」的判定。
+    pub fn daily_existing(&self, date: &str) -> Option<DailyExisting> {
+        self.conn
+            .query_row(
+                "SELECT Id, TotalKeys, TotalMouseClicks, ActiveMinutes, TopApps, FocusMinutesV2 \
+                 FROM DailySummaries WHERE Date = ?1",
+                params![date],
+                |r| {
+                    Ok(DailyExisting {
+                        id: r.get::<_, String>(0)?,
+                        total_keys: r.get::<_, i64>(1)?,
+                        clicks: r.get::<_, i64>(2)?,
+                        active_minutes: r.get::<_, f64>(3)?,
+                        top_apps: r.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                        focus_minutes: r.get::<_, Option<f64>>(5)?,
+                    })
+                },
+            )
+            .optional()
+            .ok()
+            .flatten()
+    }
+
+    pub fn daily_upsert(&self, d: &DailyOut) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO DailySummaries \
+                 (Id, Date, TotalKeys, TotalMouseClicks, ActiveMinutes, TopApps, HourlyKeyDistribution, \
+                  LastUpdated, WebPages, WebDurationTicks, WebActiveDurationTicks, AppSwitches, \
+                  FocusMinutesV2, WebMinutes, CpuLoadAvg, CpuLoadP95, GpuLoadAvg, GpuTempMax, MemLoadAvg, \
+                  MetricsVersion, LabelMinutesJson, NightMinutes, FirstActiveTime, LastActiveTime) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24) \
+                 ON CONFLICT(Date) DO UPDATE SET \
+                  TotalKeys=excluded.TotalKeys, TotalMouseClicks=excluded.TotalMouseClicks, \
+                  ActiveMinutes=excluded.ActiveMinutes, TopApps=excluded.TopApps, \
+                  HourlyKeyDistribution=excluded.HourlyKeyDistribution, LastUpdated=excluded.LastUpdated, \
+                  WebPages=excluded.WebPages, WebDurationTicks=excluded.WebDurationTicks, \
+                  WebActiveDurationTicks=excluded.WebActiveDurationTicks, AppSwitches=excluded.AppSwitches, \
+                  FocusMinutesV2=excluded.FocusMinutesV2, WebMinutes=excluded.WebMinutes, \
+                  CpuLoadAvg=excluded.CpuLoadAvg, CpuLoadP95=excluded.CpuLoadP95, \
+                  GpuLoadAvg=excluded.GpuLoadAvg, GpuTempMax=excluded.GpuTempMax, \
+                  MemLoadAvg=excluded.MemLoadAvg, MetricsVersion=excluded.MetricsVersion, \
+                  LabelMinutesJson=excluded.LabelMinutesJson, NightMinutes=excluded.NightMinutes, \
+                  FirstActiveTime=excluded.FirstActiveTime, LastActiveTime=excluded.LastActiveTime",
+                params![
+                    uuid_like(),
+                    d.date,
+                    d.total_keys,
+                    d.clicks,
+                    d.active_minutes,
+                    d.top_apps_json,
+                    d.hourly_keys_json,
+                    d.last_updated,
+                    d.web_pages,
+                    d.web_duration_ticks,
+                    d.web_active_ticks,
+                    d.app_switches,
+                    d.focus_minutes,
+                    d.web_minutes,
+                    d.cpu_avg,
+                    d.cpu_p95,
+                    d.gpu_avg,
+                    d.gpu_temp_max,
+                    d.mem_avg,
+                    d.metrics_version,
+                    d.label_json,
+                    d.night_minutes,
+                    d.first_active,
+                    d.last_active
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("写 DailySummaries 失败: {e}"))
+    }
+
+    pub fn app_daily_upsert(&self, date: &str, a: &AppDailyOut, now: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO AppDailyStats \
+                 (Date, ProcessName, Minutes, Sessions, FocusMinutes, HourlyJson, LastUpdated) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7) \
+                 ON CONFLICT(Date, ProcessName) DO UPDATE SET \
+                  Minutes=excluded.Minutes, Sessions=excluded.Sessions, \
+                  FocusMinutes=excluded.FocusMinutes, HourlyJson=excluded.HourlyJson, \
+                  LastUpdated=excluded.LastUpdated",
+                params![
+                    date,
+                    a.process,
+                    a.minutes,
+                    a.sessions,
+                    a.focus,
+                    a.hourly_json,
+                    now
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("写 AppDailyStats 失败: {e}"))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AppSessRow {
+    pub process: String,
+    pub category: Option<String>,
+    pub title: String,
+    pub start: String,
+    pub end: Option<String>,
+    pub active_ticks: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct WebSessRow {
+    pub title: String,
+    pub domain: String,
+    pub category: Option<String>,
+    pub browser: String,
+    pub duration_ticks: i64,
+    pub active_ticks: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DailyExisting {
+    pub id: String,
+    pub total_keys: i64,
+    pub clicks: i64,
+    pub active_minutes: f64,
+    pub top_apps: String,
+    pub focus_minutes: Option<f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppDailyOut {
+    pub process: String,
+    pub minutes: f64,
+    pub sessions: i64,
+    pub focus: f64,
+    pub hourly_json: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DailyOut {
+    pub date: String,
+    pub total_keys: i64,
+    pub clicks: i64,
+    pub active_minutes: f64,
+    pub top_apps_json: String,
+    pub hourly_keys_json: String,
+    pub last_updated: String,
+    pub web_pages: i64,
+    pub web_duration_ticks: i64,
+    pub web_active_ticks: i64,
+    pub app_switches: i64,
+    pub focus_minutes: f64,
+    pub web_minutes: f64,
+    pub cpu_avg: Option<f64>,
+    pub cpu_p95: Option<f64>,
+    pub gpu_avg: Option<f64>,
+    pub gpu_temp_max: Option<f64>,
+    pub mem_avg: Option<f64>,
+    pub metrics_version: i64,
+    pub label_json: String,
+    pub night_minutes: f64,
+    pub first_active: Option<String>,
+    pub last_active: Option<String>,
 }
 
 fn opt(v: f64, n: i64) -> Option<f64> {
