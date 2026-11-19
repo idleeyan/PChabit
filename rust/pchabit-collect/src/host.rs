@@ -839,7 +839,6 @@ fn daily_loop(ctx: Arc<Ctx>) {
         }
     }
 
-    let retention = read_retention_days();
     let mut last_cleanup_day = String::new();
 
     loop {
@@ -863,6 +862,8 @@ fn daily_loop(ctx: Arc<Ctx>) {
             let today = crate::dt::date_ms(crate::dt::local_ms_now());
             if last_cleanup_day != today {
                 last_cleanup_day = today.clone();
+                // 保留天数每次清理前重读：设置页改完不用重启采集宿主
+                let retention = read_retention_days();
                 // WPF 的 cutoff：Today.AddDays(-retention) 的 yyyy-MM-dd；硬件分钟样本再拼 " 00:00"
                 let cutoff = crate::dt::date_ms(crate::dt::local_ms_now() - retention * 86_400_000);
                 let sample_cutoff = format!("{cutoff} 00:00");

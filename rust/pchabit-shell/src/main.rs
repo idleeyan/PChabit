@@ -39,6 +39,9 @@ fn dist_dir() -> PathBuf {
 }
 
 pub(crate) fn log_line(msg: &str) {
+    // 多线程同时写日志会把行写串（采集线程、小窗线程、IPC 线程都会写），这里串行化
+    static LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _guard = LOG_LOCK.lock();
     let base = std::env::var("TEMP").unwrap_or_else(|_| ".".to_string());
     let path = PathBuf::from(base).join("pchabit-shell.log");
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
@@ -949,7 +952,11 @@ fn export_weekly() -> Result<String, String> {
 
 /// 写回 `%LOCALAPPDATA%\PChabit\settings.json`：先备份 `settings.json.bak`，再整份重写。
 #[tauri::command]
-fn set_setting(key: String, value: serde_json::Value) -> Result<String, String> {
+fn set_setting(
+    app: tauri::AppHandle,
+    key: String,
+    value: serde_json::Value,
+) -> Result<String, String> {
     if !SETTING_WHITELIST.contains(&key.as_str()) {
         return Err(format!("不允许修改的设置项：{key}"));
     }
@@ -972,6 +979,24 @@ fn set_setting(key: String, value: serde_json::Value) -> Result<String, String> 
         "[壳] 设置写入 {key}：{old} -> {value}（备份 {}）",
         bak.display()
     ));
+    // 实时生效：不用重启，改完这一秒就变
+    match key.as_str() {
+        "TaskbarEnabled" => {
+            let on = match &value {
+                serde_json::Value::Bool(b) => *b,
+                serde_json::Value::Number(n) => n.as_i64().unwrap_or(0) != 0,
+                _ => true,
+            };
+            if on {
+                let light = taskbar::system_uses_light_theme();
+                taskbar::start(app.clone(), light);
+                log_line("[壳] 设置：任务栏小窗已启动");
+            } else {
+                taskbar::stop();
+            }
+        }
+        _ => {}
+    }
     Ok(format!("{key} = {value}"))
 }
 
@@ -1066,7 +1091,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.8";
+const VERSION: &str = "4.12.10";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1354,7 +1379,7 @@ fn take_single_instance() -> Option<std::net::TcpListener> {
 
 /// 第二个实例被锁挡住时：让已经在跑的那个把窗口亮出来，然后自己退出。
 /// 桌面/任务栏快捷方式点一下就是这个路径，否则会「点了没反应」。
-fn signal_existing_instance() -> bool {
+fn signal_existing_instance(cmd: Option<&str>) -> bool {
     use std::io::{Read, Write};
     match std::net::TcpStream::connect_timeout(
         &std::net::SocketAddr::from(([127, 0, 0, 1], 18765)),
@@ -1362,7 +1387,8 @@ fn signal_existing_instance() -> bool {
     ) {
         Ok(mut s) => {
             let _ = s.set_write_timeout(Some(std::time::Duration::from_millis(800)));
-            let _ = s.write_all(b"SHOW\n");
+            let line = format!("{}\n", cmd.unwrap_or("SHOW").trim().to_uppercase());
+            let _ = s.write_all(line.as_bytes());
             let _ = s.flush();
             // 等一句 ACK，读不到也算发出去过
             let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(800)));
@@ -1375,17 +1401,24 @@ fn signal_existing_instance() -> bool {
 }
 
 fn main() {
+    // 命令行先读：第二实例可能带 `--cmd TASKBAR_OFF` 这类控制指令
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let ctl_cmd = raw_args
+        .iter()
+        .position(|a| a == "--cmd")
+        .and_then(|i| raw_args.get(i + 1))
+        .cloned();
+
     let Some(instance_lock) = take_single_instance() else {
-        let ok = signal_existing_instance();
+        let ok = signal_existing_instance(ctl_cmd.as_deref());
         log_line(&format!(
             "[壳] 已有实例在跑（127.0.0.1:18765 被占用），{}",
-            if ok { "已请求它把窗口亮出来，本次退出" } else { "本次退出" }
+            if ok { "已把指令转给它，本次退出" } else { "本次退出" }
         ));
         return;
     };
 
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1] [--host] [--headless]
-    let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let host_mode = raw_args.iter().any(|a| a == "--host");
     // --headless：不建窗口，只跑采集宿主（开机自启/后台常驻用）
     let headless = raw_args.iter().any(|a| a == "--headless");
@@ -1475,6 +1508,19 @@ fn main() {
                                         Ok(_) => log_line("[壳] 第二实例请求：已新开窗口"),
                                         Err(e) => log_line(&format!("[壳] 第二实例开窗失败：{e}")),
                                     },
+                                }
+                            });
+                        } else if cmd.starts_with("TASKBAR_OFF") || cmd.starts_with("TASKBAR_ON") {
+                            let _ = s.write_all(b"OK\n");
+                            let on = cmd.starts_with("TASKBAR_ON");
+                            let h2 = h.clone();
+                            let _ = h.run_on_main_thread(move || {
+                                if on {
+                                    let light = taskbar::system_uses_light_theme();
+                                    taskbar::start(h2.clone(), light);
+                                    log_line("[壳] 控制指令：任务栏小窗已启动");
+                                } else {
+                                    taskbar::stop();
                                 }
                             });
                         } else if !cmd.is_empty() {

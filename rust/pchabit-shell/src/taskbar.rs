@@ -135,6 +135,7 @@ extern "system" {
     fn GetSystemTimes(idle: *mut u64, kernel: *mut u64, user: *mut u64) -> i32;
     fn LoadCursorW(instance: HINSTANCE, name: *const u16) -> isize;
     fn SetCursor(cursor: isize) -> isize;
+    fn PostMessageW(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> i32;
 }
 
 #[link(name = "gdi32")]
@@ -194,6 +195,7 @@ const WM_SETCURSOR: u32 = 0x0020;
 const WM_ERASEBKGND: u32 = 0x0014;
 const WM_LBUTTONDOWN: u32 = 0x0201;
 const WM_LBUTTONUP: u32 = 0x0202;
+const WM_CLOSE: u32 = 0x0010;
 const WM_DESTROY: u32 = 0x0002;
 
 // 色键：浅 210,210,211 / 深 40,40,41（COLORREF 是 BGR）
@@ -307,6 +309,8 @@ struct State {
 
 static STATE: OnceLock<Mutex<State>> = OnceLock::new();
 static CLICKED: AtomicBool = AtomicBool::new(false);
+/// 小窗是否在跑（设置页实时开关用）
+static RUNNING: AtomicBool = AtomicBool::new(false);
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> Option<T> {
@@ -315,6 +319,10 @@ fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> Option<T> {
 
 /// 启动小窗：建窗口线程 + 每秒刷新线程。`--taskbar` 才会走到这里。
 pub fn start(app: tauri::AppHandle, light: bool) {
+    // 已经在跑就别再插一个（设置页里反复开关会用到）
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let _ = APP.set(app);
     STATE.get_or_init(|| {
         Mutex::new(State {
@@ -344,6 +352,48 @@ pub fn start(app: tauri::AppHandle, light: bool) {
         .name("taskbar-metrics".into())
         .spawn(move || tick_loop())
         .ok();
+}
+
+/// 摘掉任务栏小窗（设置页把「任务栏小窗」关掉时立刻生效，不用重启壳）。
+pub fn stop() {
+    if !RUNNING.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    if let Some(h) = with_state(|s| s.hwnd) {
+        if h != 0 {
+            unsafe {
+                // 走 WM_CLOSE → DefWindowProc 销毁窗口 → 消息循环退出；线程自己收尾
+                PostMessageW(h, WM_CLOSE, 0, 0);
+            }
+        }
+    }
+    crate::log_line("[小窗] 已按设置停止任务栏小窗");
+}
+
+pub fn is_running() -> bool {
+    RUNNING.load(Ordering::SeqCst)
+}
+
+/// 读 `%LOCALAPPDATA%\PChabit\settings.json` 里的布尔项（缺省取 `default`）。
+/// 每拍重读一次，设置页改完立刻体现，不必重启。
+pub fn setting_bool(key: &str, default: bool) -> bool {
+    let Some(base) = std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from) else {
+        return default;
+    };
+    let path = base.join("PChabit").join("settings.json");
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return default,
+    };
+    let v: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return default,
+    };
+    match v.get(key) {
+        Some(serde_json::Value::Bool(b)) => *b,
+        Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0) != 0,
+        _ => default,
+    }
 }
 
 unsafe fn create_window() {
@@ -676,6 +726,9 @@ fn tick_loop() {
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(1000));
+        if !RUNNING.load(Ordering::SeqCst) {
+            break;
+        }
         tick = tick.wrapping_add(1);
 
         // CPU：GetSystemTimes 的增量口径
@@ -714,37 +767,52 @@ fn tick_loop() {
             None => (0.0, 0.0),
         };
 
+        // 每一拍都重读设置：设置页里勾掉某项，1 秒内小窗就变
+        let show_net = setting_bool("TaskbarShowNet", true);
+        let show_cpu = setting_bool("TaskbarShowCpu", true);
+        let show_mem = setting_bool("TaskbarShowMemory", true);
+
         // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存
-        let segments = vec![
-            Segment {
+        let mut segments: Vec<Segment> = Vec::with_capacity(4);
+        if show_net {
+            segments.push(Segment {
                 label: "↓".into(),
                 value: rate(down),
                 tone: Tone::Net,
                 value_pt: NET_PT,
                 divider_before: false,
-            },
-            Segment {
+            });
+            segments.push(Segment {
                 label: "↑".into(),
                 value: rate(up),
                 tone: Tone::Net,
                 value_pt: VALUE_PT,
                 divider_before: false,
-            },
-            Segment {
-                label: "CPU".into(),
-                value: format!("{:.0}%", cpu),
-                tone: load_tone(cpu),
-                value_pt: VALUE_PT,
-                divider_before: true,
-            },
-            Segment {
-                label: "内存".into(),
-                value: format!("{:.0}%", mem),
-                tone: load_tone(mem),
-                value_pt: VALUE_PT,
-                divider_before: false,
-            },
-        ];
+            });
+        }
+        if show_cpu || show_mem {
+            // 网速区之后用一条竖线隔开；网速没开就由第一个指标自己顶上
+            let mut first_of_group = true;
+            if show_cpu {
+                segments.push(Segment {
+                    label: "CPU".into(),
+                    value: format!("{:.0}%", cpu),
+                    tone: load_tone(cpu),
+                    value_pt: VALUE_PT,
+                    divider_before: show_net && first_of_group,
+                });
+                first_of_group = false;
+            }
+            if show_mem {
+                segments.push(Segment {
+                    label: "内存".into(),
+                    value: format!("{:.0}%", mem),
+                    tone: load_tone(mem),
+                    value_pt: VALUE_PT,
+                    divider_before: show_net && first_of_group,
+                });
+            }
+        }
 
         let changed = with_state(|s| {
             let same = s.segments.len() == segments.len()
@@ -752,7 +820,13 @@ fn tick_loop() {
                     .segments
                     .iter()
                     .zip(segments.iter())
-                    .all(|(a, b)| a.value == b.value && a.tone == b.tone && a.value_pt == b.value_pt);
+                    .all(|(a, b)| {
+                        a.value == b.value
+                            && a.tone == b.tone
+                            && a.value_pt == b.value_pt
+                            && a.label == b.label
+                            && a.divider_before == b.divider_before
+                    });
             if !same {
                 s.segments = segments.clone();
             }

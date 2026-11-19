@@ -30,20 +30,22 @@
 <div id="wrap">
   <h1>设置概览</h1>
   <div class="sub" id="path"></div>
-  <div class="hint">下方概览只读；顶部「可编辑项」直接写回 settings.json（写前自动备份 .bak），与 WPF 版共用同一个文件。</div>
+  <div class="hint">下方概览只读；顶部「实时生效」改完立刻作用于正在跑的程序——任务栏小窗与显示的指标 1 秒内变，保留天数在下一次清理时生效（写前自动备份 .bak）。</div>
   <section id="edit" style="margin-bottom:12px">
-    <h2>可编辑项 <em style="font-style:normal;color:#64748b;font-size:10px">（写回 settings.json，改前自动备份 .bak）</em></h2>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <h2>实时生效 <em style="font-style:normal;color:#64748b;font-size:10px">（写回 settings.json，无需重启）</em></h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
       <label class="k">保留天数 <input id="edRetention" type="number" min="1" max="3650"
         style="width:70px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
-      <label class="k">采集间隔(秒) <input id="edInterval" type="number" min="1" max="60"
-        style="width:60px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
-      <label class="k">空闲阈值(分) <input id="edIdle" type="number" min="1" max="60"
-        style="width:60px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
       <label class="k"><input id="edTaskbar" type="checkbox" style="margin-right:4px">任务栏小窗</label>
+      <label class="k"><input id="edNet" type="checkbox" style="margin-right:4px">显示网速</label>
+      <label class="k"><input id="edCpu" type="checkbox" style="margin-right:4px">显示 CPU</label>
+      <label class="k"><input id="edMem" type="checkbox" style="margin-right:4px">显示内存</label>
       <button id="edSave" style="padding:4px 12px;border-radius:6px;border:1px solid #223049;
         background:#1d4ed8;color:#fff;cursor:pointer">保存</button>
       <span class="hint" id="edMsg" style="margin:0;background:none;border:0;padding:0"></span>
+    </div>
+    <div class="hint" style="margin:8px 0 0;background:none;border:0;padding:0;color:#64748b">
+      采集间隔 / 空闲阈值是旧 WPF 定时轮询的参数，Rust 采集是事件钩子驱动，这两项不再生效（已从可编辑区移走）。
     </div>
   </section>
   <div class="grid" id="grid"></div>
@@ -93,11 +95,13 @@
     // 把当前值填进可编辑区（只在第一次或数据变化时覆盖，免得抹掉用户正在输的内容）
     var ed = document.getElementById('edit');
     if (ed && !ed.__painted) {
-      function num(k) { return byKey[k] && byKey[k].value != null ? byKey[k].value : ''; }
-      document.getElementById('edRetention').value = num('DataRetentionDays') || num('RetentionDays');
-      document.getElementById('edInterval').value = num('MonitoringInterval');
-      document.getElementById('edIdle').value = num('IdleThreshold');
-      document.getElementById('edTaskbar').checked = !!(byKey['TaskbarEnabled'] && byKey['TaskbarEnabled'].value);
+      var nz = function (k, d) { return byKey[k] && byKey[k].value != null ? byKey[k].value : d; };
+      var boolv = function (k, d) { return byKey[k] ? !!byKey[k].value : d; };
+      document.getElementById('edRetention').value = nz('DataRetentionDays', nz('RetentionDays', ''));
+      document.getElementById('edTaskbar').checked = boolv('TaskbarEnabled', true);
+      document.getElementById('edNet').checked = boolv('TaskbarShowNet', true);
+      document.getElementById('edCpu').checked = boolv('TaskbarShowCpu', true);
+      document.getElementById('edMem').checked = boolv('TaskbarShowMemory', true);
       ed.__painted = true;
     }
 
@@ -150,9 +154,10 @@
       if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC'; return; }
       var jobs = [
         ['DataRetentionDays', parseInt(document.getElementById('edRetention').value, 10)],
-        ['MonitoringInterval', parseInt(document.getElementById('edInterval').value, 10)],
-        ['IdleThreshold', parseInt(document.getElementById('edIdle').value, 10)],
-        ['TaskbarEnabled', document.getElementById('edTaskbar').checked]
+        ['TaskbarEnabled', document.getElementById('edTaskbar').checked],
+        ['TaskbarShowNet', document.getElementById('edNet').checked],
+        ['TaskbarShowCpu', document.getElementById('edCpu').checked],
+        ['TaskbarShowMemory', document.getElementById('edMem').checked]
       ];
       msg.textContent = '保存中…';
       var chain = Promise.resolve([]);
@@ -166,6 +171,15 @@
       chain.then(function (done) {
         msg.textContent = done.join('；');
         window.__SET_RESULT__ = 'save: ' + done.join('；');
+        // 保存后立刻重拉一次概览，让上面「只读」区也跟着变成新值
+        return window.__TAURI__.core.invoke('page_data', { page: 'settings' })
+          .then(function (d) {
+            window.__SET_DATA__ = d;
+            var panel = document.getElementById('edit');
+            if (panel) panel.__painted = false;   // 允许用新数据重填输入框
+            render(d);
+          })
+          .catch(function () { /* 重拉失败不影响保存结果 */ });
       }).catch(function (e) {
         msg.textContent = '失败：' + e;
         window.__SET_RESULT__ = 'save-error: ' + e;
