@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Page
     x:Class="PChabit.App.Views.HardwareMonitorPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -120,24 +120,6 @@
                                     Foreground="{x:Bind ViewModel.CpuUsageColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
                                     Text="{x:Bind ViewModel.CpuUsageText, Mode=OneWay}" />
                             </Grid>
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Style="{StaticResource MetricLabelStyle}" Text="温度" />
-                                <TextBlock
-                                    Grid.Column="2"
-                                    Style="{StaticResource MetricValueStyle}"
-                                    Foreground="{x:Bind ViewModel.CpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
-                                    Text="{x:Bind ViewModel.CpuTempText, Mode=OneWay}" />
-                            </Grid>
-                            <ProgressBar
-                                Style="{StaticResource MetricBarStyle}"
-                                Maximum="{x:Bind ViewModel.TempBarMax, Mode=OneWay}"
-                                Foreground="{x:Bind ViewModel.CpuTempColor, Mode=OneWay, Converter={StaticResource StringToBrushConverter}}"
-                                Value="{x:Bind ViewModel.CpuTemp, Mode=OneWay}" />
                         </StackPanel>
                         <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" CornerRadius="8" Padding="10,8">
                             <StackPanel Spacing="2">
@@ -587,7 +569,7 @@
                         <TextBlock
                             FontSize="12"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                            Text="阈值：负载 70%/90%，CPU 温度 70/85°C，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。系统未启用连接级统计时，进程流量留空显示「暂无活跃网络进程」，不会按进程 IO 把整机流量推测分摊给某个程序。速率读数在传感器停更时归零。"
+                            Text="阈值：负载 70%/90%，GPU 温度 75/90°C，显存 80%/95%，磁盘读写约 50/150 MB/s。系统未启用连接级统计时，进程流量留空显示「暂无活跃网络进程」，不会按进程 IO 把整机流量推测分摊给某个程序。速率读数在传感器停更时归零。"
                             TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>

@@ -321,14 +321,9 @@ namespace PChabit.HardwareMonitor.Hardware
                         }
                         break;
 
-                    // 2. CPU.Temp
+                    // 2. CPU.Temp —— 采样功能已删除（4.11.1，HVCI 拦驱动），恒返回空
                     case "CPU.Temp":
-                        result = _componentProcessor.GetCpuTemp();
-                        if (result == null && _manualSensorCache.TryGetValue("CPU.Temp", out var fallbackT))
-                        {
-                            result = fallbackT.Value;
-                        }
-                        if (result == null) result = 0f;
+                        result = null;
                         break;
 
                     // 4. 每日流量（PChabit v1：不采集，走默认分支返回空）

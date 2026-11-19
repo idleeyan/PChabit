@@ -14,7 +14,6 @@ namespace PChabit.HardwareMonitor.Hardware
         private readonly SensorMap _sensorMap;
 
         private List<ISensor>? _cpuLoadSensorsCache = null;
-        private List<ISensor>? _cpuTempSensorsCache = null;
 
         public ComponentProcessor(IComputer computer, HardwareMonitorOptions cfg, SensorMap sensorMap)
         {
@@ -26,7 +25,6 @@ namespace PChabit.HardwareMonitor.Hardware
         public void ClearCache()
         {
             _cpuLoadSensorsCache = null;
-            _cpuTempSensorsCache = null;
         }
 
         /// <summary>
@@ -62,44 +60,6 @@ namespace PChabit.HardwareMonitor.Hardware
                     if (s.Value.HasValue) { totalLoad += s.Value.Value; coreCount++; }
                 }
                 if (coreCount > 0) return (float)(totalLoad / coreCount);
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// 获取 CPU 温度 (核心最大值)
-        /// </summary>
-        public float? GetCpuTemp()
-        {
-            if (_cpuTempSensorsCache == null)
-            {
-                var cpuT = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-                if (cpuT != null)
-                {
-                    _cpuTempSensorsCache = new List<ISensor>();
-                    foreach (var s in cpuT.Sensors)
-                    {
-                        if (s.SensorType == SensorType.Temperature && 
-                            !SensorMap.Has(s.Name, "Distance") && !SensorMap.Has(s.Name, "Average") && !SensorMap.Has(s.Name, "Max"))
-                        {
-                            _cpuTempSensorsCache.Add(s);
-                        }
-                    }
-                }
-            }
-
-            if (_cpuTempSensorsCache != null && _cpuTempSensorsCache.Count > 0)
-            {
-                float maxTemp = -1000f;
-                bool found = false;
-                foreach (var s in _cpuTempSensorsCache)
-                {
-                    if (s.Value.HasValue && s.Value.Value > 0)
-                    {
-                        if (s.Value.Value > maxTemp) { maxTemp = s.Value.Value; found = true; }
-                    }
-                }
-                if (found) return maxTemp;
             }
             return null;
         }

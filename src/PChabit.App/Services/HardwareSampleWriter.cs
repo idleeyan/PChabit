@@ -172,7 +172,7 @@ internal sealed class MinuteBucket
     private int _cpuLoadN, _gpuLoadN, _memLoadN, _diskActN, _netUpN, _netDownN;
 
     // 峰值
-    private double? _cpuLoadMax, _cpuTempMax, _gpuLoadMax, _gpuTempMax, _vramUsedMax, _vramTotal;
+    private double? _cpuLoadMax, _gpuLoadMax, _gpuTempMax, _vramUsedMax, _vramTotal;
     private double? _memLoadMax, _memUsedMax, _diskReadMax, _diskWriteMax;
 
     private int _sampleCount, _sensorFlags;
@@ -185,7 +185,7 @@ internal sealed class MinuteBucket
         _sampleCount++;
 
         AccumAvg("CPU.Load", get, ref _cpuLoadSum, ref _cpuLoadN, ref _cpuLoadMax, HardwareSensorFlags.CpuLoad);
-        AccumMax("CPU.Temp", get, ref _cpuTempMax, HardwareSensorFlags.CpuTemp);
+        // CPU 温度采样已删除（4.11.1）：内存完整性（HVCI）拦掉 LHM 的 WinRing0 驱动，读数长期为空。
         AccumAvg("GPU.Load", get, ref _gpuLoadSum, ref _gpuLoadN, ref _gpuLoadMax, HardwareSensorFlags.GpuLoad);
         AccumMax("GPU.Temp", get, ref _gpuTempMax, HardwareSensorFlags.GpuTemp);
 
@@ -252,7 +252,7 @@ internal sealed class MinuteBucket
         Timestamp = Key,
         CpuLoadAvg = Avg(_cpuLoadSum, _cpuLoadN),
         CpuLoadMax = _cpuLoadMax,
-        CpuTempMax = _cpuTempMax,
+        CpuTempMax = null, // 功能已删除，列保留只为兼容历史行
         GpuLoadAvg = Avg(_gpuLoadSum, _gpuLoadN),
         GpuLoadMax = _gpuLoadMax,
         GpuTempMax = _gpuTempMax,

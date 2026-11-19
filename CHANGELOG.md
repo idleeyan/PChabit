@@ -2,6 +2,23 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.11.1] - 2026-11-19
+
+### 删除 CPU 温度采样（HVCI 环境下注定读不到，留着只会显示空值）
+
+- **背景**：内存完整性（HVCI）开着，LHM 的 WinRing0 驱动被拦，`CpuTempMax` 自 2026-09-28 之后
+  一直为空、`SensorFlags` 永远缺 `1<<1`（8189 而非全量 8191）。诊断过两条修法（关 HVCI / 换 PawnIO），
+  都不划算——于是直接把这项功能删掉，而不是留一个永远空着的指标。
+- **删掉的东西**：`HardwareSampleWriter` 的 `CPU.Temp` 累加与 `_cpuTempMax` 字段（写入恒为 `null`）；
+  `HardwareValueProvider` 的 `case "CPU.Temp"` 改为恒返回空；`ComponentProcessor.GetCpuTemp()`
+  与 `_cpuTempSensorsCache` 整体删除；WPF 硬件页的 CPU「温度」行 + 温度进度条、阈值提示里的
+  「CPU 温度 70/85°C」一并去掉。
+- **保留的东西**：`HardwareSamples.CpuTempMax` 列、`HardwareSensorFlags.CpuTemp` 位都留着，
+  历史行不动（`2026-09-28` 之前的读数仍可查）；`SensorMatcher` 的原始传感器名识别不动，
+  免得影响 GPU/主板温度那条链路。GPU 温度、显存、风扇等全部照旧。
+- **验证**：`dotnet build -c Release` 通过；`dotnet publish -o publish` 出新的 `PChabit.exe`；
+  壳照常起（`PChabitShell` + `pchabit-netd`），硬件页无 CPU 温度卡片。
+
 ## [4.11.0] - 2026-11-19
 
 ### P5 采集与壳合一：开机自启跑壳单进程（窗口 + 托盘 + 采集）

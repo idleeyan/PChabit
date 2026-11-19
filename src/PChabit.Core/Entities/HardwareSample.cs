@@ -14,7 +14,7 @@ public class HardwareSample : EntityBase
     public double? CpuLoadAvg { get; set; }
     public double? CpuLoadMax { get; set; }
 
-    /// <summary>CPU 温度 ℃：分钟峰值</summary>
+    /// <summary>CPU 温度 ℃：已弃用（4.11.1 删除采样，HVCI 拦驱动导致长期为空），列保留只为历史行</summary>
     public double? CpuTempMax { get; set; }
 
     /// <summary>GPU 负载 %：分钟均值 / 峰值</summary>
@@ -55,6 +55,7 @@ public enum HardwareSensorFlags
 {
     None = 0,
     CpuLoad = 1 << 0,
+    /// <summary>已弃用（4.11.1 删除 CPU 温度采样），仅历史行里还会出现这一位</summary>
     CpuTemp = 1 << 1,
     GpuLoad = 1 << 2,
     GpuTemp = 1 << 3,

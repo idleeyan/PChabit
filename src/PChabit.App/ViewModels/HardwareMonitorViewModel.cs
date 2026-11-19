@@ -197,7 +197,6 @@ public partial class HardwareMonitorViewModel : ViewModelBase
             CpuTempText = FormatTemp(cpuTemp);
             CpuTemp = ValidTemp(cpuTemp) ? cpuTemp!.Value : 0;
             CpuTempColor = ColorFor(cpuTemp, 70, 85);
-
             // ---- GPU ----
             var gpu = _monitorService.Get("GPU.Load");
             GpuUsage = gpu ?? 0;
