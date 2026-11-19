@@ -206,6 +206,10 @@ impl NetState {
             if pid == self.self_pid || self.is_excluded_pid(pid) {
                 continue;
             }
+            // 环路（127/8）不算外网流量：系统级 PDH 计数器也不含它，否则进程侧会成倍虚高
+            if is_loopback_v4(row.local_addr) || is_loopback_v4(row.remote_addr) {
+                continue;
+            }
             let key = key_v4(&row);
             self.maybe_enable_v4(&mut row, &key);
             let Some((cum_up, cum_down)) = iphelper::read_estats_v4(&mut row) else {
@@ -222,6 +226,9 @@ impl NetState {
 
         for (pid, mut row) in v6_established {
             if pid == self.self_pid || self.is_excluded_pid(pid) {
+                continue;
+            }
+            if is_loopback_v6(&row.local_addr) || is_loopback_v6(&row.remote_addr) {
                 continue;
             }
             let key = key_v6(&row);
@@ -243,7 +250,34 @@ impl NetState {
             self.conn_last.retain(|k, _| self.estats_attempted.contains(k));
         }
 
-        // 3) 写入进程速率 / 会话累计 / 今日累计
+        // 3) 系统级累计：先叠加宿主推送的增量（下面的进程增量兜底要用它）
+        let sys_up_delta = std::mem::take(&mut self.pending_up);
+        let sys_down_delta = std::mem::take(&mut self.pending_down);
+        self.sys_session_up += sys_up_delta;
+        self.sys_session_down += sys_down_delta;
+        self.sys_today_up += sys_up_delta;
+        self.sys_today_down += sys_down_delta;
+        self.display_up_bps = sys_up_delta as f64 / elapsed;
+        self.display_down_bps = sys_down_delta as f64 / elapsed;
+
+        // 3.5) 进程增量兜底：ESTATS 只覆盖「本拍还连着的已跟踪连接」，漏掉的连接、
+        //      回环历史、连接重建都会让它比系统口子还大。超了就按系统比例收缩今日累计。
+        let sum_proc_up: i64 = per_pid.values().map(|v| v.0).sum();
+        let sum_proc_down: i64 = per_pid.values().map(|v| v.1).sum();
+        if sys_up_delta > 0 && sum_proc_up > sys_up_delta {
+            let scale = sys_up_delta as f64 / sum_proc_up as f64;
+            for v in per_pid.values_mut() {
+                v.0 = (v.0 as f64 * scale).round() as i64;
+            }
+        }
+        if sys_down_delta > 0 && sum_proc_down > sys_down_delta {
+            let scale = sys_down_delta as f64 / sum_proc_down as f64;
+            for v in per_pid.values_mut() {
+                v.1 = (v.1 as f64 * scale).round() as i64;
+            }
+        }
+
+        // 3.6) 写入进程速率 / 会话累计 / 今日累计
         let pid_names: Vec<(u32, String)> = per_pid
             .keys()
             .map(|p| (*p, self.procs.get(p).map(|s| s.name.clone()).unwrap_or_default()))
@@ -272,16 +306,6 @@ impl NetState {
                 self.add_today(&name, *pid, *d_up, *d_down);
             }
         }
-
-        // 4) 系统级累计：直接叠加宿主推送的增量
-        let sys_up_delta = std::mem::take(&mut self.pending_up);
-        let sys_down_delta = std::mem::take(&mut self.pending_down);
-        self.sys_session_up += sys_up_delta;
-        self.sys_session_down += sys_down_delta;
-        self.sys_today_up += sys_up_delta;
-        self.sys_today_down += sys_down_delta;
-        self.display_up_bps = sys_up_delta as f64 / elapsed;
-        self.display_down_bps = sys_down_delta as f64 / elapsed;
 
         // 5) 进程速率不得显著超过系统速率
         self.normalize_to_system();
@@ -556,6 +580,17 @@ impl NetState {
     pub fn totals(&self) -> (i64, i64, i64, i64) {
         (self.sys_session_up, self.sys_session_down, self.sys_today_up, self.sys_today_down)
     }
+}
+
+/// 127.0.0.0/8（行里的地址按内存字节序存放，首字节是 127 才判得对）。
+fn is_loopback_v4(addr: u32) -> bool {
+    addr & 0xFF == 0x7F || addr == 0
+}
+
+/// `::1`（内存字节序，最低字节为 1）。
+fn is_loopback_v6(addr: &[u8; 16]) -> bool {
+    let v = u128::from_le_bytes(*addr);
+    v == 1 || v == 0
 }
 
 fn key_v4(row: &iphelper::MibTcpRow) -> String {
