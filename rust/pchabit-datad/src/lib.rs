@@ -2931,6 +2931,122 @@ fn weekday_label(date: &str) -> &'static str {
 // 便签：`StickyNotes` 里 `IsDeleted = 0` 的行，置顶优先、更新时间倒序。
 
 /// 便签清单：`[{id, color, content, pinned, archived, createdAt, updatedAt}]`
+/// 便签可用的颜色（与 WPF 的色板一致，非法值回落 yellow）。
+const NOTE_COLORS: &[&str] = &["yellow", "green", "pink", "blue", "purple"];
+
+fn note_color(color: &str) -> &'static str {
+    NOTE_COLORS
+        .iter()
+        .find(|c| **c == color.trim().to_lowercase())
+        .copied()
+        .unwrap_or("yellow")
+}
+
+/// 生成一个 GUID 形状的 Id（不引 uuid：纳秒 + pid 做种子的 xorshift）。
+fn new_guid() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut seed = nanos ^ ((std::process::id() as u128) << 64) ^ 0x9e37_79b9_7f4a_7c15;
+    let mut hex = String::with_capacity(32);
+    for _ in 0..32 {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        hex.push(std::char::from_digit((seed % 16) as u32, 16).unwrap_or('0'));
+    }
+    format!(
+        "{}-{}-4{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[13..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
+}
+
+/// 新建便签（写库）。返回新 Id；内容为空直接拒绝。
+pub fn notes_create(content: &str, color: &str) -> Result<String, String> {
+    let text = content.trim();
+    if text.is_empty() {
+        return Err("便签内容不能为空".to_string());
+    }
+    let conn = open_write()?;
+    let id = new_guid();
+    let now = now_stamp();
+    conn.execute(
+        "INSERT INTO StickyNotes \
+         (Id, Content, Color, SortOrder, IsPinned, IsArchived, IsDeleted, CreatedAt, UpdatedAt, \
+          DeletedAt, DeviceId, Version, IsOnDesktop, WindowLeft, WindowTop, WindowWidth, WindowHeight) \
+         VALUES (?1, ?2, ?3, 0, 0, 0, 0, ?4, ?4, NULL, '', 1, 0, -1, -1, 0, 0)",
+        rusqlite::params![id, content, note_color(color), now],
+    )
+    .map_err(|e| format!("新建便签失败：{e}"))?;
+    Ok(id)
+}
+
+/// 改便签内容（`Version` 自增，`UpdatedAt` 刷新）。
+pub fn notes_update(id: &str, content: &str) -> Result<(), String> {
+    let conn = open_write()?;
+    let n = conn
+        .execute(
+            "UPDATE StickyNotes SET Content = ?2, UpdatedAt = ?3, Version = Version + 1 \
+             WHERE Id = ?1 AND IsDeleted = 0",
+            rusqlite::params![id, content, now_stamp()],
+        )
+        .map_err(|e| format!("修改便签失败：{e}"))?;
+    if n == 0 {
+        return Err(format!("便签不存在或已删除：{id}"));
+    }
+    Ok(())
+}
+
+/// 置顶/取消置顶。
+pub fn notes_pin(id: &str, pinned: bool) -> Result<(), String> {
+    let conn = open_write()?;
+    let n = conn
+        .execute(
+            "UPDATE StickyNotes SET IsPinned = ?2, UpdatedAt = ?3, Version = Version + 1 \
+             WHERE Id = ?1 AND IsDeleted = 0",
+            rusqlite::params![id, if pinned { 1 } else { 0 }, now_stamp()],
+        )
+        .map_err(|e| format!("置顶便签失败：{e}"))?;
+    if n == 0 {
+        return Err(format!("便签不存在或已删除：{id}"));
+    }
+    Ok(())
+}
+
+/// 软删除（`IsDeleted = 1` + `DeletedAt`），与 WPF 的删除语义一致，便于同步。
+pub fn notes_delete(id: &str) -> Result<(), String> {
+    let conn = open_write()?;
+    let now = now_stamp();
+    let n = conn
+        .execute(
+            "UPDATE StickyNotes SET IsDeleted = 1, DeletedAt = ?2, UpdatedAt = ?2, \
+             Version = Version + 1 WHERE Id = ?1 AND IsDeleted = 0",
+            rusqlite::params![id, now],
+        )
+        .map_err(|e| format!("删除便签失败：{e}"))?;
+    if n == 0 {
+        return Err(format!("便签不存在或已删除：{id}"));
+    }
+    Ok(())
+}
+
+/// 写用连接：默认库路径（受 `PCHABIT_DB` 影响），WAL 由 SQLite 自己维护。
+fn open_write() -> Result<Connection, String> {
+    let path = default_db();
+    if !path.exists() {
+        return Err(format!("数据库不存在：{}", path.display()));
+    }
+    let conn = Connection::open(&path).map_err(|e| format!("打开库失败：{e}"))?;
+    conn.busy_timeout(std::time::Duration::from_millis(3000))
+        .map_err(|e| format!("设置超时失败：{e}"))?;
+    Ok(conn)
+}
+
 pub fn notes_json(db: &Path) -> Result<serde_json::Value, String> {
     if !db.exists() {
         return Err(format!("数据库不存在：{}", db.display()));

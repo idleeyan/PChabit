@@ -2,6 +2,27 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.10.5] - 2026-11-19
+
+### 便签在壳里可新建 / 编辑 / 置顶 / 删除
+
+换壳剩下的功能面里，便签原来只有「只读墙」。现在壳能直接写 `StickyNotes`：
+
+- `datad` 新增 `notes_create / notes_update / notes_pin / notes_delete`：
+  逐列对齐表结构（`Id/Content/Color/SortOrder/IsPinned/IsArchived/IsDeleted/CreatedAt/
+  UpdatedAt/DeletedAt/DeviceId/Version/IsOnDesktop/Window*`），改与删都会 `Version + 1`；
+  删除是**软删除**（`IsDeleted=1` + `DeletedAt`），与 WPF 的语义一致，便于便签同步；
+  Id 用纳秒+pid 做种子的 xorshift 生成 GUID 形状串（不引 uuid）；颜色白名单 5 色，非法值回落 yellow。
+- 写连接带 3 s `busy_timeout`，宿主正在写库时不会立刻失败
+  （首版误用 `PRAGMA busy_timeout` 的 `execute`，SQLite 报 `Execute returned results`，已改 `busy_timeout()`）。
+- 壳新增命令 `notes_create / notes_update / notes_pin / notes_delete`，日志只记 Id、字数、颜色，
+  **不把便签正文写进日志**（内容常含账号密码这类敏感信息）。
+- `notes.html`：顶部「新便签（内容 + 颜色）」；每条便签有 编辑 / 保存 / 置顶 / 删除，
+  写库后自动重取载荷重绘，结果写 `__NOTES_RESULT__`。
+
+实测（副本库）：`新建 9c4a839c-…（9 字 / green）` → 修改 → 置顶 → 软删除 →
+`notes: 4 条便签`，`ntest 重读：共 4 条，自测残留 0 条（应为 0）`。
+
 ## [4.10.4] - 2026-11-19
 
 ### 修掉「发布版壳翻页必失败」的真 bug

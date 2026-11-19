@@ -368,6 +368,25 @@
           .catch(function (e) { note('dtest 失败：' + e); });
       }
 
+      // 自测钩子：?ntest=1 验证便签写库（新建 → 改 → 置顶 → 删），配合 PCHABIT_DB 指向库副本
+      if (page === 'notes' && new URLSearchParams(location.search).get('ntest') === '1') {
+        var nid = null;
+        window.__TAURI__.core.invoke('notes_create', { content: '壳自测便签\n第二行', color: 'green' })
+          .then(function (id) { nid = id; note('ntest 新建 ' + id); })
+          .then(function () { return window.__TAURI__.core.invoke('notes_update', { id: nid, content: '壳自测便签（已改）' }); })
+          .then(function () { note('ntest 修改 ok'); })
+          .then(function () { return window.__TAURI__.core.invoke('notes_pin', { id: nid, pinned: true }); })
+          .then(function () { note('ntest 置顶 ok'); })
+          .then(function () { return window.__TAURI__.core.invoke('notes_delete', { id: nid }); })
+          .then(function () { note('ntest 删除 ok'); })
+          .then(function () { return window.__TAURI__.core.invoke('page_data', { page: 'notes' }); })
+          .then(function (d) {
+            var live = (d.items || []).filter(function (x) { return !x.id ? false : x.content.indexOf('壳自测便签') === 0; });
+            note('ntest 重读：共 ' + ((d.items || []).length) + ' 条，自测残留 ' + live.length + ' 条（应为 0）');
+          })
+          .catch(function (e) { note('ntest 失败：' + e); });
+      }
+
       // 自测钩子：?stest=1 验证设置写回（写入与当前相同的值，不改行为）
       if (page === 'settings' && new URLSearchParams(location.search).get('stest') === '1') {
         window.__TAURI__.core.invoke('set_setting', { key: 'DataRetentionDays', value: 180 })

@@ -317,6 +317,43 @@ fn note(msg: String) {
 }
 
 #[tauri::command]
+fn notes_create(content: String, color: String) -> Result<String, String> {
+    let id = pchabit_datad::notes_create(&content, &color)?;
+    log_line(&format!(
+        "[壳] 新建便签 {id}（{} 字 / {color}）",
+        content.chars().count()
+    ));
+    Ok(id)
+}
+
+#[tauri::command]
+fn notes_update(id: String, content: String) -> Result<String, String> {
+    pchabit_datad::notes_update(&id, &content)?;
+    log_line(&format!(
+        "[壳] 修改便签 {id}（{} 字）",
+        content.chars().count()
+    ));
+    Ok(id)
+}
+
+#[tauri::command]
+fn notes_pin(id: String, pinned: bool) -> Result<String, String> {
+    pchabit_datad::notes_pin(&id, pinned)?;
+    log_line(&format!(
+        "[壳] 便签 {id} {}",
+        if pinned { "置顶" } else { "取消置顶" }
+    ));
+    Ok(id)
+}
+
+#[tauri::command]
+fn notes_delete(id: String) -> Result<String, String> {
+    pchabit_datad::notes_delete(&id)?;
+    log_line(&format!("[壳] 删除便签 {id}（软删除）"));
+    Ok(id)
+}
+
+#[tauri::command]
 fn cleanup_data(days: i64) -> Result<String, String> {
     let (cutoff, deleted) = pchabit_datad::cleanup_old(days)?;
     log_line(&format!("[壳] 手动清理：删除 {deleted} 条（截止 {cutoff}，保留 {days} 天）"));
@@ -844,7 +881,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.4";
+const VERSION: &str = "4.10.5";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -976,7 +1013,11 @@ fn main() {
             timeline_day,
             cleanup_data,
             backup_db,
-            set_setting
+            set_setting,
+            notes_create,
+            notes_update,
+            notes_pin,
+            notes_delete
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {

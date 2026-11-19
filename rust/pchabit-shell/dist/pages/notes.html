@@ -21,6 +21,19 @@
     font-family:"Consolas","Cascadia Mono","Microsoft YaHei",monospace; }
   .body a { color:#60a5fa; }
   .empty { color:#64748b; }
+  .new { background:#121a29; border:1px solid #223049; border-radius:10px;
+    padding:10px 12px; margin-bottom:14px; }
+  .new textarea { width:100%; min-height:64px; resize:vertical; box-sizing:border-box;
+    background:#0f172a; color:#e2e8f0; border:1px solid #263349; border-radius:6px;
+    padding:6px 8px; font:12px/1.5 "Consolas","Microsoft YaHei",monospace; }
+  .new .row2 { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  .new select, .note select { background:#0f172a; color:#e2e8f0; border:1px solid #263349;
+    border-radius:6px; padding:2px 6px; font-size:11px; }
+  .act { background:#182234; border:1px solid #263349; color:#cbd5e1; border-radius:6px;
+    padding:2px 8px; font-size:11px; cursor:pointer; }
+  .act.pri { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
+  .acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .msg { font-size:11px; color:#94a3b8; }
 </style>
 </head>
 <body>
@@ -28,6 +41,18 @@
   <h1>便签</h1>
   <span class="hint" id="meta">加载中…</span>
 </header>
+<div class="new">
+  <textarea id="nContent" placeholder="新便签内容（支持多行、链接）"></textarea>
+  <div class="row2">
+    <select id="nColor">
+      <option value="yellow">黄</option><option value="green">绿</option>
+      <option value="pink">粉</option><option value="blue">蓝</option>
+      <option value="purple">紫</option>
+    </select>
+    <button class="act pri" id="nAdd">新建便签</button>
+    <span class="msg" id="nMsg"></span>
+  </div>
+</div>
 <div class="grid" id="grid"></div>
 <script>
   var COLORS = {
@@ -64,7 +89,7 @@
     grid.innerHTML = '';
     var pinned = items.filter(function (n) { return n.pinned; }).length;
     document.getElementById('meta').textContent =
-      items.length + ' 条（' + pinned + ' 条置顶）· 只读，编辑请在 PChabit 里进行';
+      items.length + ' 条（' + pinned + ' 条置顶）· 可编辑（写库，与 WPF 共用 StickyNotes）';
 
     if (!items.length) {
       grid.appendChild(Object.assign(document.createElement('div'),
@@ -89,9 +114,74 @@
       bar.appendChild(right);
       box.appendChild(bar);
       box.appendChild(paintBody(n.content || ''));
+
+      // 编辑区（默认隐藏，点「编辑」才出现，避免误改）
+      var editor = document.createElement('textarea');
+      editor.value = n.content || '';
+      editor.style.cssText = 'display:none;width:100%;min-height:90px;resize:vertical;' +
+        'box-sizing:border-box;margin-top:6px;background:#0f172a;color:#e2e8f0;' +
+        'border:1px solid #263349;border-radius:6px;padding:6px 8px;' +
+        'font:12px/1.5 "Consolas","Microsoft YaHei",monospace;';
+      box.appendChild(editor);
+
+      var acts = document.createElement('div');
+      acts.className = 'acts';
+      var bEdit = mkBtn('编辑', 'act');
+      var bSave = mkBtn('保存', 'act pri');
+      bSave.style.display = 'none';
+      var bPin = mkBtn(n.pinned ? '取消置顶' : '置顶', 'act');
+      var bDel = mkBtn('删除', 'act');
+      acts.appendChild(bEdit); acts.appendChild(bSave);
+      acts.appendChild(bPin); acts.appendChild(bDel);
+      box.appendChild(acts);
+
+      var msg = document.createElement('span');
+      msg.className = 'msg';
+      acts.appendChild(msg);
+
+      bEdit.onclick = function () {
+        var on = editor.style.display === 'none';
+        editor.style.display = on ? 'block' : 'none';
+        bSave.style.display = on ? 'inline-block' : 'none';
+        bEdit.textContent = on ? '收起' : '编辑';
+      };
+      bSave.onclick = function () {
+        call('notes_update', { id: n.id, content: editor.value }, msg, '已保存');
+      };
+      bPin.onclick = function () {
+        call('notes_pin', { id: n.id, pinned: !n.pinned }, msg, n.pinned ? '已取消置顶' : '已置顶');
+      };
+      bDel.onclick = function () {
+        if (!confirm('删除这条便签？（软删除，可从 WPF 恢复）')) return;
+        call('notes_delete', { id: n.id }, msg, '已删除');
+      };
+
       grid.appendChild(box);
     });
     return 'ok: ' + items.length + ' 条便签';
+  }
+
+  function mkBtn(text, cls) {
+    var b = document.createElement('button');
+    b.className = cls;
+    b.textContent = text;
+    return b;
+  }
+
+  // 写库后重取一次载荷重绘（把结果写进 __NOTES_RESULT__，壳日志可见）
+  function call(cmd, args, msgEl, okText) {
+    if (!window.__TAURI__) { msgEl.textContent = '壳未注入 IPC'; return; }
+    msgEl.textContent = '执行中…';
+    window.__TAURI__.core.invoke(cmd, args).then(function () {
+      msgEl.textContent = okText;
+      return window.__TAURI__.core.invoke('page_data', { page: 'notes' });
+    }).then(function (d) {
+      window.__NOTES_DATA__ = d;
+      window.__NOTES_RESULT__ = renderNotes(d) + ' · ' + cmd + ' ' + okText;
+    }).catch(function (e) {
+      msgEl.textContent = '失败：' + e;
+      window.__NOTES_RESULT__ = 'error: ' + e;
+    });
   }
 
   window.renderNotes = renderNotes;
@@ -100,6 +190,29 @@
       try { window.__NOTES_RESULT__ = renderNotes(window.__NOTES_DATA__); }
       catch (e) { window.__NOTES_RESULT__ = 'error: ' + e.message; }
     }
+    var add = document.getElementById('nAdd');
+    if (add) add.onclick = function () {
+      var msg = document.getElementById('nMsg');
+      var content = document.getElementById('nContent').value;
+      var color = document.getElementById('nColor').value;
+      if (!content.trim()) { msg.textContent = '内容不能为空'; return; }
+      if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC'; return; }
+      msg.textContent = '执行中…';
+      window.__TAURI__.core.invoke('notes_create', { content: content, color: color })
+        .then(function () {
+          document.getElementById('nContent').value = '';
+          msg.textContent = '已新建';
+          return window.__TAURI__.core.invoke('page_data', { page: 'notes' });
+        })
+        .then(function (d) {
+          window.__NOTES_DATA__ = d;
+          window.__NOTES_RESULT__ = renderNotes(d) + ' · notes_create 已新建';
+        })
+        .catch(function (e) {
+          msg.textContent = '失败：' + e;
+          window.__NOTES_RESULT__ = 'error: ' + e;
+        });
+    };
   });
 </script>
 </body>
