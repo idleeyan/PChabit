@@ -1043,7 +1043,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.1";
+const VERSION: &str = "4.12.2";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1209,6 +1209,8 @@ fn make_window(
         .center()
         .initialization_script(inject)
         .build()?;
+    // 标题栏/任务栏的窗口图标（bundle 关掉时不会自动带）
+    let _ = w.set_icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.ico"))?);
     Ok(w)
 }
 

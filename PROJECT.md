@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.1**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.2**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-19 | 4.12.2 | **图标空白修好**：根因是 icons\icon.ico 本身近乎全透明（32×32 中心 alpha=34），已用 Square150x150Logo.scale-200.png 重生成 7 尺寸 ico（16–256，31 KB）；make_window 加 set_icon；Assets\PChabit.ico + 快捷方式 IconLocation 指向它，ie4uinit -show 刷缓存。实测 ExtractAssociatedIcon 中心 alpha=255 |
 | 2026-11-19 | 4.12.1 | **单实例变通道**：第二个进程点快捷方式时发 SHOW，第一个实例把窗口亮出来（show/unminimize/focus，没有窗口则现建）；桌面与任务栏快捷方式改指 Shell\PChabitShell.exe，删除指向 WPF 的启动项。实测第二实例退出、原进程 Id 未变 |
 | 2026-11-19 | 4.12.0 | **纯 Rust 断点**：C# 六层整树删除（306 文件 / 54,606 行）+ sln/props/global.json/audit 一并移除；建表改由 `rust/pchabit-collect/src/schema.sql`（29 表从生产库导出）在 `Store::open` 里逐句建；桌面便签搬进壳（`note-desktop.html` + 4 个命令，无边框/置顶/位置回写）；`publish` 只剩 4 个 exe + Assets（约 20 MB），`D:\Tool\PChabit` 的 `PChabit.exe` 与全部 .NET DLL 清走。实测空库 29 表、桌面便签窗口与页面加载、采集宿主照常跑 |
 | 2026-11-18 | 3.95.0 | **前台窗口采样 1 Hz → 500 ms（P2 尾巴）**。内核采样（netd）与宿主读取（AppMonitor 定时器）同频提到 500 ms，避免短于 1 秒的切换被整段合并；每拍仍只一次 GetForegroundWindow，开销可忽略 |

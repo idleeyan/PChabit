@@ -2,6 +2,23 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.2] - 2026-11-19
+
+### 修「图标是空白」：根因是 icon.ico 本身几乎全透明
+
+- **排查**：`(Get-Item exe).VersionInfo` 显示 ProductName/FileVersion 都在，说明 tauri-build 的
+  `resource.rc` 确实把图标写进了 exe；用 `System.Drawing.Icon` 读出来逐像素看，32×32 那张
+  中心 alpha 只有 34、边角 14 —— **图标文件本身是接近全透明的白团**，所以在资源管理器、
+  任务栏、窗口标题栏上全都像空白。
+- **改法**：用 `assets\Square150x150Logo.scale-200.png`（300×300 的真实图表 logo）重新生成
+  `icons\icon.ico`，内含 16/24/32/48/64/128/256 七种尺寸、PNG 压缩帧，共 31 KB；
+  原来那个 4 KB 的单尺寸近透明图标备份在 `%TEMP%\icon_old.ico`。
+- **配套**：`make_window` 给窗口设 `set_icon`（bundle 关掉时 Tauri 不会自动带窗口图标，
+  标题栏/任务栏会是系统默认的白纸）；`publish\Assets\PChabit.ico` 一份，桌面与任务栏快捷方式
+  的 `IconLocation` 指到它；`ie4uinit.exe -show` 刷一次图标缓存。
+- **验证**：`ExtractAssociatedIcon(exe)` 读出 32×32、中心 alpha=255；快捷方式图标路径指向新 ico。
+- 注：任务栏固定项如果仍显示旧空白图标，取消固定再重新固定一次即可（Windows 缓存的固定项图标）。
+
 ## [4.12.1] - 2026-11-19
 
 ### 修「点了快捷方式没反应」：单实例被占用时把已有窗口亮出来

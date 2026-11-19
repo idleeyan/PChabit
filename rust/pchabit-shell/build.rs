@@ -43,7 +43,8 @@ fn main() {
         }
     }
 
-    tauri_build::build()
+    tauri_build::build();
+
 }
 
 #[allow(dead_code)]
