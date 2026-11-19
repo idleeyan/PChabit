@@ -33,6 +33,8 @@ public partial class App : Microsoft.UI.Xaml.Application
     private HardwareSampleWriter? _hardwareSampleWriter;
     private TrayService? _trayService;
     private Microsoft.UI.Xaml.DispatcherTimer? _trayDisplayTimer;
+    /// <summary>P5-4：采集心跳定时器（只读模式下不启动）。</summary>
+    private Microsoft.UI.Xaml.DispatcherTimer? _collectHeartbeatTimer;
     /// <summary>F2（3.83.0）：托盘 5s Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
     private int _trayTickBusy;
     private TaskbarWidget? _taskbarWidget;
@@ -183,6 +185,8 @@ public partial class App : Microsoft.UI.Xaml.Application
             // 注册未处理异常处理器，捕获 XAML/后台线程的崩溃信息
             UnhandledException += App_UnhandledException;
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+            // 退出（含 Environment.Exit）时清掉采集心跳，免得 Rust 宿主被尸体挡住
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => ClearCollectHeartbeat();
             System.Threading.Tasks.TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
         }
         catch (Exception ex)

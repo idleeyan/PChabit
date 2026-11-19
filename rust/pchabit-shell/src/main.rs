@@ -781,7 +781,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.8.0";
+const VERSION: &str = "4.9.0";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -866,7 +866,18 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// 单实例锁：占一个本地端口当互斥量（第二实例绑不上就直接退）。
+/// 不引新依赖，进程死了端口自动释放。
+fn take_single_instance() -> Option<std::net::TcpListener> {
+    std::net::TcpListener::bind("127.0.0.1:18765").ok()
+}
+
 fn main() {
+    let Some(_instance_lock) = take_single_instance() else {
+        log_line("[壳] 已有实例在跑（127.0.0.1:18765 被占用），本次退出");
+        return;
+    };
+
     // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1] [--host] [--headless]
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let host_mode = raw_args.iter().any(|a| a == "--host");

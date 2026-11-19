@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Xaml;
 using Serilog;
 using PChabit.App.Services;
 using PChabit.Infrastructure.Monitoring;
@@ -9,10 +10,99 @@ namespace PChabit.App;
 
 public partial class App : Microsoft.UI.Xaml.Application
 {
+    /// <summary>
+    /// P5-4：采集交给 Rust 宿主时，本进程只做界面。
+    /// 开关来源：环境变量 `PCHABIT_COLLECT=shell`（调试用）优先，其次 `settings.json` 的 `CollectInShell`。
+    /// 硬件内存采样必须留着——托盘与桌面小部件读的是它，它只采样不落库。
+    /// </summary>
+    private static bool CollectInShell
+    {
+        get
+        {
+            var env = Environment.GetEnvironmentVariable("PCHABIT_COLLECT");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                return env.Equals("shell", StringComparison.OrdinalIgnoreCase);
+            }
+            try
+            {
+                var path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "PChabit",
+                    "settings.json");
+                if (!File.Exists(path)) return false;
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+                return doc.RootElement.TryGetProperty("CollectInShell", out var v)
+                       && v.ValueKind == System.Text.Json.JsonValueKind.True;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "读取 CollectInShell 开关失败，按默认（WPF 采集）处理");
+                return false;
+            }
+        }
+    }
+
+    private const string CollectHeartbeatName = ".wpf-collecting";
+
+    /// <summary>
+    /// 写入/刷新「WPF 正在采集」心跳。Rust 宿主凭这个文件判断谁是写者：
+    /// 没有心跳 = WPF 只读模式，宿主可以启动。
+    /// </summary>
+    private static void WriteCollectHeartbeat()
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PChabit",
+                "Data");
+            Directory.CreateDirectory(dir);
+            var ms = DateTimeOffset.Now.ToUnixTimeMilliseconds().ToString();
+            File.WriteAllText(Path.Combine(dir, CollectHeartbeatName), ms);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "写采集心跳失败");
+        }
+    }
+
+    private static void ClearCollectHeartbeat()
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PChabit",
+                "Data",
+                CollectHeartbeatName);
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch
+        {
+            // 删不掉不影响功能：宿主 5 分钟后会认为心跳作废
+        }
+    }
+
     private async Task StartMonitoringAsync()
     {
         try
         {
+            if (CollectInShell)
+            {
+                StartUiOnlyMode();
+                await Task.CompletedTask;
+                return;
+            }
+
+            WriteCollectHeartbeat();
+            _collectHeartbeatTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(60)
+            };
+            _collectHeartbeatTimer.Tick += (_, _) => WriteCollectHeartbeat();
+            _collectHeartbeatTimer.Start();
+
             _monitorManager = _serviceProvider!.GetRequiredService<MonitorManager>();
 
             // 低级输入钩子安装在专用消息泵线程上，避免 UI 线程布局/渲染阻塞导致
@@ -87,6 +177,38 @@ public partial class App : Microsoft.UI.Xaml.Application
         catch (Exception ex)
         {
             Log.Error(ex, "启动监控服务失败");
+        }
+    }
+
+    /// <summary>
+    /// P5-4 只读模式：采集交给 Rust 宿主（`PChabitShell.exe --host`），本进程只保留
+    /// 界面、托盘、桌面小部件需要的内存采样与维护任务。**不写任何采集表**。
+    /// </summary>
+    private void StartUiOnlyMode()
+    {
+        try
+        {
+            // 只读模式没有心跳 → Rust 宿主看到「PChabit 在跑但没心跳」会放行
+            ClearCollectHeartbeat();
+            Log.Information("采集已交给 Rust 宿主（PCHABIT_COLLECT=shell）：本进程只做界面与内存采样");
+            Log.Information("注意：任务栏小窗的点击拦截来自 WPF 鼠标钩子，只读模式下该功能不可用");
+
+            _hardwareMonitorService = _serviceProvider!.GetRequiredService<HardwareMonitorService>();
+            _hardwareMonitorService.Start();
+            Log.Information("硬件内存采样已启动（托盘与桌面小部件数据源，不落库）");
+
+            var processNetwork = _serviceProvider!.GetRequiredService<PChabit.HardwareMonitor.Hardware.ProcessNetworkMonitor>();
+            processNetwork.NetUpGetter = () => _hardwareMonitorService?.Get("NET.Up");
+            processNetwork.NetDownGetter = () => _hardwareMonitorService?.Get("NET.Down");
+            processNetwork.Start();
+            Log.Information("进程网络流量监视已启动（内存）");
+
+            StartTrayDisplayTimer();
+            StartDesktopWidgetTimer();
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "只读模式启动失败");
         }
     }
 

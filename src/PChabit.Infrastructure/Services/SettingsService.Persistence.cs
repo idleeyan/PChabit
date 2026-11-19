@@ -120,6 +120,8 @@ internal class AppSettings
     public bool MinimizeToTray { get; set; } = true;
     public bool ShowNotifications { get; set; } = true;
     public bool AutoStartMonitoring { get; set; } = true;
+    /// <summary>P5-4：采集交给 Rust 采集宿主（PChabitShell.exe --host），WPF 只做界面。</summary>
+    public bool CollectInShell { get; set; } = false;
     public int MonitoringInterval { get; set; } = 1;
     public int IdleThreshold { get; set; } = 5;
     public bool TrackKeyboard { get; set; } = true;

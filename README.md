@@ -25,7 +25,12 @@
 
 - **采集宿主（P5，4.3.0 → 4.6.0 补齐）**：`Shell\PChabitShell.exe --host` 启动时壳**自己当采集宿主**——netd 托管、CPU/内存/GPU/网络/磁盘分钟采样、前台应用会话、键鼠低层钩子、浏览器网页会话（自建 WebSocket `127.0.0.1:8765`，接现有扩展）、例外日汇总（`DailySummaries` / `AppDailyStats`）与落库全部在 Rust 侧完成，关窗时自动收口（最后一分钟、当前应用会话、键鼠增量、在场网页会话都会落库）。单写者约束：`PChabit.exe` 在跑时宿主拒绝启动（两个宿主同时写会让同一分钟出现两份增量）。不带 `--host` 仍是纯只读展示。
 
-  **常驻形态（4.6.0 → 4.8.0）**：`Shell\PChabitShell.exe --host --headless` 不建窗口、只跑采集宿主，进程一直常驻到被结束；窗口模式默认也带托盘，**关窗只是隐到托盘、采集继续**，托盘「退出采集」才真退（退出前统一收口：最后一分钟、会话、键鼠、网页会话、netd）。两种形态的托盘菜单都是「打开仪表盘」（没窗口就现建，有窗口就显示并聚焦）与「退出采集」（先 `HostState::stop()` 再退出）。日志仍写 `%TEMP%\pchabit-shell.log`。切默认入口还必须解决 WPF 的任务栏小窗（其点击拦截依赖 WPF 鼠标钩子），因此**默认入口仍是 WPF 版**。细节与切换步骤见 `docs/P5-collect-migration.md`。
+  **默认分工（4.9.0 起）**：采集归 Rust 宿主，界面/托盘/任务栏小窗归 WPF。`settings.json` 里
+  `CollectInShell=true` 时 `PChabit.exe` 只跑界面（硬件内存采样给托盘与小部件用，不落库），
+  采集表全部由 `Shell\PChabitShell.exe --host --headless` 写——它是计划任务「PChabit 采集宿主」在登录时以最高权限拉起。
+  单写者判断用心跳文件（`Data\.wpf-collecting`）：只有真正在采集的 WPF 才写，宿主凭它决定放不放行；
+  netd 已支持多客户端，两边可以同时读。把 `CollectInShell` 置回 `false` 即可一键回退到 WPF 采集。
+  已知代价：小窗点击弹进程网速依赖 WPF 鼠标钩子，只读模式下暂不可用。细节见 `docs/P5-collect-migration.md` §9。
 
 ### 数据分析与复盘
 

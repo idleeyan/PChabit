@@ -76,7 +76,15 @@ pub enum ServeOutcome {
     Stop,
 }
 
-/// 常驻服务：反复接受连接、逐行处理，直到收到 STOP。
+/// 裸句柄跨线程传递（每条连接一个线程，句柄只归该线程）。
+struct RawHandle(*mut c_void);
+unsafe impl Send for RawHandle {}
+
+/// 常驻服务：反复接受连接，每条连接一个线程，逐行处理，直到收到 STOP。
+///
+/// 之前是「单客户端」：一次只服务一条连接，WPF 的 `ProcessNetworkMonitor`
+/// 占着管子时，采集宿主怎么等都连不上（ERROR_PIPE_BUSY）。实例数本来就是
+/// `PIPE_UNLIMITED_INSTANCES`，把 pump 挪到独立线程即可两边并存。
 pub fn serve(state: Arc<Mutex<NetState>>, gpu: GpuShare, app: AppShare) {
     let name_utf16 = to_wide(PIPE_NAME);
     loop {
@@ -104,20 +112,27 @@ pub fn serve(state: Arc<Mutex<NetState>>, gpu: GpuShare, app: AppShare) {
             continue;
         }
 
-        let outcome = pump(handle, &state, &gpu, &app);
-        unsafe {
-            FlushFileBuffers(handle);
-            DisconnectNamedPipe(handle);
-            CloseHandle(handle);
-        }
-
-        if let ServeOutcome::Stop = outcome {
-            return;
-        }
+        let h = RawHandle(handle);
+        let st = Arc::clone(&state);
+        let g = Arc::clone(&gpu);
+        let a = Arc::clone(&app);
+        std::thread::spawn(move || {
+            let outcome = pump(&h, &st, &g, &a);
+            unsafe {
+                FlushFileBuffers(h.0);
+                DisconnectNamedPipe(h.0);
+                CloseHandle(h.0);
+            }
+            if let ServeOutcome::Stop = outcome {
+                // STOP 是「关掉内核」：直接结束进程，别让其它连接把它拖住
+                std::process::exit(0);
+            }
+        });
     }
 }
 
-fn pump(handle: *mut c_void, state: &Arc<Mutex<NetState>>, gpu: &GpuShare, app: &AppShare) -> ServeOutcome {
+fn pump(handle: &RawHandle, state: &Arc<Mutex<NetState>>, gpu: &GpuShare, app: &AppShare) -> ServeOutcome {
+    let handle = handle.0;
     let mut acc: Vec<u8> = Vec::with_capacity(256);
     let mut chunk = [0u8; 4096];
 

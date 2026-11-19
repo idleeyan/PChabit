@@ -2,6 +2,46 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.9.0] - 2026-11-19
+
+### 默认入口切换：WPF 只读 UI + Rust 采集宿主并行
+
+这是 P5-4 的落地版本。采集不再是「谁启动谁写」，而是分成两个角色：
+
+**采集宿主（Rust，`PChabitShell.exe --host --headless`）** 独占所有采集表写入；
+**WPF（`PChabit.exe`）** 在 `settings.json` 里 `CollectInShell=true` 时退成只读界面，
+只留界面、托盘、桌面小部件需要的内存采样（`HardwareMonitorService` 采样但不落库）。
+
+配套改动：
+
+- **开关**：`CollectInShell`（`settings.json`，默认 `false`）；环境变量 `PCHABIT_COLLECT=shell` 可临时覆盖，便于调试；
+- **单写者判断改成「心跳」**：WPF 正常采集时每 60 s 写 `%LOCALAPPDATA%\PChabit\Data\.wpf-collecting`（毫秒时间戳），
+  只读模式不写；宿主发现 `PChabit.exe` 在跑但心跳缺失/超过 5 分钟，就认为它不是写者，正常启动。
+  解决了「只读 WPF 在跑 → 采集宿主被进程名挡住」的死结；
+- **netd 支持多客户端**：原来命名管道一次只服务一条连接，WPF 的 `ProcessNetworkMonitor` 占着管子，
+  宿主怎么等都是 `ERROR_PIPE_BUSY`。现在每条连接一个独立线程（`STOP` 直接结束内核进程），
+  WPF 与宿主可以同时读同一份内核数据；
+- **应用会话不再被自家进程粘住**：前台快照里 `pchabit*` 自家进程与「无标题 + 高度 < 120px」的工具窗
+  （任务栏小窗就是这种）不算前台应用，否则会话会一直挂在 `PChabit.exe` 上、整段不切段；
+- **壳单实例锁**：占 `127.0.0.1:18765` 当互斥量，第二实例直接退出，避免多份托盘与多份采集；
+- **开机自启**：计划任务「PChabit 采集宿主」（登录触发、最高权限）跑
+  `Shell\PChabitShell.exe --host --headless`；`HKCU\...\Run` 的 PChabit 仍负责拉起 UI。
+  两者必须同权限级别，否则低权限客户端连不上高权限 netd 管道（`ERROR_ACCESS_DENIED`）。
+
+实测（最终形态：`PChabit.exe`（只读）+ `PChabitShell.exe --host --headless`（计划任务拉起）+ 一个共享 netd）：
+
+| 表 | 15:15 之后的结果 |
+| --- | --- |
+| `HardwareSamples` | 每分钟一行，`SampleCount` 60、`SensorFlags` **8189**（Rust；再没有 8191 的 WPF 行） |
+| `NetworkTrafficSamples` | 每分钟一行 |
+| `AppSessions` | 真实前台切段（hongguo-desktop-companion 387s / Doubao 18s / msedge 1.8s），不再粘 `PChabit.exe` |
+| `KeyboardSessions` / `MouseSessions` | 15 点 20 键 / 3 击（Rust 写） |
+| `WebSessions` | 扩展 v2.2.4 连到宿主 8765：抖音（视频）/ steam（浏览）/ 百度（搜索）按域名分类入库 |
+| WPF 侧 | 日志 `采集已交给 Rust 宿主` + `任务栏小窗命中区就绪`，托盘与小部件照常 |
+
+已知代价：任务栏小窗的**点击拦截**依赖 WPF 的鼠标低级钩子，只读模式下钩子没装，点击弹进程网速浮窗
+暂时不可用（小窗显示本身正常）。这是切默认入口唯一牺牲掉的功能，详见 `docs/P5-collect-migration.md` §9。
+
 ## [4.8.0] - 2026-11-19
 
 ### 关窗=隐到托盘，退出必先收口

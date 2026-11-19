@@ -95,12 +95,38 @@ pub struct Host {
     ws: Option<crate::websync::Server>,
 }
 
+/// WPF 是否真的在采集：进程在跑 **且** 心跳文件新鲜。
+///
+/// WPF 只读模式（`PCHABIT_COLLECT=shell`）不写心跳，所以此时宿主可以正常启动；
+/// WPF 崩溃留下的旧心跳超过 5 分钟就作废，宿主人不会再被尸体挡住。
+fn wpf_is_collecting() -> bool {
+    if !win::process_running("PChabit.exe") {
+        return false;
+    }
+    let Some(base) = std::env::var("LOCALAPPDATA").ok().map(PathBuf::from) else {
+        return true; // 拿不到路径就退回保守判断
+    };
+    let beat = base.join("PChabit").join("Data").join(".wpf-collecting");
+    let Ok(text) = std::fs::read_to_string(&beat) else {
+        return false; // 只读模式：根本没写心跳
+    };
+    let Ok(ms) = text.trim().parse::<u64>() else {
+        return false;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    now.saturating_sub(ms) < 300_000
+}
+
 impl Host {
     /// 启动采集。返回句柄，`stop()` 后线程退出、netd 收到 STOP。
     pub fn start(cfg: Config) -> Result<Host, String> {
-        if win::process_running("PChabit.exe") {
+        if wpf_is_collecting() {
             return Err(
-                "检测到 PChabit.exe 正在运行：采集宿主要求单写者，请先关闭 WPF 版".to_string(),
+                "检测到 PChabit.exe 正在采集：采集宿主要求单写者，请先关闭 WPF 版（或让它以只读模式运行）"
+                    .to_string(),
             );
         }
 
@@ -611,6 +637,17 @@ fn app_loop(ctx: Arc<Ctx>) {
             let maximized = v["max"].as_bool().unwrap_or(false);
 
             if ok && !proc_stem.is_empty() {
+                // 自家进程与任务栏小窗这类「工具窗」不能算前台应用：
+                // 只读模式下 WPF 常驻，任务栏小窗（无标题、极扁）会抢到前台，
+                // 之前会把会话一直粘在 PChabit.exe 上，导致整段时间没有切段。
+                let own = matches!(
+                    proc_stem.to_ascii_lowercase().as_str(),
+                    "pchabit" | "pchabit-shell" | "pchabit-collect" | "pchabit-netd"
+                );
+                let tool_window = title.trim().is_empty() && h < 120.0;
+                if own || tool_window {
+                    continue;
+                }
                 seen += 1;
                 if seen == 1 {
                     ctx.say(format!(
