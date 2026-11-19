@@ -1098,7 +1098,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.13";
+const VERSION: &str = "4.12.14";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1259,8 +1259,8 @@ fn make_window(
 ) -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
     let w = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
         .title("PChabit（P5 采集宿主）")
-        .inner_size(1180.0, 720.0)
-        .min_inner_size(900.0, 560.0)
+        .inner_size(1440.0, 940.0)
+        .min_inner_size(1000.0, 640.0)
         .center()
         .initialization_script(inject)
         .build()?;
