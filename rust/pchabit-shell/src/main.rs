@@ -1066,7 +1066,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.7";
+const VERSION: &str = "4.12.8";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1280,8 +1280,27 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            "newnote" => open_window_at(app, "app.html?p=notes&newnote=1", "托盘：新建便签"),
-            "notes" => open_window_at(app, "app.html?p=notes", "托盘：便签列表"),
+            "newnote" => {
+                // 托盘「新建便签」：真建一张、放桌面、直接把窗口摆出来（光标进去就能打字）。
+                // 之前只是把便签页里的输入框聚焦，等于没建，用户看着像没反应。
+                let app2 = app.clone();
+                let _ = app.run_on_main_thread(move || match tray_new_note(&app2) {
+                    Ok(id) => log_line(&format!("[壳] 托盘：已新建桌面便签 {id}")),
+                    Err(e) => log_line(&format!("[壳] 托盘新建便签失败：{e}")),
+                });
+            }
+            "notes" => {
+                // 有窗口就复用（直接跳便签页），没有才新建，避免每次点都关掉仪表盘
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                    let _ = w.eval("location.href='app.html?p=notes'");
+                    log_line("[壳] 托盘：便签列表（复用已有窗口）");
+                } else {
+                    open_window_at(app, "app.html?p=notes", "托盘：便签列表");
+                }
+            }
             "quit" => {
                 if let Some(state) = app.try_state::<HostState>() {
                     state.stop();
@@ -1295,6 +1314,24 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     std::mem::forget(tray);
     Ok(())
+}
+
+/// 托盘「新建便签」：写库 → 标记为桌面便签 → 开悬浮窗，返回新便签 id。
+fn tray_new_note(app: &tauri::AppHandle) -> Result<String, String> {
+    let id = pchabit_datad::notes_create_blank("yellow")?;
+    // 新纸条给个错开的起始位置（库里的默认是 -1，会贴到屏幕左上角）
+    let n = pchabit_datad::notes_desktop_json(&pchabit_datad::default_db())
+        .ok()
+        .and_then(|v| v["count"].as_u64())
+        .unwrap_or(0) as f64;
+    let step = (n % 6.0) * 26.0;
+    pchabit_datad::notes_set_pos(&id, 260.0 + step, 200.0 + step, 300.0, 220.0)?;
+    pchabit_datad::notes_set_desktop(&id, true)?;
+    open_note_window(app, &id)?;
+    if let Some(w) = app.get_webview_window(&format!("note-{id}")) {
+        let _ = w.set_focus();
+    }
+    Ok(id)
 }
 
 /// 托盘里「打开某个页面」：先关掉旧窗口再按目标地址开一个（换页只需重建，代价极小）。

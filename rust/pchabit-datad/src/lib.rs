@@ -36,6 +36,8 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "newcat" => run_newcat(db),
         "activecat" => run_activecat(db),
         "notes" => run_notes(db),
+        "notes-new" => run_notes_new(),
+        "notes-rm" => run_notes_rm(date),
         "web" => run_web(db, date),
         "timeline" => run_timeline(db, date),
         "dashboard" => run_json_cmd(dashboard_json(db)),
@@ -50,6 +52,25 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
 fn run_notes(db: &Path) -> Result<(), String> {
     let v = notes_json(db)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+/// `notes-new` 子命令：建一张空白便签，打印 `{"id":"..."}`（自测/排障用）。
+fn run_notes_new() -> Result<(), String> {
+    let id = notes_create_blank("yellow")?;
+    notes_set_pos(&id, 260.0, 200.0, 300.0, 220.0)?;
+    notes_set_desktop(&id, true)?;
+    println!("{{\"id\":\"{id}\"}}");
+    Ok(())
+}
+
+/// `notes-rm <id>` 子命令：软删一张便签（排障/清残留用）。
+fn run_notes_rm(id: &str) -> Result<(), String> {
+    if id.trim().is_empty() {
+        return Err("用法：notes-rm <便签 id>".to_string());
+    }
+    notes_delete(id.trim())?;
+    println!("{{\"ok\":true,\"id\":\"{}\"}}", id.trim());
     Ok(())
 }
 
@@ -3002,6 +3023,15 @@ pub fn notes_create(content: &str, color: &str) -> Result<String, String> {
     if text.is_empty() {
         return Err("便签内容不能为空".to_string());
     }
+    insert_note(content, color)
+}
+
+/// 建一张空白便签（托盘「新建便签」用：先给一张空纸，用户直接打字）。
+pub fn notes_create_blank(color: &str) -> Result<String, String> {
+    insert_note("", color)
+}
+
+fn insert_note(content: &str, color: &str) -> Result<String, String> {
     let conn = open_write()?;
     let id = new_guid();
     let now = now_stamp();

@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.7**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.8**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,10 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-19 | 4.12.8 | **托盘两项便签菜单真有用**：「新建便签」写库建空白便签+弹悬浮窗聚焦（新增 
+otes_create_blank）；「便签列表」复用窗口跳转；pchabit-datad 加 
+otes-new/
+otes-rm 排障子命令；note-desktop 载入后自动聚焦 |
 | 2026-11-19 | 4.12.7 | **详情页同名函数覆盖**：enderDetail 绘制函数被 window.renderDetail（列表入口）覆盖 → 改名 paintDetail；**小窗沙漏光标**：h_cursor=LoadCursorW(IDC_ARROW) + 处理 WM_SETCURSOR；用无头 Edge 渲染真实数据验证详情页 |
 | 2026-11-19 | 4.12.6 | **小窗网速优先**：顺序 ↓上行→↑→竖线→CPU→内存；下行 21pt 粗体强化；Segment 增加 alue_pt/divider_before，量宽按各自字号 |
 | 2026-11-19 | 4.12.5 | **任务栏小窗可读性**：深浅改读注册表 SystemUsesLightTheme（每帧重读，切系统主题即变），字号 12/16pt，色键改为从 Shell_TrayWnd 取像素（挂父窗口之前取） |
