@@ -23,6 +23,20 @@
 `AppSessions` 正常切段、`WebSessions` 抖音（视频）入库、键盘小时行照写）。
 WPF 单测 **186 通过**。
 
+### 发布包清理（无版本号变更）
+
+- 删掉三份无人引用的 AI 运行库：`onnxruntime.dll`（21.6 MB）、`DirectML.dll`（18.7 MB）、
+  `Microsoft.ML.OnnxRuntime.dll`（0.2 MB）。全仓（`src` / `rust` / `*.csproj` / `*.json`）
+  grep `Onnx|DirectML|Microsoft.ML` **零引用**，属早前 AI 功能撤掉后留在发布目录的残留；
+  `publish\` 与 `D:\Tool\PChabit` 两处都已删除（这两份 dll 未被进程加载，删除不影响运行）。
+
+### 关于「CPU 温度缺失」的更正
+
+原先把它记成「Rust 侧无 LHM」。查库后结论不同：`HardwareSamples.CpuTempMax` 最后一次 > 0 是
+**2026-09-28 20:08**（那天 865 行、44–62 °C），此后 WPF 自己写的行也全是 `0.0`（`SensorFlags` 仍写 8191）。
+也就是说传感器读数在迁移之前就已经断了，不是 Rust 造成的缺口；Rust 不置 `1<<1` 位反而是诚实的。
+真正的待办是查 LHM 为什么读不到温度（驱动/权限/主板支持），与迁移无关。
+
 ## [4.10.0] - 2026-11-19
 
 ### 采集宿主接管 WPF 的三件「每日维护」
