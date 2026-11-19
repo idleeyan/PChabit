@@ -417,11 +417,27 @@
   }
   document.getElementById('refresh').addEventListener('click', refresh);
 
+  // 常驻自动刷新：60 s 重取一次载荷并按当前页重绘（写库页跳过，免得打断操作）
+  function refreshLive() {
+    if (!window.__TAURI__ || !current) return;
+    if (current === 'admin' || current === 'notes' || current === 'data') return;
+    window.__TAURI__.core.invoke('pages_data').then(function (p) {
+      window.__PAGES__ = p;
+      var w = frame.contentWindow;
+      if (!w || !dataFor) return;
+      feed(current, w, dataFor(current));
+      note(current + ' 已自动刷新（' + new Date().toTimeString().slice(0, 5) + '）');
+    }).catch(function (e) { note('自动刷新失败：' + e); });
+  }
+
   // 命令行直开：app.html?p=sankey　自测刷新：再加 &auto=1
   var q = new URLSearchParams(location.search).get('p');
   load(ASSET[q] ? q : 'dashboard');
   if (new URLSearchParams(location.search).get('auto') === '1') {
     setTimeout(refresh, 2500);
+  } else if (!new URLSearchParams(location.search).get('dtest')) {
+    // 常驻窗口每分钟刷新一次，数据页/管理页操作期间不打扰
+    setInterval(refreshLive, 60000);
   }
 </script>
 </body>
