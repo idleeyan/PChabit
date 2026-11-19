@@ -14,8 +14,11 @@ use std::io::Write;
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod backup;
 mod desktop_widget;
+mod hotkey;
 mod taskbar;
+mod webdav;
 
 /// 找壳自己的 `dist` 目录（页面资产由 build.rs 从 WPF 工程原样复制进来）。
 fn dist_dir() -> PathBuf {
@@ -49,8 +52,24 @@ pub(crate) fn log_line(msg: &str) {
     }
 }
 
+/// 全局 AppHandle：后台线程（备份/热键）要发通知时用。
+static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// 系统通知（`ShowNotifications` 关掉就只写日志）。
+pub(crate) fn notify(title: &str, body: &str) {
+    log_line(&format!("[通知] {title}：{body}"));
+    if !setting_bool_default("ShowNotifications", true) {
+        return;
+    }
+    let Some(app) = APP_HANDLE.get() else { return };
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(e) = app.notification().builder().title(title).body(body).show() {
+        log_line(&format!("[通知] 发系统通知失败：{e}"));
+    }
+}
+
 /// 读 `settings.json` 里的布尔开关（缺文件/缺键用 `default`）。
-fn setting_bool_default(key: &str, default: bool) -> bool {
+pub(crate) fn setting_bool_default(key: &str, default: bool) -> bool {
     let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
         .join("PChabit")
         .join("settings.json");
@@ -75,6 +94,49 @@ fn setting_bool(key: &str) -> bool {
         return false;
     };
     v.get(key).and_then(|x| x.as_bool()).unwrap_or(false)
+}
+
+/// 读 `settings.json` 里的整数（缺文件/缺键用 `default`）。
+pub(crate) fn setting_i64(key: &str, default: i64) -> i64 {
+    read_setting_value(key)
+        .and_then(|x| x.as_i64())
+        .unwrap_or(default)
+}
+
+/// 读 `settings.json` 里的字符串（缺文件/缺键用 `default`）。
+pub(crate) fn setting_str(key: &str, default: &str) -> String {
+    read_setting_value(key)
+        .and_then(|x| x.as_str().map(|s| s.to_string()))
+        .unwrap_or_else(|| default.to_string())
+}
+
+fn read_setting_value(key: &str) -> Option<serde_json::Value> {
+    let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let text = std::fs::read_to_string(p).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get(key).cloned()
+}
+
+/// 内部直接改写一个设置键（不做白名单校验，供程序自己回写时间戳/状态用）。
+pub(crate) fn update_setting_file(key: &str, value: serde_json::Value) {
+    let path = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    let Some(obj) = v.as_object_mut() else {
+        return;
+    };
+    obj.insert(key.to_string(), value);
+    if let Ok(pretty) = serde_json::to_string_pretty(&v) {
+        let _ = std::fs::write(&path, pretty);
+    }
 }
 
 /// 小窗跟随当前主题：`settings.json` 的 `CurrentTheme` 为 light 时用浅色配色。
@@ -375,6 +437,27 @@ fn backup_db() -> Result<String, String> {
     let (path, size) = pchabit_datad::backup_now()?;
     log_line(&format!("[壳] 手动备份：{path}（{} MB）", (size as f64 / 1048576.0).round()));
     Ok(format!("备份完成：{path}（{} MB）", (size as f64 / 1048576.0).round()))
+}
+
+/// 手动触发一次云备份（设置页按钮用）。
+#[tauri::command]
+fn cloud_backup_now() -> Result<String, String> {
+    let name = backup::cloud_backup()?;
+    log_line(&format!("[云备份] 手动上传完成：{name}"));
+    Ok(format!("已上传 {name}"))
+}
+
+/// 云端的备份状态：最新文件 + 上次同步时间。
+#[tauri::command]
+fn cloud_latest_info() -> serde_json::Value {
+    let latest = backup::cloud_latest();
+    serde_json::json!({
+        "ok": latest.is_ok(),
+        "latest": latest.clone().unwrap_or_default(),
+        "error": latest.err().unwrap_or_default(),
+        "lastSync": setting_str("WebDAVLastSync", ""),
+        "enabled": setting_bool_default("WebDAVEnabled", false),
+    })
 }
 
 /// 前端要数据：一次同步查库 + 聚合，返回该页面需要的那份 JSON。
@@ -1035,6 +1118,19 @@ fn set_setting(
                 Err(e) => log_line(&format!("[壳] 开机自启设置失败：{e}")),
             }
         }
+        "AutoStartMonitoring" => {
+            let on = value.as_bool().unwrap_or(false);
+            match apply_collector_task(on) {
+                Ok(msg) => log_line(&format!("[壳] 采集宿主自启：{msg}")),
+                Err(e) => log_line(&format!("[壳] 采集宿主自启设置失败：{e}")),
+            }
+        }
+        "RetentionDays" => {
+            // 老键：真正生效的是 DataRetentionDays，两个一起改，避免页面上两套口径
+            let n = value.as_i64().unwrap_or(90).clamp(1, 3650);
+            update_setting_file("DataRetentionDays", serde_json::json!(n));
+            log_line(&format!("[壳] 保留天数同步为 {n} 天（DataRetentionDays）"));
+        }
         _ => {}
     }
     Ok(format!("{key} = {value}"))
@@ -1073,6 +1169,35 @@ fn apply_start_with_windows(on: bool) -> Result<String, String> {
             "Run 里本来就没有，无需删除".to_string()
         })
     }
+}
+
+/// 「采集宿主开机自启」落到计划任务「PChabit 采集宿主」的启用/禁用。
+fn apply_collector_task(on: bool) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    let action = if on { "/enable" } else { "/disable" };
+    let out = std::process::Command::new("schtasks")
+        .args(["/change", "/tn", "PChabit 采集宿主", action])
+        .creation_flags(0x0800_0000)
+        .output()
+        .map_err(|e| format!("调 schtasks 失败：{e}"))?;
+    if out.status.success() {
+        Ok(if on {
+            "计划任务已启用".to_string()
+        } else {
+            "计划任务已禁用".to_string()
+        })
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// 后端低频服务（备份线程）统一从这里起：只起一次，重启壳不重复。
+fn start_background_services() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        backup::start();
+        log_line("[壳] 后台服务：自动备份线程已启动");
+    });
 }
 
 fn json_type_name(v: &serde_json::Value) -> &'static str {
@@ -1195,7 +1320,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.18";
+const VERSION: &str = "4.12.19";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1448,7 +1573,7 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// 托盘的「打开主窗口」：有窗口就亮出来，没有就现建一个（左键与菜单「显示」共用）。
-fn tray_show(app: &tauri::AppHandle, from: &str) {
+pub(crate) fn tray_show(app: &tauri::AppHandle, from: &str) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
@@ -1463,7 +1588,7 @@ fn tray_show(app: &tauri::AppHandle, from: &str) {
 }
 
 /// 托盘「新建便签」：写库 → 标记为桌面便签 → 开悬浮窗，返回新便签 id。
-fn tray_new_note(app: &tauri::AppHandle) -> Result<String, String> {
+pub(crate) fn tray_new_note(app: &tauri::AppHandle) -> Result<String, String> {
     let id = pchabit_datad::notes_create_blank("yellow")?;
     // 新纸条给个错开的起始位置（库里的默认是 -1，会贴到屏幕左上角）
     let n = pchabit_datad::notes_desktop_json(&pchabit_datad::default_db())
@@ -1563,11 +1688,13 @@ fn main() {
     // 五页数据在窗口创建时一次算好，注入 window.__PAGES__：
     // 渲染阶段不再走 IPC，避免跨 frame + 异步回调那堆坑。
     let pages = all_pages();
+    let goal_hours = setting_i64("DailyUsageGoalHours", 6).clamp(0, 24);
     let inject = format!(
-        "window.__PAGES__ = {pages};window.__VER__ = '{VERSION}';"
+        "window.__PAGES__ = {pages};window.__VER__ = '{VERSION}';window.__GOAL_HOURS__ = {goal_hours};"
     );
 
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             page_data,
             pages_data,
@@ -1583,6 +1710,8 @@ fn main() {
             cleanup_data,
             backup_db,
             set_setting,
+            cloud_backup_now,
+            cloud_latest_info,
             notes_create,
             notes_update,
             notes_pin,
@@ -1602,6 +1731,8 @@ fn main() {
             log_line(&format!("{stage} [{}]", webview.label()));
         })
         .setup(move |app| {
+            // 后台线程（备份/热键）发通知要用的全局句柄
+            let _ = APP_HANDLE.set(app.handle().clone());
             // 采集宿主随壳启动：单写者约束在 Host 内部（WPF 在跑就拒绝）
             app.manage(HostState(std::sync::Mutex::new(None)));
 
@@ -1790,6 +1921,22 @@ fn main() {
             if with_desktop {
                 desktop_widget::start(app.handle().clone());
                 log_line("[桌面] 启动 Rust 桌面硬件悬浮窗");
+            }
+
+            // 自动备份 / 云备份的低频线程（只起一次）
+            start_background_services();
+
+            // 全局热键：Ctrl+Alt+N 新建便签、Ctrl+Alt+B 打开主窗口
+            {
+                let h = app.handle().clone();
+                let h2 = h.clone();
+                hotkey::start(
+                    move || match tray_new_note(&h) {
+                        Ok(id) => log_line(&format!("[热键] 新建便签 {id}")),
+                        Err(e) => log_line(&format!("[热键] 新建便签失败：{e}")),
+                    },
+                    move || tray_show(&h2, "热键"),
+                );
             }
 
             Ok(())

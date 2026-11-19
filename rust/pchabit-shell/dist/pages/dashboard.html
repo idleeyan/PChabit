@@ -115,7 +115,14 @@
 
     var kp = document.getElementById('kpis');
     kp.innerHTML = '';
-    [
+    var goal = window.__GOAL_HOURS__ || 0;
+    var goalPct = goal > 0 ? Math.round((d.totalMinutes / (goal * 60)) * 100) : 0;
+    var rows = [];
+    if (goal > 0) {
+      rows.push(['今日目标', fmtM(goal * 60), goalPct + '% 已完成' +
+        (goalPct >= 100 ? '（已达标）' : '')]);
+    }
+    rows = rows.concat([
       ['活跃总时长', fmtM(d.totalMinutes), deltaTxt || '含并行会话'],
       ['使用应用', d.appCount + ' 个', d.sessions + ' 次会话'],
       ['专注时段', d.focusCount + ' 段', '≥ 25 分钟连续'],
@@ -129,7 +136,8 @@
       ['GPU 峰值温度', (d.gpuTempMax == null ? '—' : d.gpuTempMax.toFixed(0) + ' °C'), '今日最高'],
       ['首个 / 最近活跃', (d.firstActive || '—') + ' → ' + (d.lastActive || '—'),
         d.recent && d.recent.app ? '最近 ' + d.recent.app + ' ' + d.recent.at : ''],
-    ].forEach(function (k) {
+    ]);
+    rows.forEach(function (k) {
       var b = el('div', 'kpi');
       b.appendChild(el('div', 'n', k[0]));
       var v = el('div', 'v', k[1]);

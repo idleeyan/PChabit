@@ -229,6 +229,37 @@ impl Host {
         } else {
             None
         };
+        // 设置页的 `WebSocketPort`：除了扩展固定连的 8765，再额外监听一个自定义端口，
+        // 供自建客户端/调试工具接入（两者共用同一个 Engine，数据不重复）。
+        let _extra_ws = if cfg.websync {
+            // 设置里这个键是字符串（"8765"），也要接受纯数字
+            let raw = crate::settings::str_of("WebSocketPort", "8765");
+            let custom = raw
+                .trim()
+                .parse::<i64>()
+                .unwrap_or_else(|_| crate::settings::i64_of("WebSocketPort", 8765));
+            if custom > 0 && custom <= 65535 && custom as u16 != cfg.ws_port {
+                match crate::websync::start(
+                    custom as u16,
+                    Arc::clone(&store),
+                    Arc::clone(&web),
+                    Arc::clone(&cfg.log),
+                ) {
+                    Ok(s) => {
+                        (cfg.log)(format!("浏览器通道额外监听 {}（设置页 WebSocketPort）", custom));
+                        Some(s)
+                    }
+                    Err(e) => {
+                        (cfg.log)(format!("额外端口 {custom} 未启动：{e}"));
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         // 线程 5：就业中网页会话每 30 s 兜底写一次（进程被杀也不丢整段）
         {

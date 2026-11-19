@@ -337,8 +337,16 @@ unsafe fn create_window() {
     RegisterClassW(&wc);
 
     let (w, h, x, y) = with_state(|s| (s.width, s.height, s.win_origin.0, s.win_origin.1)).unwrap_or((BASE_W, BASE_H, 0, 0));
+    // 设置页的两个开关在创建时生效：置顶、鼠标穿透（改完需重启壳）
+    let mut ex_style = WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+    if crate::setting_bool_default("DesktopWidgetTopmost", true) {
+        ex_style |= WS_EX_TOPMOST;
+    }
+    if crate::setting_bool_default("DesktopWidgetClickThrough", false) {
+        ex_style |= 0x0000_0020; // WS_EX_TRANSPARENT：鼠标事件穿透到桌面
+    }
     let hwnd = CreateWindowExW(
-        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
+        ex_style,
         class.as_ptr(),
         std::ptr::null(),
         WS_POPUP,
@@ -499,15 +507,21 @@ unsafe fn render() {
     let font_value = make_font((15.0 * scale) as i32, 700, dpi);
     let font_title = make_font((11.0 * scale) as i32, 600, dpi);
 
-    let rows = [
-        ("CPU", format!("{:.0}%", snap.cpu)),
-        ("内存", format!("{:.0}%", snap.mem)),
-        ("下载", rate(snap.down)),
-        ("上传", rate(snap.up)),
-    ];
+    // 逐项按设置开关拼行（设置页 DesktopWidgetShow* 改了下一拍就生效）
+    let mut rows: Vec<(&str, String)> = Vec::new();
+    if crate::setting_bool_default("DesktopWidgetShowCpu", true) {
+        rows.push(("CPU", format!("{:.0}%", snap.cpu)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowMemory", true) {
+        rows.push(("内存", format!("{:.0}%", snap.mem)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowNet", true) {
+        rows.push(("下载", rate(snap.down)));
+        rows.push(("上传", rate(snap.up)));
+    }
 
     let pad = (PAD as f32 * scale) as i32;
-    let row_h = ((h - pad * 2) / 5).max(18);
+    let row_h = ((h - pad * 2) / (rows.len() as i32 + 1)).max(18);
     SetTextColor(mem_dc, 0x00FF_FFFF);
     SelectObject(mem_dc, font_title);
     draw_text(mem_dc, pad, pad, "PChabit · 硬件");

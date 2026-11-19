@@ -2,6 +2,36 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.19] - 2026-11-19
+
+### 补齐三个缺失子系统：云备份（WebDAV）、自动备份轮转、全局热键 + 通知
+
+这一版不是「把开关读一下」，而是真的把以前完全没实现的子系统建起来：
+
+- **WebDAV 客户端（新 `webdav.rs`）**：自己写最小 HTTP/1.1（PUT / GET / PROPFIND / DELETE），
+  只支持 `http://` 内网盘，不做 TLS/HTTP2 依赖。含 Basic 认证、chunked 响应解码、
+  `PROPFIND Depth:1` 列目录、百分号解码；单测覆盖 base64 / dechunk / href 提取。
+- **备份线程（新 `backup.rs`）**：壳启动 2 分钟后开始，每 5 分钟检查一次——
+  `AutoBackupEnabled` + `AutoBackupIntervalHours` 到了就 `VACUUM INTO` 做一份本地备份，
+  按 `BackupPath` 再复制一份，本地只留 `MaxBackupCount` 份；
+  `WebDAVEnabled` 时把这份传上去，远端只留 `MaxCloudBackupCount` 份，
+  成功后写回 `WebDAVLastSync`。实测本地备份成功（191 MB），
+  NAS 当前离线时正确记 `连不上 192.168.31.89:5005` 并弹通知。
+- **系统通知**：接入 `tauri-plugin-notification`，`ShowNotifications` 关掉就只写日志；
+  云备份成功/失败会弹通知。
+- **全局热键（新 `hotkey.rs`）**：线程级 `RegisterHotKey`（不建窗口类），
+  `StickyNotesHotkeyNew`（默认 Ctrl+Alt+N）新建便签、`StickyNotesHotkeyBoard` / `HotkeyBoard`
+  （默认 Ctrl+Alt+B）打开主窗口；`StickyNotesEnabled=false` 时不注册便签热键。
+- **每日目标**：`DailyUsageGoalHours` 注入 `window.__GOAL_HOURS__`，仪表盘首格显示
+  「今日目标 / 已完成百分比」，达标标「已达标」。
+- **桌面悬浮窗逐项开关**：`DesktopWidgetShowCpu/Memory/Net` 每次重绘都读，行高按行数自适应；
+  `DesktopWidgetTopmost` / `DesktopWidgetClickThrough` 在创建窗口时生效（穿透用 `WS_EX_TRANSPARENT`）。
+- **额外 WebSocket 端口**：`WebSocketPort`（字符串型）非 8765 时，采集宿主在自定义端口再监听一份，
+  与扩展固定连的 8765 共用同一个 `Engine`。
+- **保留天数老键**：`RetentionDays` 改动会同步写 `DataRetentionDays`，页面不再两套口径。
+- **采集宿主自启**：`AutoStartMonitoring` 直接 `schtasks /change /enable|/disable` 计划任务「PChabit 采集宿主」。
+- **设置页**：新增「立即云备份 / 查看云端状态」按钮与状态行；新的生效标签按实际行为重新归类。
+
 ## [4.12.18] - 2026-11-19
 
 ### 设置页的「Rust 未接入」开关开始真正接线（第一批 7 项）
