@@ -2,6 +2,23 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.10.7] - 2026-11-19
+
+### 任务栏小窗 Rust 化 + 托盘菜单对齐 WPF
+
+- 新增 `rust/pchabit-shell/src/taskbar.rs`：把子窗口 `SetParent` 挂到 `Shell_TrayWnd` 左侧 8px，
+  色键透明（浅 `#D2D2D3` / 深 `#292829`）、灰度抗锯齿、`Microsoft YaHei UI` 11pt 标签 + 15pt 数值，
+  单行显示 `CPU 40% · 内存 50% · ↓5K/s · ↑7K/s`，负载 ≥75% 转警告黄、≥90% 转红；
+  CPU 走 `GetSystemTimes` 增量、内存走 `GlobalMemoryStatusEx`、网速走 `netif::NetMeter`（PDH 每秒字节），
+  每秒更新、每 5 拍重新对齐任务栏（Explorer 重启后自动重新挂载），点击经 `run_on_main_thread` 打开仪表盘。
+- 开关：`PChabitShell.exe --taskbar`（默认关，避免与 WPF 小窗同屏重复）。
+- 托盘菜单对齐 WPF `TrayService`：显示窗口 / 新建便签 / 便签列表 / ─ / 退出采集；
+  「新建便签」直接开窗到便签页并聚焦新建框。
+
+实测（`--headless --taskbar`）：日志 `[小窗] 已创建并挂载任务栏（Rust）`，
+`FindWindowEx(Shell_TrayWnd, "PChabitTaskbarWidgetRust")` 命中，窗口 `L=8 T=1392 254×48`（150% DPI）；
+截图确认渲染 `CPU 40% / 内存 50% / ↓5K/s / ↑7K/s`，停掉 WPF 后无重影。
+
 ## [4.10.6] - 2026-11-19
 
 ### 历史报告页能导出 Excel

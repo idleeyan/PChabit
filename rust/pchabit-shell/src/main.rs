@@ -14,6 +14,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod taskbar;
+
 /// 找壳自己的 `dist` 目录（页面资产由 build.rs 从 WPF 工程原样复制进来）。
 fn dist_dir() -> PathBuf {
     let mut bases: Vec<PathBuf> = Vec::new();
@@ -35,12 +37,29 @@ fn dist_dir() -> PathBuf {
     PathBuf::from("dist")
 }
 
-fn log_line(msg: &str) {
+pub(crate) fn log_line(msg: &str) {
     let base = std::env::var("TEMP").unwrap_or_else(|_| ".".to_string());
     let path = PathBuf::from(base).join("pchabit-shell.log");
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(f, "[{}] {msg}", pchabit_datad::today_local());
     }
+}
+
+/// 小窗跟随当前主题：`settings.json` 的 `CurrentTheme` 为 light 时用浅色配色。
+fn read_theme_is_light() -> bool {
+    let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let Ok(text) = std::fs::read_to_string(p) else {
+        return false;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    v.get("CurrentTheme")
+        .and_then(|t| t.as_str())
+        .map(|t| t.eq_ignore_ascii_case("light"))
+        .unwrap_or(false)
 }
 
 /// 本地当前小时（UTC+8），用于把"还没到的时段"和"真的零活跃"区分开。
@@ -1002,7 +1021,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.6";
+const VERSION: &str = "4.10.7";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -1042,15 +1061,19 @@ fn inject_script() -> String {
     )
 }
 
-/// headless 的托盘：左键菜单「打开仪表盘 / 退出采集」。
+/// headless 的托盘，菜单项对齐 WPF `TrayService.ShowContextMenu`
+/// （显示窗口 / 新建便签 / 便签列表 / — / 退出）。
 /// 托盘必须活到进程结束，否则 Drop 会把图标摘掉，所以在这里 forget。
 fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    use tauri::menu::{Menu, MenuItem};
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
     use tauri::tray::TrayIconBuilder;
 
-    let show = MenuItem::with_id(&app, "show", "打开仪表盘", true, None::<&str>)?;
+    let show = MenuItem::with_id(&app, "show", "显示窗口", true, None::<&str>)?;
+    let new_note = MenuItem::with_id(&app, "newnote", "新建便签", true, None::<&str>)?;
+    let note_list = MenuItem::with_id(&app, "notes", "便签列表", true, None::<&str>)?;
+    let sep = PredefinedMenuItem::separator(&app)?;
     let quit = MenuItem::with_id(&app, "quit", "退出采集", true, None::<&str>)?;
-    let menu = Menu::with_items(&app, &[&show, &quit])?;
+    let menu = Menu::with_items(&app, &[&show, &new_note, &note_list, &sep, &quit])?;
     let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.ico"))?;
 
     let tray = TrayIconBuilder::with_id("pchabit")
@@ -1072,6 +1095,8 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            "newnote" => open_window_at(app, "app.html?p=notes&newnote=1", "托盘：新建便签"),
+            "notes" => open_window_at(app, "app.html?p=notes", "托盘：便签列表"),
             "quit" => {
                 if let Some(state) = app.try_state::<HostState>() {
                     state.stop();
@@ -1085,6 +1110,18 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     std::mem::forget(tray);
     Ok(())
+}
+
+/// 托盘里「打开某个页面」：先关掉旧窗口再按目标地址开一个（换页只需重建，代价极小）。
+pub(crate) fn open_window_at(app: &tauri::AppHandle, url: &str, what: &str) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.close();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    match make_window(app, &inject_script(), url) {
+        Ok(_) => log_line(&format!("[壳] {what}（已开窗）")),
+        Err(e) => log_line(&format!("[壳] {what} 开窗失败：{e}")),
+    }
 }
 
 /// 单实例锁：占一个本地端口当互斥量（第二实例绑不上就直接退）。
@@ -1104,6 +1141,8 @@ fn main() {
     let host_mode = raw_args.iter().any(|a| a == "--host");
     // --headless：不建窗口，只跑采集宿主（开机自启/后台常驻用）
     let headless = raw_args.iter().any(|a| a == "--headless");
+    // --taskbar：额外在任务栏左侧画 Rust 小窗（默认关，避免与 WPF 小窗重复）
+    let with_taskbar = raw_args.iter().any(|a| a == "--taskbar");
     // 窗口模式默认带托盘：关窗=隐到托盘，托盘「退出」才真退（--no-tray 关掉）
     let window_tray = !raw_args.iter().any(|a| a == "--no-tray");
     let positional: Vec<String> = raw_args
@@ -1264,6 +1303,15 @@ fn main() {
                         }
                     }
                 });
+            }
+
+            if with_taskbar {
+                let light = read_theme_is_light();
+                taskbar::start(app.handle().clone(), light);
+                log_line(&format!(
+                    "[小窗] 启动 Rust 任务栏小窗（{} 主题）",
+                    if light { "浅色" } else { "深色" }
+                ));
             }
 
             Ok(())

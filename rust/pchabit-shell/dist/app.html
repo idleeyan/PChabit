@@ -473,6 +473,16 @@
   // 命令行直开：app.html?p=sankey　自测刷新：再加 &auto=1
   var q = new URLSearchParams(location.search).get('p');
   load(ASSET[q] ? q : 'dashboard');
+  // 托盘「新建便签」：打开便签页后把光标放进新建框
+  if (q === 'notes' && new URLSearchParams(location.search).get('newnote') === '1') {
+    setTimeout(function () {
+      var f = document.querySelector('iframe');
+      try {
+        var el = f.contentWindow.document.getElementById('nContent');
+        if (el) { el.focus(); note('新便签：直接输入内容'); }
+      } catch (e) { /* 跨域保护打开时跳过 */ }
+    }, 900);
+  }
   if (new URLSearchParams(location.search).get('auto') === '1') {
     setTimeout(refresh, 2500);
   } else if (!new URLSearchParams(location.search).get('dtest')) {
