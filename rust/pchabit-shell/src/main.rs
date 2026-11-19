@@ -746,10 +746,8 @@ fn categories() -> Result<serde_json::Value, String> {
     pchabit_datad::categories_json(&pchabit_datad::default_db())
 }
 
-/// 设置概览（只读）：读 `%LOCALAPPDATA%\PChabit\settings.json`，敏感项打码。
-///
-/// 设置写成两份会互相覆盖，所以壳只显示不改；真正的写入仍归 WPF 版。
-/// 壳里可直接改的设置项白名单：只放「改错了也不会出事、且改完立即生效」的开关与数值。
+/// 设置文件里允许壳改写的项：**文件里已经存在的键都可以改**（见 `set_setting`），
+/// 这张表只用于「文件里还没有、但允许新建」的键。类型按现有值判定。
 const SETTING_WHITELIST: &[&str] = &[
     "DataRetentionDays",
     "RetentionDays",
@@ -761,6 +759,9 @@ const SETTING_WHITELIST: &[&str] = &[
     "TaskbarShowGpu",
     "TaskbarShowNet",
     "TaskbarShowDisk",
+    "TaskbarShowTemp",
+    "TaskbarShowUsage",
+    "DesktopWidgetEnabled",
     "AutoCleanupEnabled",
     "StartWithWindows",
     "MinimizeToTray",
@@ -769,6 +770,9 @@ const SETTING_WHITELIST: &[&str] = &[
     "TrackMouse",
     "TrackWebBrowsing",
 ];
+
+/// 只读键：时间戳/设备标识这类由程序自己维护的字段，设置页只展示不给改。
+const SETTING_READONLY: &[&str] = &["WebDAVLastSync", "StickyNotesLastSync", "StickyNotesDeviceId"];
 
 /// 导出周报 Excel：把「周汇总 / 近 7 天 / 今日应用」拼成工作簿，交给 datad 的 `xlsx` 子命令写盘。
 /// 输出目录：`%LOCALAPPDATA%\PChabit\Exports\周报_YYYY-MM-DD.xlsx`。
@@ -907,8 +911,8 @@ fn set_setting(
     key: String,
     value: serde_json::Value,
 ) -> Result<String, String> {
-    if !SETTING_WHITELIST.contains(&key.as_str()) {
-        return Err(format!("不允许修改的设置项：{key}"));
+    if SETTING_READONLY.contains(&key.as_str()) {
+        return Err(format!("只读项不能修改：{key}"));
     }
     let path = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
         .join("PChabit")
@@ -919,6 +923,30 @@ fn set_setting(
     let obj = v
         .as_object_mut()
         .ok_or_else(|| "设置文件不是对象".to_string())?;
+    // 文件里已经有的键随便改（类型要对得上）；文件里没有的，只允许白名单里那几个新建
+    match obj.get(&key) {
+        Some(old_v) => {
+            let same_type = matches!(
+                (old_v, &value),
+                (serde_json::Value::Bool(_), serde_json::Value::Bool(_))
+                    | (serde_json::Value::Number(_), serde_json::Value::Number(_))
+                    | (serde_json::Value::String(_), serde_json::Value::String(_))
+                    | (serde_json::Value::Null, _)
+            );
+            if !same_type {
+                return Err(format!(
+                    "类型不匹配：{key} 现在是 {}，传进来的是 {}",
+                    json_type_name(old_v),
+                    json_type_name(&value)
+                ));
+            }
+        }
+        None => {
+            if !SETTING_WHITELIST.contains(&key.as_str()) {
+                return Err(format!("不允许修改的设置项：{key}"));
+            }
+        }
+    }
     let old = obj.get(&key).cloned().unwrap_or(serde_json::Value::Null);
     obj.insert(key.clone(), value.clone());
     let bak = path.with_extension("json.bak");
@@ -948,6 +976,17 @@ fn set_setting(
         _ => {}
     }
     Ok(format!("{key} = {value}"))
+}
+
+fn json_type_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "布尔",
+        serde_json::Value::Number(_) => "数字",
+        serde_json::Value::String(_) => "字符串",
+        serde_json::Value::Array(_) => "数组",
+        serde_json::Value::Object(_) => "对象",
+    }
 }
 
 fn payload_settings() -> serde_json::Value {
@@ -991,12 +1030,15 @@ fn payload_settings() -> serde_json::Value {
                         serde_json::Value::String(s) => !s.trim().is_empty(),
                         _ => true,
                     };
+                    let read_only = SETTING_READONLY.contains(&k.as_str()) || k.ends_with("LastSync");
                     if is_secret {
                         serde_json::json!({
                             "key": k,
                             "kind": "secret",
+                            "type": "secret",
                             "masked": true,
                             "set": set,
+                            "readOnly": read_only,
                         })
                     } else {
                         let kind = match val {
@@ -1004,7 +1046,22 @@ fn payload_settings() -> serde_json::Value {
                             serde_json::Value::Number(_) => "number",
                             _ => "string",
                         };
-                        serde_json::json!({ "key": k, "kind": kind, "value": val })
+                        // 给前端一个更细的类型，决定用哪种控件
+                        let ty = match val {
+                            serde_json::Value::Bool(_) => "bool",
+                            serde_json::Value::Number(n) => {
+                                if n.is_i64() || n.is_u64() { "int" } else { "float" }
+                            }
+                            serde_json::Value::Null => "null",
+                            _ => "string",
+                        };
+                        serde_json::json!({
+                            "key": k,
+                            "kind": kind,
+                            "type": ty,
+                            "value": val,
+                            "readOnly": read_only,
+                        })
                     }
                 })
                 .collect()
@@ -1041,7 +1098,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.12";
+const VERSION: &str = "4.12.13";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 

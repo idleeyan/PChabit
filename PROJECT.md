@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.12**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.13**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-19 | 4.12.13 | **设置页恢复全量可编辑**：66 项按类型渲染控件、7 组、逐项即时写回 + 类型校验 + 只读项；标签分「立即生效 / 重启生效 / Rust 未接入」 |
 | 2026-11-19 | 4.12.12 | **托盘左键单击打开主窗口**：加 on_tray_icon_event（Click/Left/Up）→ tray_show；菜单「显示」与左键共用同一个函数 || 2026-11-19 | 4.12.11 | **去掉「每小时活动」页**（与仪表盘 24 小时活跃重复）：导航/ASSET/TITLE/feed、page_data 映射与载荷、all_pages、payload_activity 全清，build.rs 不再复制 activity-trend.html || 2026-11-19 | 4.12.10 | **分类构成饼图文字看不清**：piechart.html 底色 transparent→#0f172a，图例 12px 浅灰→13px #f1f5f9；**设置页实时生效**：TaskbarEnabled 直接 start/stop、小窗每拍重读 Show* 开关、保留天数每次清理前重读、保存后重拉概览；单实例通道新增 TASKBAR_ON/OFF 控制指令；log_line 加锁 || 2026-11-19 | 4.12.8 | **托盘两项便签菜单真有用**：「新建便签」写库建空白便签+弹悬浮窗聚焦（新增 
 otes_create_blank）；「便签列表」复用窗口跳转；pchabit-datad 加 
 otes-new/

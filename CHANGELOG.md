@@ -2,6 +2,28 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.13] - 2026-11-19
+
+### 设置页从「只读概览 + 4 个开关」恢复成完整可编辑设置页
+
+- **页面**（`dist/pages/settings.html` 整页重写）：读到的每一项都按类型渲染成控件
+  —— bool 勾选框、整数/小数数字框、文本输入、密码框（只显示「已设置/未设置」，留空不改）；
+  分 7 组（通用 / 采集 / 网络与同步 / 备份 / 任务栏小窗 / 桌面悬浮窗 / 便签）+ 兜底「其他」，
+  每组标项数，每行显示中文名 + 原始键名 + 生效标签 + 保存状态（`已保存 HH:MM:SS` / `失败：…`）。
+  输入框聚焦期间跳过 60 秒自动刷新，避免打字被打断。
+- **后端**（`main.rs`）：`set_setting` 语义改为「**settings.json 里已经存在的键都可以改**」，
+  白名单退化为「文件里没有、允许新建」的键；新增 `SETTING_READONLY`
+  （`WebDAVLastSync` / `StickyNotesLastSync` / `StickyNotesDeviceId`）拒绝改写；
+  新增类型一致性校验（布尔/数字/字符串，错了直接报「类型不匹配：X 现在是 数字，传进来的是 字符串」）；
+  写前备份 `settings.json.bak`、整份重写、写日志；`TaskbarEnabled` 仍即时 start/stop 小窗。
+  `payload_settings` 每项补 `type`（bool/int/float/string/secret）与 `readOnly`。
+- **标签口径**（照实标，不假装生效）：`立即生效` = `TaskbarEnabled` / `TaskbarShowNet|Cpu|Memory` /
+  `DataRetentionDays`（下一轮清理读）；`重启生效` = 启动时读一次的项（主题、桌面悬浮窗开关与位置）；
+  `Rust 未接入` = 旧 WPF 功能还没在 Rust 侧接线的键（WebDAV、备份、浏览器同步、便签同步/快捷键、
+  采集间隔/空闲阈值、键盘鼠标开关等）——能改会写盘，但当前壳/采集不读它。
+- 实测渲染（无头 Edge + 真实 settings.json 注入）：66 项 / 7 组，控件与标签正确。
+- `app.html`：导航「设置概览」→「设置」，页元信息改「N 项设置 · 可直接修改（改完立即写回 settings.json）」。
+
 ## [4.12.12] - 2026-11-19
 
 ### 托盘图标左键单击没反应 → 打开主窗口

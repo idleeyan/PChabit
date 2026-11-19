@@ -2,108 +2,334 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<title>PChabit 设置概览</title>
+<title>PChabit 设置</title>
 <style>
   :root { color-scheme: dark; }
   html, body { margin:0; background:#0f172a; color:#e2e8f0;
     font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
   #wrap { padding:14px 16px 24px; }
   h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
-  .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; word-break:break-all; }
+  .sub { color:#94a3b8; font-size:11px; margin-bottom:10px; word-break:break-all; }
   .hint { background:#16233a; border-left:3px solid #3b82f6; border-radius:8px;
-    padding:8px 10px; color:#94a3b8; font-size:11px; margin-bottom:14px; }
+    padding:8px 10px; color:#94a3b8; font-size:11px; margin-bottom:14px; line-height:1.7; }
+  .hint b { color:#cbd5e1; font-weight:600; }
 
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:12px; align-items:start; }
   section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
-  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1; }
-  .row { display:flex; justify-content:space-between; gap:10px; padding:3px 0;
-    border-bottom:1px solid #1b2436; }
+  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
+    display:flex; align-items:center; gap:8px; }
+  section h2 em { font-style:normal; color:#64748b; font-size:10px; font-weight:400; }
+
+  .row { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
+    padding:5px 0; border-bottom:1px solid #1b2436; }
   .row:last-child { border-bottom:0; }
-  .k { color:#94a3b8; font-size:11px; }
-  .v { font-size:11px; text-align:right; word-break:break-all; }
-  .on { color:#34d399; } .off { color:#64748b; }
-  .mask { color:#f59e0b; }
-  .unset { color:#475569; }
+  .k { color:#94a3b8; font-size:11px; min-width:0; }
+  .k .name { color:#cbd5e1; }
+  .k .raw { display:block; color:#475569; font-size:10px; }
+  .ctl { justify-self:end; display:flex; align-items:center; gap:6px; }
+  .st { color:#64748b; font-size:10px; min-height:14px; text-align:right; grid-column:1 / -1; margin:-2px 0 2px; }
+  .st.ok { color:#34d399; }
+  .st.err { color:#f87171; }
+
+  input[type=checkbox] { width:15px; height:15px; accent-color:#3b82f6; cursor:pointer; }
+  input[type=number], input[type=text], input[type=password] {
+    background:#0f172a; color:#e2e8f0; border:1px solid #223049; border-radius:5px;
+    padding:3px 7px; font:12px/1.4 "Segoe UI","Microsoft YaHei",sans-serif; }
+  input[type=number] { width:78px; }
+  input[type=text] { width:172px; }
+  input[type=password] { width:112px; }
+  input:focus { outline:none; border-color:#3b82f6; }
+  .ro { color:#94a3b8; font-size:11px; max-width:150px; word-break:break-all; text-align:right;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tag { font-size:10px; padding:1px 6px; border-radius:4px; border:1px solid #263349; color:#64748b; }
+  .tag.live { color:#34d399; border-color:#1e4634; background:#0f2a22; }
+  .tag.restart { color:#fbbf24; border-color:#4a3a1c; background:#261f10; }
+  .tag.idle { color:#94a3b8; border-color:#2b374b; background:#1a2334; }
+  .badge { font-size:10px; padding:1px 6px; border-radius:4px; }
+  .badge.set { background:#0f2a22; color:#34d399; border:1px solid #1e4634; }
+  .badge.unset { background:#1a2334; color:#64748b; border:1px solid #263349; }
+  .smallbtn { background:#182234; border:1px solid #263349; color:#cbd5e1; border-radius:6px;
+    padding:2px 9px; font-size:11px; cursor:pointer; }
+  .smallbtn:hover { background:#20304a; border-color:#3b82f6; color:#fff; }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <h1>设置概览</h1>
+  <h1>设置</h1>
   <div class="sub" id="path"></div>
-  <div class="hint">下方概览只读；顶部「实时生效」改完立刻作用于正在跑的程序——任务栏小窗与显示的指标 1 秒内变，保留天数在下一次清理时生效（写前自动备份 .bak）。</div>
-  <section id="edit" style="margin-bottom:12px">
-    <h2>实时生效 <em style="font-style:normal;color:#64748b;font-size:10px">（写回 settings.json，无需重启）</em></h2>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
-      <label class="k">保留天数 <input id="edRetention" type="number" min="1" max="3650"
-        style="width:70px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
-      <label class="k"><input id="edTaskbar" type="checkbox" style="margin-right:4px">任务栏小窗</label>
-      <label class="k"><input id="edNet" type="checkbox" style="margin-right:4px">显示网速</label>
-      <label class="k"><input id="edCpu" type="checkbox" style="margin-right:4px">显示 CPU</label>
-      <label class="k"><input id="edMem" type="checkbox" style="margin-right:4px">显示内存</label>
-      <button id="edSave" style="padding:4px 12px;border-radius:6px;border:1px solid #223049;
-        background:#1d4ed8;color:#fff;cursor:pointer">保存</button>
-      <span class="hint" id="edMsg" style="margin:0;background:none;border:0;padding:0"></span>
-    </div>
-    <div class="hint" style="margin:8px 0 0;background:none;border:0;padding:0;color:#64748b">
-      采集间隔 / 空闲阈值是旧 WPF 定时轮询的参数，Rust 采集是事件钩子驱动，这两项不再生效（已从可编辑区移走）。
-    </div>
-  </section>
+  <div class="hint">
+    <b>改完立即写回</b> <code>settings.json</code>（写前自动备份 <code>.bak</code>）。
+    标 <span class="tag live">立即生效</span> 的项改这一秒就起作用；
+    标 <span class="tag restart">重启生效</span> 的项要重启壳（托盘右键「退出」后再打开）才读新值。
+    密码类只显示「已设置」，留空表示不改。
+  </div>
   <div class="grid" id="grid"></div>
 </div>
 <script>
-  // 分组靠固定表，未知键归到"其他"
+  // 键 → 中文名（没有映射的就显示原始键名，仍然可改）
+  var NAME = {
+    StartWithWindows: '开机自启',
+    MinimizeToTray: '关闭窗口时最小化到托盘',
+    ShowNotifications: '显示通知',
+    AutoStartMonitoring: '启动即开始采集',
+    CollectInShell: '采集宿主随壳启动',
+    CurrentTheme: '主题',
+    CurrentLanguage: '语言',
+    DailyUsageGoalHours: '每日使用目标（小时）',
+    MonitoringInterval: '采集间隔（秒）',
+    IdleThreshold: '空闲阈值（分）',
+    TrackKeyboard: '记录键盘',
+    TrackMouse: '记录鼠标',
+    TrackWebBrowsing: '记录网页访问',
+    AnonymizeData: '数据匿名化',
+    RetentionDays: '保留天数（旧键）',
+    DataRetentionDays: '数据保留天数',
+    AutoCleanupEnabled: '自动清理旧数据',
+    ArchiveBeforeCleanup: '清理前归档',
+    WebSocketPort: '扩展通道端口',
+    WebDAVEnabled: 'WebDAV 同步',
+    WebDAVUrl: 'WebDAV 地址',
+    WebDAVUsername: 'WebDAV 用户名',
+    WebDAVPassword: 'WebDAV 密码',
+    WebDAVLastSync: '上次 WebDAV 同步',
+    BrowserSyncEnabled: '浏览器同步',
+    BrowserHistoryIngestEnabled: '读取浏览器历史',
+    BrowserSyncIntervalMinutes: '浏览器同步间隔（分）',
+    BrowserAutoPush: '浏览器自动推送',
+    BackupPath: '备份目录',
+    AutoBackupEnabled: '自动备份',
+    AutoBackupIntervalHours: '备份间隔（小时）',
+    MaxBackupCount: '本地备份份数上限',
+    MaxCloudBackupCount: '云端备份份数上限',
+    TaskbarEnabled: '任务栏小窗',
+    TaskbarShowCpu: '小窗显示 CPU',
+    TaskbarShowMemory: '小窗显示内存',
+    TaskbarShowGpu: '小窗显示 GPU',
+    TaskbarShowNet: '小窗显示网速',
+    TaskbarShowDisk: '小窗显示磁盘',
+    TaskbarShowTemp: '小窗显示温度',
+    TaskbarShowUsage: '小窗显示用量',
+    DesktopWidgetEnabled: '桌面悬浮窗',
+    DesktopWidgetShowCpu: '悬浮窗显示 CPU',
+    DesktopWidgetShowMemory: '悬浮窗显示内存',
+    DesktopWidgetShowGpu: '悬浮窗显示 GPU',
+    DesktopWidgetShowVram: '悬浮窗显示显存',
+    DesktopWidgetShowNet: '悬浮窗显示网速',
+    DesktopWidgetShowDisk: '悬浮窗显示磁盘',
+    DesktopWidgetShowUsage: '悬浮窗显示用量',
+    DesktopWidgetShowCurrentApp: '悬浮窗显示当前应用',
+    DesktopWidgetTopmost: '悬浮窗置顶',
+    DesktopWidgetClickThrough: '悬浮窗点击穿透',
+    DesktopWidgetClampToScreen: '悬浮窗限制在屏幕内',
+    DesktopWidgetScreen: '悬浮窗所在显示器',
+    DesktopWidgetLeft: '悬浮窗 X',
+    DesktopWidgetTop: '悬浮窗 Y',
+    DesktopWidgetWidth: '悬浮窗宽',
+    DesktopWidgetHeight: '悬浮窗高',
+    StickyNotesEnabled: '桌面便签',
+    StickyNotesHotkeyNew: '新建便签快捷键',
+    StickyNotesHotkeyBoard: '便签板快捷键',
+    StickyNotesSyncEnabled: '便签同步',
+    StickyNotesLastSync: '上次便签同步',
+    StickyNotesRetentionDays: '便签保留天数',
+    StickyNotesQuickDismissOnFocusLost: '失焦自动收起便签',
+    StickyNotesDeviceId: '便签设备标识'
+  };
+
+  // 改了当拍就生效的键（其余标「重启生效」或「未接入」）
+  var LIVE = {
+    TaskbarEnabled: 1, TaskbarShowCpu: 1, TaskbarShowMemory: 1, TaskbarShowNet: 1,
+    DataRetentionDays: 1
+  };
+
+  // Rust 侧还没接线的键：能改、会写进 settings.json，但当前壳/采集不读它（旧 WPF 功能尚未迁移）
+  var INACTIVE = {
+    StartWithWindows: 1, MinimizeToTray: 1, ShowNotifications: 1,
+    AutoStartMonitoring: 1, CollectInShell: 1, CurrentLanguage: 1, DailyUsageGoalHours: 1,
+    MonitoringInterval: 1, IdleThreshold: 1,
+    TrackKeyboard: 1, TrackMouse: 1, TrackWebBrowsing: 1, AnonymizeData: 1,
+    RetentionDays: 1, WebSocketPort: 1,
+    WebDAVEnabled: 1, WebDAVUrl: 1, WebDAVUsername: 1, WebDAVPassword: 1,
+    BrowserSyncEnabled: 1, BrowserHistoryIngestEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1,
+    BackupPath: 1, AutoBackupEnabled: 1, AutoBackupIntervalHours: 1, MaxBackupCount: 1, MaxCloudBackupCount: 1,
+    ArchiveBeforeCleanup: 1,
+    TaskbarShowGpu: 1, TaskbarShowDisk: 1, TaskbarShowTemp: 1, TaskbarShowUsage: 1,
+    DesktopWidgetShowCpu: 1, DesktopWidgetShowMemory: 1, DesktopWidgetShowGpu: 1, DesktopWidgetShowVram: 1,
+    DesktopWidgetShowNet: 1, DesktopWidgetShowDisk: 1, DesktopWidgetShowUsage: 1, DesktopWidgetShowCurrentApp: 1,
+    DesktopWidgetTopmost: 1, DesktopWidgetClickThrough: 1, DesktopWidgetClampToScreen: 1, DesktopWidgetScreen: 1,
+    StickyNotesEnabled: 1, StickyNotesHotkeyNew: 1, StickyNotesHotkeyBoard: 1, StickyNotesSyncEnabled: 1,
+    StickyNotesRetentionDays: 1, StickyNotesQuickDismissOnFocusLost: 1
+  };
+
   var GROUPS = [
-    ['通用', ['StartWithWindows','MinimizeToTray','ShowNotifications','AutoStartMonitoring','CurrentTheme','CurrentLanguage','DailyUsageGoalHours']],
-    ['采集', ['MonitoringInterval','IdleThreshold','TrackKeyboard','TrackMouse','TrackWebBrowsing','AnonymizeData','RetentionDays','DataRetentionDays','AutoCleanupEnabled','ArchiveBeforeCleanup']],
-    ['网络与同步', ['WebSocketPort','WebDAVEnabled','WebDAVUrl','WebDAVUsername','WebDAVLastSync','BrowserSyncEnabled','BrowserHistoryIngestEnabled','BrowserSyncIntervalMinutes','BrowserAutoPush']],
+    ['通用', ['StartWithWindows','MinimizeToTray','ShowNotifications','AutoStartMonitoring','CollectInShell','CurrentTheme','CurrentLanguage','DailyUsageGoalHours']],
+    ['采集', ['TrackKeyboard','TrackMouse','TrackWebBrowsing','AnonymizeData','DataRetentionDays','RetentionDays','AutoCleanupEnabled','ArchiveBeforeCleanup','MonitoringInterval','IdleThreshold']],
+    ['网络与同步', ['WebSocketPort','WebDAVEnabled','WebDAVUrl','WebDAVUsername','WebDAVPassword','WebDAVLastSync','BrowserSyncEnabled','BrowserHistoryIngestEnabled','BrowserSyncIntervalMinutes','BrowserAutoPush']],
     ['备份', ['BackupPath','AutoBackupEnabled','AutoBackupIntervalHours','MaxBackupCount','MaxCloudBackupCount']],
-    ['任务栏', ['TaskbarEnabled','TaskbarShowCpu','TaskbarShowMemory','TaskbarShowGpu','TaskbarShowNet','TaskbarShowDisk','TaskbarShowTemp','TaskbarShowUsage']],
-    ['桌面组件', ['DesktopWidgetEnabled','DesktopWidgetTopmost','DesktopWidgetClickThrough','DesktopWidgetScreen','DesktopWidgetWidth','DesktopWidgetHeight']],
-    ['AI', ['AiInsightsEnabled','AiEndpointMode','AiModel','AiLocalModel','AiCloudModel','AiTimeoutSeconds','AiStrictPrivacy','AiAutoWeeklyInsight']],
-    ['便签', ['StickyNotesEnabled','StickyNotesHotkeyNew','StickyNotesHotkeyBoard','StickyNotesSyncEnabled','StickyNotesRetentionDays']]
+    ['任务栏小窗', ['TaskbarEnabled','TaskbarShowNet','TaskbarShowCpu','TaskbarShowMemory','TaskbarShowGpu','TaskbarShowDisk','TaskbarShowTemp','TaskbarShowUsage']],
+    ['桌面悬浮窗', ['DesktopWidgetEnabled','DesktopWidgetShowCpu','DesktopWidgetShowMemory','DesktopWidgetShowGpu','DesktopWidgetShowVram','DesktopWidgetShowNet','DesktopWidgetShowDisk','DesktopWidgetShowUsage','DesktopWidgetShowCurrentApp','DesktopWidgetTopmost','DesktopWidgetClickThrough','DesktopWidgetClampToScreen','DesktopWidgetScreen','DesktopWidgetLeft','DesktopWidgetTop','DesktopWidgetWidth','DesktopWidgetHeight']],
+    ['便签', ['StickyNotesEnabled','StickyNotesHotkeyNew','StickyNotesHotkeyBoard','StickyNotesSyncEnabled','StickyNotesLastSync','StickyNotesRetentionDays','StickyNotesQuickDismissOnFocusLost','StickyNotesDeviceId']]
   ];
 
-  function fmt(it) {
-    if (it.kind === 'secret') {
-      var e = document.createElement('span');
-      e.className = it.set ? 'mask' : 'unset';
-      e.textContent = it.set ? '已设置（不回显）' : '未设置';
-      return e;
+  var editing = false;   // 用户正在输入时，别被 60 秒自动刷新打断
+
+  function now() {
+    var d = new Date();
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
+  }
+
+  function setStatus(el, text, cls) {
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'st' + (cls ? ' ' + cls : '');
+  }
+
+  function save(it, value, st) {
+    setStatus(st, '保存中…');
+    window.__TAURI__.core.invoke('set_setting', { key: it.key, value: value })
+      .then(function () {
+        setStatus(st, '已保存 ' + now(), 'ok');
+        it.value = value;
+        if (window.__TAURI__) window.__SET_RESULT__ = 'save: ' + it.key + ' = ' + value;
+      })
+      .catch(function (e) { setStatus(st, '失败：' + e, 'err'); });
+  }
+
+  function row(it, grid) {
+    var r = document.createElement('div');
+    r.className = 'row';
+
+    var k = document.createElement('div');
+    k.className = 'k';
+    var nm = document.createElement('span');
+    nm.className = 'name';
+    nm.textContent = (NAME[it.key] || it.key) + (LIVE[it.key] ? '' : '');
+    k.appendChild(nm);
+    if (NAME[it.key]) {
+      var raw = document.createElement('span');
+      raw.className = 'raw';
+      raw.textContent = it.key;
+      k.appendChild(raw);
     }
-    if (it.kind === 'bool') {
-      var b = document.createElement('span');
-      b.className = it.value ? 'on' : 'off';
-      b.textContent = it.value ? '开' : '关';
-      return b;
+    if (it.readOnly) {
+      // 只读项下面不挂生效标签
+    } else if (LIVE[it.key]) {
+      var tag2 = document.createElement('span');
+      tag2.className = 'tag live';
+      tag2.textContent = '立即生效';
+      k.appendChild(tag2);
+    } else if (INACTIVE[it.key]) {
+      var tag3 = document.createElement('span');
+      tag3.className = 'tag idle';
+      tag3.textContent = 'Rust 未接入';
+      k.appendChild(tag3);
+    } else {
+      var tag = document.createElement('span');
+      tag.className = 'tag restart';
+      tag.textContent = '重启生效';
+      k.appendChild(tag);
     }
-    var s = document.createElement('span');
-    s.textContent = (it.value === null || it.value === undefined) ? '—' : String(it.value);
-    if (s.textContent === '' || s.textContent === '—') s.className = 'unset';
-    return s;
+
+    var ctl = document.createElement('div');
+    ctl.className = 'ctl';
+    var st = document.createElement('div');
+    st.className = 'st';
+
+    if (it.readOnly) {
+      var ro = document.createElement('span');
+      ro.className = 'ro';
+      ro.textContent = (it.type === 'secret') ? (it.set ? '已设置' : '未设置')
+        : (it.value === null || it.value === undefined ? '—' : String(it.value));
+      ro.title = ro.textContent;
+      ctl.appendChild(ro);
+      var tagRo = document.createElement('span');
+      tagRo.className = 'tag';
+      tagRo.textContent = '只读';
+      ctl.appendChild(tagRo);
+    } else if (it.type === 'bool') {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!it.value;
+      cb.addEventListener('change', function () { save(it, cb.checked, st); });
+      ctl.appendChild(cb);
+    } else if (it.type === 'int' || it.type === 'float') {
+      var num = document.createElement('input');
+      num.type = 'number';
+      num.step = (it.type === 'float') ? '0.1' : '1';
+      num.value = it.value;
+      function commitNum() {
+        var v = Number(num.value);
+        if (!isFinite(v)) { setStatus(st, '不是数字', 'err'); return; }
+        save(it, (it.type === 'int') ? Math.round(v) : v, st);
+      }
+      num.addEventListener('change', commitNum);
+      num.addEventListener('keydown', function (e) { if (e.key === 'Enter') commitNum(); });
+      num.addEventListener('focus', function () { editing = true; });
+      num.addEventListener('blur', function () { editing = false; });
+      ctl.appendChild(num);
+    } else if (it.type === 'secret') {
+      var badge = document.createElement('span');
+      badge.className = 'badge ' + (it.set ? 'set' : 'unset');
+      badge.textContent = it.set ? '已设置' : '未设置';
+      var pw = document.createElement('input');
+      pw.type = 'password';
+      pw.placeholder = it.set ? '输入新值才改' : '输入新值';
+      var btn = document.createElement('button');
+      btn.className = 'smallbtn';
+      btn.textContent = '保存';
+      btn.addEventListener('click', function () {
+        if (!pw.value) { setStatus(st, '没填新值，未改动', 'err'); return; }
+        save(it, pw.value, st);
+        pw.value = '';
+        badge.className = 'badge set';
+        badge.textContent = '已设置';
+      });
+      pw.addEventListener('focus', function () { editing = true; });
+      pw.addEventListener('blur', function () { editing = false; });
+      ctl.appendChild(badge); ctl.appendChild(pw); ctl.appendChild(btn);
+    } else {
+      var tx = document.createElement('input');
+      tx.type = 'text';
+      tx.value = (it.value === null || it.value === undefined) ? '' : String(it.value);
+      tx.title = tx.value;
+      function commitText() { save(it, tx.value, st); }
+      tx.addEventListener('change', commitText);
+      tx.addEventListener('keydown', function (e) { if (e.key === 'Enter') { commitText(); tx.blur(); } });
+      tx.addEventListener('focus', function () { editing = true; });
+      tx.addEventListener('blur', function () { editing = false; });
+      ctl.appendChild(tx);
+    }
+
+    r.appendChild(k);
+    r.appendChild(ctl);
+    r.appendChild(st);
+    grid.appendChild(r);
+  }
+
+  function section(title, items, grid) {
+    var s = document.createElement('section');
+    var h = document.createElement('h2');
+    h.textContent = title;
+    var n = document.createElement('em');
+    n.textContent = items.length + ' 项';
+    h.appendChild(n);
+    s.appendChild(h);
+    items.forEach(function (it) { row(it, s); });
+    grid.appendChild(s);
   }
 
   function render(d) {
     if (!d) return 'error: no data';
-    document.getElementById('path').textContent =
-      d.path + '　' + (d.count || 0) + ' 项' + (d.error ? '　读取失败：' + d.error : '') +
-      '　敏感打码 ' + (d.maskedCount || 0) + ' 项';
+    var pathEl = document.getElementById('path');
+    pathEl.textContent = d.path + '　' + (d.count || 0) + ' 项' +
+      (d.maskedCount ? '（' + d.maskedCount + ' 项敏感已打码）' : '') +
+      (d.error ? '　读取失败：' + d.error : '');
     if (d.error) return 'error: ' + d.error;
+    if (editing) return 'skip: 正在编辑';
 
+    var items = (d.items || []).filter(function (i) { return i.kind !== 'text'; });
     var byKey = {};
-    (d.items || []).forEach(function (i) { byKey[i.key] = i; });
-
-    // 把当前值填进可编辑区（只在第一次或数据变化时覆盖，免得抹掉用户正在输的内容）
-    var ed = document.getElementById('edit');
-    if (ed && !ed.__painted) {
-      var nz = function (k, d) { return byKey[k] && byKey[k].value != null ? byKey[k].value : d; };
-      var boolv = function (k, d) { return byKey[k] ? !!byKey[k].value : d; };
-      document.getElementById('edRetention').value = nz('DataRetentionDays', nz('RetentionDays', ''));
-      document.getElementById('edTaskbar').checked = boolv('TaskbarEnabled', true);
-      document.getElementById('edNet').checked = boolv('TaskbarShowNet', true);
-      document.getElementById('edCpu').checked = boolv('TaskbarShowCpu', true);
-      document.getElementById('edMem').checked = boolv('TaskbarShowMemory', true);
-      ed.__painted = true;
-    }
+    items.forEach(function (i) { byKey[i.key] = i; });
 
     var grid = document.getElementById('grid');
     grid.innerHTML = '';
@@ -113,84 +339,27 @@
       var known = g[1].filter(function (k) { return byKey[k]; });
       if (!known.length) return;
       known.forEach(function (k) { used[k] = true; });
-      grid.appendChild(section(g[0], known.map(function (k) { return byKey[k]; })));
+      section(g[0], known.map(function (k) { return byKey[k]; }), grid);
     });
 
-    var others = (d.items || []).filter(function (i) { return !used[i.key]; });
-    if (others.length) grid.appendChild(section('其他', others));
+    var others = items.filter(function (i) { return !used[i.key]; });
+    if (others.length) section('其他', others, grid);
 
-    return 'ok: ' + (d.count || 0) + ' 项 / ' + grid.children.length + ' 组';
+    return 'ok: ' + items.length + ' 项 / ' + grid.children.length + ' 组';
   }
 
-  function section(title, items) {
-    var s = document.createElement('section');
-    var h = document.createElement('h2');
-    h.textContent = title;
-    s.appendChild(h);
-    items.forEach(function (it) {
-      var row = document.createElement('div');
-      row.className = 'row';
-      var k = document.createElement('span');
-      k.className = 'k';
-      k.textContent = it.key;
-      var v = document.createElement('span');
-      v.className = 'v';
-      v.appendChild(fmt(it));
-      row.appendChild(k);
-      row.appendChild(v);
-      s.appendChild(row);
-    });
-    return s;
-  }
+  window.renderSettings = function (d) {
+    window.__SET_DATA__ = d;
+    try { return render(d); }
+    catch (e) { return 'error: ' + e.message; }
+  };
 
   document.addEventListener('DOMContentLoaded', function () {
     if (window.__SET_DATA__) {
       try { window.__SET_RESULT__ = render(window.__SET_DATA__); }
       catch (e) { window.__SET_RESULT__ = 'error: ' + e.message; }
     }
-    var save = document.getElementById('edSave');
-    if (save) save.addEventListener('click', function () {
-      var msg = document.getElementById('edMsg');
-      if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC'; return; }
-      var jobs = [
-        ['DataRetentionDays', parseInt(document.getElementById('edRetention').value, 10)],
-        ['TaskbarEnabled', document.getElementById('edTaskbar').checked],
-        ['TaskbarShowNet', document.getElementById('edNet').checked],
-        ['TaskbarShowCpu', document.getElementById('edCpu').checked],
-        ['TaskbarShowMemory', document.getElementById('edMem').checked]
-      ];
-      msg.textContent = '保存中…';
-      var chain = Promise.resolve([]);
-      jobs.forEach(function (j) {
-        if (typeof j[1] === 'number' && isNaN(j[1])) return;
-        chain = chain.then(function (done) {
-          return window.__TAURI__.core.invoke('set_setting', { key: j[0], value: j[1] })
-            .then(function (r) { done.push(r); return done; });
-        });
-      });
-      chain.then(function (done) {
-        msg.textContent = done.join('；');
-        window.__SET_RESULT__ = 'save: ' + done.join('；');
-        // 保存后立刻重拉一次概览，让上面「只读」区也跟着变成新值
-        return window.__TAURI__.core.invoke('page_data', { page: 'settings' })
-          .then(function (d) {
-            window.__SET_DATA__ = d;
-            var panel = document.getElementById('edit');
-            if (panel) panel.__painted = false;   // 允许用新数据重填输入框
-            render(d);
-          })
-          .catch(function () { /* 重拉失败不影响保存结果 */ });
-      }).catch(function (e) {
-        msg.textContent = '失败：' + e;
-        window.__SET_RESULT__ = 'save-error: ' + e;
-      });
-    });
   });
-
-  window.renderSettings = function (d) {
-    window.__SET_DATA__ = d;
-    return render(d);
-  };
 </script>
 </body>
 </html>

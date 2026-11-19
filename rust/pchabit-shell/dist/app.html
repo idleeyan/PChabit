@@ -49,7 +49,7 @@
     <button data-page="reports">历史报告</button>
     <button data-page="admin">分类管理</button>
     <button data-page="detail">应用详情</button>
-    <button data-page="settings">设置概览</button>
+    <button data-page="settings">设置</button>
     <button data-page="notes">便签</button>
     <button data-page="data">数据管理</button>
     <div class="spacer"></div>
@@ -76,7 +76,7 @@
                 reports:'pages/reports.html', data:'pages/data.html' };
   var TITLE = { hardware:'硬件趋势', category:'分类构成',
                 sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
-                detail:'应用详情', settings:'设置概览',
+                detail:'应用详情', settings:'设置',
                 notes:'便签', web:'网页访问', timeline:'时间线',
                 dashboard:'仪表盘', net:'网络流量', input:'键鼠活动',
                 reports:'历史报告', data:'数据管理' };
@@ -265,7 +265,7 @@
         meta.textContent = appsN.length + ' 个应用 · 点选查看详情';
         extra = ' ' + ((frame.contentWindow.__DETAIL_RESULT__) || '');
       } else if (page === 'settings') {
-        meta.textContent = (d && d.count ? d.count : 0) + ' 项设置（只读，敏感项已打码）';
+        meta.textContent = (d && d.count ? d.count : 0) + ' 项设置 · 可直接修改（改完立即写回 settings.json）';
         extra = ' ' + ((frame.contentWindow.__SET_RESULT__) || '');
       } else if (page === 'notes') {
         var notesN = (d && d.items) || [];
