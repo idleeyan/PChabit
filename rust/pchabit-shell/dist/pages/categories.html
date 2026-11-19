@@ -133,6 +133,8 @@
     var cats = (DATA && DATA.categories) || [];
     var apps = (DATA && DATA.apps && DATA.apps.items) || [];
     var kw = (document.getElementById('q').value || '').trim().toLowerCase();
+    // 数据层搜索回来的那批已经过滤过，本地不再重复过滤
+    if (DATA && DATA.__remoteSearch && DATA.__remoteSearch.toLowerCase() === kw) kw = '';
     var tbody = document.getElementById('rows');
     tbody.innerHTML = '';
     var shown = 0;
@@ -261,7 +263,29 @@
   }
 
   document.getElementById('nadd').addEventListener('click', createCat);
-  document.getElementById('q').addEventListener('input', drawRows);
+  // 进程表很大时把过滤下沉到数据层（datad 的 search），小表仍走本地过滤
+  var searchTimer = null;
+  document.getElementById('q').addEventListener('input', function () {
+    var apps = (DATA && DATA.apps && DATA.apps.items) || [];
+    var kw = (this.value || '').trim();
+    if (apps.length <= 300 || !window.__TAURI__) { drawRows(); return; }
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () {
+      window.__TAURI__.core.invoke('app_search', { q: kw })
+        .then(function (r) {
+          DATA.apps = DATA.apps || {};
+          DATA.apps.items = r.items || [];
+          DATA.__remoteSearch = kw; // 标记：这批是数据层过滤结果，drawRows 不再二次过滤
+          drawRows();
+          window.__ADMIN_RESULT__ = 'search: ' + (r.count || 0) + ' / ' + kw;
+        })
+        .catch(function (e) {
+          DATA.__remoteSearch = '';
+          drawRows();
+          window.__ADMIN_RESULT__ = 'search-error: ' + e;
+        });
+    }, 220);
+  });
 
   document.addEventListener('DOMContentLoaded', function () {
     if (window.__ADMIN_DATA__) {

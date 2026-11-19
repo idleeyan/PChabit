@@ -2,6 +2,19 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.10.9] - 2026-11-19
+
+### 应用搜索下沉到数据层
+
+- `datad` 新增 `search_json(db, q)` 与 CLI `pchabit-datad.exe search <关键字>`：进程名/应用名
+  大小写不敏感包含匹配；裸参数现在也认（此前只认 `--db/--date`，`search chrome` 会退化成全量）。
+- 壳新增命令 `app_search(q)` 直连数据面。
+- 分类页：进程数 > 300 时把过滤交给 `app_search`（220ms 防抖，结果打 `__remoteSearch` 标记，
+  本地不再二次过滤），小表继续本地过滤——两条路径结果一致。
+
+实测：`pchabit-datad.exe search chrome` → `{"count":1,"items":[{"appName":"Google Chrome","processName":"chrome.exe"}]}`；
+壳内自测钩子 `?qtest=chrome` 日志 `qtest 1 条 / chrome`。
+
 ## [4.10.8] - 2026-11-19
 
 ### 桌面硬件悬浮窗 Rust 化

@@ -375,6 +375,14 @@
           .catch(function (e) { note('xtest 失败：' + e); });
       }
 
+      // 自测钩子：?qtest=chrome 验证数据层搜索
+      var qtest = new URLSearchParams(location.search).get('qtest');
+      if (qtest) {
+        window.__TAURI__.core.invoke('app_search', { q: qtest })
+          .then(function (r) { note('qtest ' + r.count + ' 条 / ' + r.q); })
+          .catch(function (e) { note('qtest 失败：' + e); });
+      }
+
       // 自测钩子：?ntest=1 验证便签写库（新建 → 改 → 置顶 → 删），配合 PCHABIT_DB 指向库副本
       if (page === 'notes' && new URLSearchParams(location.search).get('ntest') === '1') {
         var nid = null;

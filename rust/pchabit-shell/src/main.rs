@@ -216,6 +216,12 @@ fn payload_activity() -> serde_json::Value {
 /// - `byApp`：Top 8 应用 + 「其他」（C# 里叫 PieSlices）
 ///
 /// 分钟数保留 1 位小数，与 C# 的 `Math.Round(minutes, 1)` 一致。
+/// 应用搜索下沉到数据层：分类页进程很多时由这里过滤，不再让前端全量过一遍。
+#[tauri::command]
+fn app_search(q: String) -> Result<serde_json::Value, String> {
+    pchabit_datad::search_json(&pchabit_datad::default_db(), &q)
+}
+
 fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
 }
@@ -1022,7 +1028,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.8";
+const VERSION: &str = "4.10.9";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -1181,7 +1187,8 @@ fn main() {
             notes_update,
             notes_pin,
             notes_delete,
-            export_weekly
+            export_weekly,
+            app_search
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {

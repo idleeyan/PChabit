@@ -18,6 +18,8 @@ fn main() {
         match a.as_str() {
             "--db" => db_path = args.next().map(PathBuf::from),
             "--date" => date = args.next().unwrap_or_default(),
+            // 裸参数：`search <关键字>` 用得到（其余子命令当日期用）
+            s if !s.starts_with("--") && date.is_empty() => date = s.to_string(),
             _ => {}
         }
     }

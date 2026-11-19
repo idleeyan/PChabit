@@ -31,6 +31,7 @@ pub fn dispatch(mode: &str, db: &Path, date: &str) -> Result<(), String> {
         "sankey" => run_sankey(db, date),
         "categories" => run_categories(db),
         "appcats" => run_appcats(db),
+        "search" => run_search(db, date.to_string()),
         "setcat" => run_setcat(db),
         "newcat" => run_newcat(db),
         "activecat" => run_activecat(db),
@@ -2004,6 +2005,35 @@ fn write_conn(db: &Path) -> Result<Connection, String> {
 fn run_categories(db: &Path) -> Result<(), String> {
     let v = categories_json(db)?;
     println!("{}", serde_json::to_string(&v).map_err(|e| e.to_string())?);
+    Ok(())
+}
+
+/// 应用搜索下沉到数据层：`search <关键字>`（关键字为空则等同 `appcats`）。
+/// 匹配口径与壳里原来的前端过滤一致：进程名或应用名包含关键字，大小写不敏感。
+/// 应用搜索（数据层）：进程名或应用名包含关键字，大小写不敏感。
+pub fn search_json(db: &Path, keyword: &str) -> Result<serde_json::Value, String> {
+    let apps = app_categories_json(db, 7)?;
+    let k = keyword.to_lowercase();
+    let items: Vec<serde_json::Value> = apps["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|a| {
+            if k.is_empty() {
+                return true;
+            }
+            let proc = a["processName"].as_str().unwrap_or("").to_lowercase();
+            let app = a["appName"].as_str().unwrap_or("").to_lowercase();
+            proc.contains(&k) || app.contains(&k)
+        })
+        .collect();
+    Ok(serde_json::json!({ "ok": true, "q": keyword, "count": items.len(), "items": items }))
+}
+
+fn run_search(db: &Path, keyword: String) -> Result<(), String> {
+    let out = search_json(db, &keyword)?;
+    println!("{}", serde_json::to_string(&out).map_err(|e| e.to_string())?);
     Ok(())
 }
 
