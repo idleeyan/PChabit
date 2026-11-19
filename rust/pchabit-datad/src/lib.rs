@@ -1786,7 +1786,13 @@ fn round1_appcats(v: f64) -> f64 {
 /// 近 N 天里出现过的进程 + 当前分类：`[{processName,appName,minutes,category,categoryColorHex,mapped}]`
 pub fn app_categories_json(db: &Path, days: i64) -> Result<serde_json::Value, String> {
     let today = today_local();
-    let start = date_shift(&today, -(days.max(1) - 1));
+    // days <= 0：全部历史（起点取 AppSessions 最早一天，没数据退回近 30 天）
+    let start = if days <= 0 {
+        app_earliest_date(db).unwrap_or_else(|| date_shift(&today, -29))
+    } else {
+        date_shift(&today, -(days.max(1) - 1))
+    };
+    let effective_days = date_diff_days(&start, &today) + 1;
     let req = serde_json::json!({
         "curStart": format!("{start} 00:00:00.0000000"),
         "curEnd": format!("{today} 23:59:59.9999999"),
@@ -1829,7 +1835,7 @@ pub fn app_categories_json(db: &Path, days: i64) -> Result<serde_json::Value, St
         })
         .unwrap_or_default();
 
-    Ok(serde_json::json!({ "days": days, "items": items }))
+    Ok(serde_json::json!({ "days": effective_days, "items": items }))
 }
 
 /// 改一个进程的分类：`{process, category}` → `{ok, processName, category, created}`
@@ -3382,6 +3388,30 @@ pub fn web_earliest_date(db: &Path) -> Option<String> {
     let mut stmt = conn
         .prepare("SELECT MIN(StartTime) FROM WebSessions")
         .ok()?;
+    let mut rows = stmt.query([]).ok()?;
+    let row = rows.next().ok()??;
+    let min: Option<String> = row.get(0).ok()?;
+    min.filter(|s| s.len() >= 10).map(|s| s[..10].to_string())
+}
+
+/// 两个 `YYYY-MM-DD` 之间相差的天数（后者 - 前者）。
+pub fn date_diff_days(from: &str, to: &str) -> i64 {
+    let y0: i64 = from.get(0..4).and_then(|s| s.parse().ok()).unwrap_or(1970);
+    let m0: i64 = from.get(5..7).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let d0: i64 = from.get(8..10).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let y1: i64 = to.get(0..4).and_then(|s| s.parse().ok()).unwrap_or(1970);
+    let m1: i64 = to.get(5..7).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let d1: i64 = to.get(8..10).and_then(|s| s.parse().ok()).unwrap_or(1);
+    days_from_civil(y1, m1, d1) - days_from_civil(y0, m0, d0)
+}
+
+/// 应用会话最早一天（`YYYY-MM-DD`）：应用统计「全部历史」的起点。
+pub fn app_earliest_date(db: &Path) -> Option<String> {
+    if !db.exists() {
+        return None;
+    }
+    let conn = open_readonly(db).ok()?;
+    let mut stmt = conn.prepare("SELECT MIN(StartTime) FROM AppSessions").ok()?;
     let mut rows = stmt.query([]).ok()?;
     let row = rows.next().ok()??;
     let min: Option<String> = row.get(0).ok()?;

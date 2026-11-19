@@ -21,6 +21,11 @@
   aside li.on { background:#1d2f4d; }
   aside li .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   aside li .mn { color:#64748b; font-size:10px; flex:none; }
+  aside .ranges { display:flex; gap:4px; padding:0 10px 8px; }
+  aside .ranges button { flex:1; background:#141e30; border:1px solid #263349; color:#94a3b8;
+    border-radius:5px; padding:2px 0; font-size:10px; cursor:pointer; font-family:inherit; }
+  aside .ranges button:hover { border-color:#3b82f6; color:#cbd5e1; }
+  aside .ranges button.on { background:#1d3a63; border-color:#3b82f6; color:#e2e8f0; }
 
   main { flex:1; min-width:0; padding:14px 16px 20px; overflow:auto; }
   h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
@@ -41,7 +46,7 @@
   .heat i { height:26px; border-radius:3px; background:#182234; display:block; }
   .heatlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
     font-size:9px; color:#475569; text-align:center; }
-  .trend { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .trend { display:grid; grid-template-columns:repeat(auto-fill, minmax(16px, 1fr)); gap:4px; }
   .trend > div { text-align:center; }
   .trend .bar { height:46px; display:flex; align-items:flex-end; }
   .trend .bar i { display:block; width:100%; background:#2563eb; border-radius:3px; min-height:2px; }
@@ -62,17 +67,23 @@
 <div id="app">
   <aside>
     <div class="top"><input id="q" placeholder="搜索应用…" /></div>
+    <div class="ranges" id="ranges">
+      <button data-days="0" class="on">全部</button>
+      <button data-days="7">7天</button>
+      <button data-days="30">30天</button>
+      <button data-days="90">90天</button>
+    </div>
     <ul id="list"></ul>
   </aside>
   <main>
     <h1 id="name">选择一个应用</h1>
-    <div class="sub" id="sub">左侧是近 7 天出现过的进程，点一下看详情</div>
+    <div class="sub" id="sub">左侧是所选范围内出现过的进程，点一下看详情</div>
 
     <div class="kpis" id="kpis"></div>
 
     <div class="row">
       <section>
-        <h2>24 小时分布（近 7 天累计）</h2>
+        <h2 id="heath2">24 小时分布（近 7 天累计）</h2>
         <div class="heat" id="heat"></div>
         <div class="heatlbl" id="heatlbl"></div>
         <h2 style="margin-top:14px">每日趋势</h2>
@@ -90,9 +101,18 @@
 <script>
   var APPS = [];
   var CUR = null;
+  var chosenDays = 0;   // 0 = 全部历史
+
+  function rangeLabel() {
+    return chosenDays <= 0 ? '全部历史' : ('近 ' + chosenDays + ' 天');
+  }
 
   function fmtMins(v) {
     var m = Math.round(v || 0);
+    if (m <= 0) {
+      var sec = Math.round((v || 0) * 60);
+      return sec > 0 ? sec + ' 秒' : '0 分钟';
+    }
     if (m < 60) return m + ' 分钟';
     return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
   }
@@ -133,6 +153,7 @@
       process: a.processName,
       appName: a.appName || '',
       category: a.category || '',
+      days: chosenDays,
     }).then(function (d) {
       window.__DETAIL_RESULT__ = paintDetail(d, a);
     }).catch(function (e) {
@@ -146,7 +167,9 @@
   // 结果就是左侧列表被清空、右侧 KPI/热力图全空（4.12.7 修）。
   function paintDetail(d, a) {
     document.getElementById('sub').textContent =
-      a.processName + '　分类 ' + (d.category || '未分类') + '　近 7 天';
+      a.processName + '　分类 ' + (d.category || '未分类') + '　' + rangeLabel();
+    var h2 = document.getElementById('heath2');
+    if (h2) h2.textContent = '24 小时分布（' + rangeLabel() + '累计）';
 
     // KPI
     var kp = document.getElementById('kpis');
@@ -185,12 +208,27 @@
       else lbl.appendChild(el('span', null, ''));
     });
 
-    // 日趋势
+    // 日趋势：范围长的时候按块合并（最多约 30 根柱），否则 154 天全铺开会糊成一片
     var tr = document.getElementById('trend');
     tr.innerHTML = '';
-    var days = d.dailyTrend || [];
+    var raw = d.dailyTrend || [];
+    var days = raw;
+    if (raw.length > 30) {
+      var per = Math.ceil(raw.length / 30);
+      days = [];
+      for (var i0 = 0; i0 < raw.length; i0 += per) {
+        var chunk = raw.slice(i0, i0 + per);
+        var sum = chunk.reduce(function (a, x) { return a + (x.minutes || 0); }, 0);
+        days.push({
+          dateLabel: chunk[0].dateLabel + (chunk.length > 1 ? '~' + chunk[chunk.length - 1].dateLabel : ''),
+          minutes: sum,
+          span: chunk.length,
+        });
+      }
+    }
     var maxD = days.reduce(function (m, x) { return Math.max(m, x.minutes || 0); }, 1);
-    days.forEach(function (x) {
+    var labelStep = days.length > 8 ? Math.ceil(days.length / 8) : 1;
+    days.forEach(function (x, idx) {
       var box = el('div');
       var bar = el('div', 'bar');
       var fill = el('i');
@@ -198,7 +236,11 @@
       bar.appendChild(fill);
       box.appendChild(el('div', 'vv', Math.round(x.minutes || 0) + 'm'));
       box.appendChild(bar);
-      box.appendChild(el('div', 'lb', x.dateLabel));
+      // 柱子多的时候只每 step 根标一次日期，其余留空（悬停 title 里都有）
+      var showLabel = labelStep <= 1 || idx % labelStep === 0 || idx === days.length - 1;
+      box.appendChild(el('div', 'lb', showLabel ? x.dateLabel : ''));
+      if (x.span) box.title = x.dateLabel + ' · ' + x.span + ' 天合计 ' + Math.round(x.minutes) + ' 分钟';
+      else box.title = x.dateLabel + ' · ' + Math.round(x.minutes || 0) + ' 分钟';
       tr.appendChild(box);
     });
 
@@ -239,7 +281,56 @@
 
   document.getElementById('q').addEventListener('input', renderList);
 
+  function markRange(btn) {
+    var bar = document.getElementById('ranges');
+    if (!bar) return;
+    Array.prototype.forEach.call(bar.children, function (b) {
+      b.className = (b === btn) ? 'on' : '';
+    });
+  }
+
+  // 切时间范围：重拉左侧列表，选中项还在就保持，不然选第一个
+  function loadApps(days, btn) {
+    chosenDays = days;
+    markRange(btn);
+    document.getElementById('sub').textContent = rangeLabel() + ' · 正在统计…';
+    window.__TAURI__.core.invoke('apps_stats', { days: days }).then(function (p) {
+      APPS = (p && p.items) || [];
+      renderList();
+      var keep = null;
+      if (CUR) {
+        for (var i = 0; i < APPS.length; i++) {
+          if (APPS[i].processName === CUR.processName) { keep = APPS[i]; break; }
+        }
+      }
+      if (keep) {
+        select(keep);
+      } else if (APPS.length) {
+        select(APPS[0]);
+      } else {
+        document.getElementById('sub').textContent = rangeLabel() + ' 内没有应用记录';
+        window.__DETAIL_RESULT__ = 'ok: ' + 0 + ' 个应用';
+      }
+    }).catch(function (e) {
+      document.getElementById('sub').textContent = '统计失败：' + e;
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var bar = document.getElementById('ranges');
+    if (!bar) return;
+    Array.prototype.forEach.call(bar.children, function (b) {
+      b.addEventListener('click', function () {
+        loadApps(Number(b.getAttribute('data-days')) || 0, b);
+      });
+    });
+  });
+
   window.renderDetail = function (payload) {
+    // 用户切过范围后，外壳每分钟推来的默认（全部历史）列表不再覆盖选择
+    if (chosenDays !== 0 && !(payload && payload.__explicit)) {
+      return 'skip: 保持用户选择的范围';
+    }
     APPS = (payload && payload.apps && payload.apps.items) || [];
     renderList();
     if (APPS.length) select(APPS[0]);

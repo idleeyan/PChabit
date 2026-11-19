@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.16**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.17**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-19 | 4.12.17 | 应用详情恢复全部历史 + 页内切 7/30/90 天（左侧列表同口径）；长范围日趋势按块合并；平均每次不足 1 分钟显示秒 |
 | 2026-11-19 | 4.12.16 | 网页访问页恢复全部历史（起点取库内最早记录）+ 页内切换 7/30/90 天；最近访问 50→300 条 |
 | 2026-11-19 | 4.12.15 | 任务栏小窗新增 GPU 使用率与显存占用（netd GPU 快照每秒一问），排列 ↓ ↑ │ CPU 内存 GPU 显存；新增 TaskbarShowVram 开关 |
 | 2026-11-19 | 4.12.14 | 主窗口默认尺寸 1180×720 → 1440×940（最小 1000×640），信息不再被截 |

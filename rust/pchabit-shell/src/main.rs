@@ -409,8 +409,8 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "reports" => payload_reports(),
         "data" => payload_data(),
         "detail" => serde_json::json!({
-            "apps": pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
-                .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }))
+            "apps": pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 0)
+                .unwrap_or_else(|_| serde_json::json!({ "days": 0, "items": [] }))
         }),
         _ => {
             let report = payload_analytics();
@@ -469,13 +469,25 @@ fn pages_data() -> serde_json::Value {
     all_pages()
 }
 
-/// 单应用详情：近 7 天 vs 前 7 天，含会话聚合、键鼠、硬件归属、标题 Top5、日趋势。
+/// 单应用详情：近 N 天 vs 前 N 天（`days <= 0` = 全部历史），含会话聚合、键鼠、硬件归属、标题 Top5、日趋势。
 #[tauri::command]
-fn app_detail(process: String, app_name: String, category: String) -> Result<serde_json::Value, String> {
+fn app_detail(
+    process: String,
+    app_name: String,
+    category: String,
+    days: Option<i64>,
+) -> Result<serde_json::Value, String> {
     let today = pchabit_datad::today_local();
-    let cur_start = pchabit_datad::date_shift(&today, -6);
-    let prev_end = pchabit_datad::date_shift(&today, -7);
-    let prev_start = pchabit_datad::date_shift(&today, -13);
+    let db = pchabit_datad::default_db();
+    let days_eff = match days.unwrap_or(7) {
+        d if d > 0 => d,
+        _ => pchabit_datad::app_earliest_date(&db)
+            .map(|e| (pchabit_datad::date_diff_days(&e, &today) + 1).max(1))
+            .unwrap_or(30),
+    };
+    let cur_start = pchabit_datad::date_shift(&today, -(days_eff - 1));
+    let prev_end = pchabit_datad::date_shift(&cur_start, -1);
+    let prev_start = pchabit_datad::date_shift(&cur_start, -days_eff);
     let req = serde_json::json!({
         "curStart": format!("{cur_start} 00:00:00.0000000"),
         "curEnd": format!("{today} 23:59:59.9999999"),
@@ -499,6 +511,12 @@ fn app_detail(process: String, app_name: String, category: String) -> Result<ser
         v["sessions"].as_i64().unwrap_or(0)
     ));
     Ok(v)
+}
+
+/// 应用详情左侧列表：按时间范围统计每个进程的时长（`days <= 0` = 全部历史）。
+#[tauri::command]
+fn apps_stats(days: i64) -> Result<serde_json::Value, String> {
+    pchabit_datad::app_categories_json(&pchabit_datad::default_db(), days)
 }
 
 /// 便签（只读）：WPF 负责增删改，壳只展示，避免两处分头写。
@@ -1121,7 +1139,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.16";
+const VERSION: &str = "4.12.17";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1498,6 +1516,7 @@ fn main() {
             page_data,
             pages_data,
             web_data,
+            apps_stats,
             note,
             set_category,
             create_category,
