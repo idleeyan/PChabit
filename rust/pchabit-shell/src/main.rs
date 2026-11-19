@@ -781,7 +781,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.7.0";
+const VERSION: &str = "4.8.0";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -872,6 +872,8 @@ fn main() {
     let host_mode = raw_args.iter().any(|a| a == "--host");
     // --headless：不建窗口，只跑采集宿主（开机自启/后台常驻用）
     let headless = raw_args.iter().any(|a| a == "--headless");
+    // 窗口模式默认带托盘：关窗=隐到托盘，托盘「退出」才真退（--no-tray 关掉）
+    let window_tray = !raw_args.iter().any(|a| a == "--no-tray");
     let positional: Vec<String> = raw_args
         .iter()
         .filter(|a| !a.starts_with("--"))
@@ -949,7 +951,30 @@ fn main() {
                 } else {
                     format!("app.html?p={start_page}&{extra}")
                 };
-                Some(make_window(app.handle(), &inject, &url)?)
+                if window_tray {
+                    match add_tray(app.handle().clone()) {
+                        Ok(_) => log_line("[壳] 托盘已建立（窗口模式）：关窗隐到托盘"),
+                        Err(e) => log_line(&format!("[壳] 托盘建立失败：{e}")),
+                    }
+                }
+                let w = make_window(app.handle(), &inject, &url)?;
+
+                // 自检：PCHABIT_CLOSE_TEST=1 时 10 秒后自己发一次关窗，
+                // 验证「关窗→隐到托盘」而不是退出（本机点不了 X 按钮）。
+                if std::env::var("PCHABIT_CLOSE_TEST").as_deref() == Ok("1") {
+                    let h = app.handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(10));
+                        let h2 = h.clone();
+                        let _ = h.run_on_main_thread(move || {
+                            if let Some(w) = h2.get_webview_window("main") {
+                                log_line("[壳] 自检：发一次关窗请求");
+                                let _ = w.close();
+                            }
+                        });
+                    });
+                }
+                Some(w)
             };
 
             if host_mode {
@@ -985,8 +1010,15 @@ fn main() {
                 window.on_window_event({
                     let handle = app.handle().clone();
                     move |e| {
-                        if let tauri::WindowEvent::CloseRequested { .. } = e {
-                            if let Some(state) = handle.try_state::<HostState>() {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                            if window_tray {
+                                // 托盘在，关窗只是收起来：采集继续，托盘可再打开
+                                api.prevent_close();
+                                if let Some(w) = handle.get_webview_window("main") {
+                                    let _ = w.hide();
+                                    log_line("[壳] 关窗→隐到托盘（采集继续，托盘「退出」才真退）");
+                                }
+                            } else if let Some(state) = handle.try_state::<HostState>() {
                                 state.stop();
                             }
                         }
@@ -1002,11 +1034,22 @@ fn main() {
     // headless 没有窗口，默认会因「最后一个窗口关闭」直接退出；这里挡掉，
     // 让它一直当后台采集宿主，直到进程被结束。
     let app = app;
-    app.run(move |_handle, event| {
-        if headless {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
+    app.run(move |handle, event| {
+        match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                // headless 没有窗口，默认会因「最后一个窗口关闭」退出；挡掉它
+                if headless {
+                    api.prevent_exit();
+                }
             }
+            tauri::RunEvent::Exit => {
+                // 任何退出路径（托盘、任务管理器正常关、系统注销）都先让宿主收口
+                if let Some(state) = handle.try_state::<HostState>() {
+                    state.stop();
+                }
+                log_line("[壳] 退出：采集宿主已收口");
+            }
+            _ => {}
         }
     });
 }
