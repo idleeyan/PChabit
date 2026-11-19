@@ -2,6 +2,20 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.12] - 2026-11-19
+
+### 托盘图标左键单击没反应 → 打开主窗口
+
+- **原因**：托盘只注册了 `on_menu_event`（右键菜单），并设了 `show_menu_on_left_click(false)`，
+  左键既不开菜单也没有任何处理器，等于点了白点。
+- **改法**：加 `on_tray_icon_event`，识别 `TrayIconEvent::Click { button: Left, button_state: Up }`
+  → 主线程调 `tray_show(app, "托盘左键")`：有 `main` 窗口就 `show + unminimize + set_focus`，
+  没有就 `make_window` 现建一个。
+- 顺手把原来菜单「显示」里的同一段逻辑抽成 `fn tray_show(app, from)`，两处共用，日志分别记
+  「[壳] 托盘左键：…」/「[壳] 托盘菜单：…」。
+- 验证：`PChabitShell.exe --cmd SHOW` 走同一套亮窗逻辑，日志出现「第二实例请求：已有窗口已亮出来」，
+  主窗口 `MainWindowTitle` 正常；左键点击请在托盘上实测。
+
 ## [4.12.11] - 2026-11-19
 
 ### 去掉「每小时活动」页（与仪表盘的 24 小时活跃重复）

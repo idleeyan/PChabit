@@ -1041,7 +1041,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.11";
+const VERSION: &str = "4.12.12";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1241,20 +1241,22 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .tooltip("PChabit 采集宿主（后台运行中）")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => {
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.unminimize();
-                    let _ = w.set_focus();
-                    log_line("[壳] 托盘：显示已有窗口");
-                } else {
-                    match make_window(app, &inject_script(), "app.html") {
-                        Ok(_) => log_line("[壳] 托盘：已打开仪表盘窗口"),
-                        Err(e) => log_line(&format!("[壳] 托盘开窗失败：{e}")),
-                    }
-                }
+        // 左键单击按常规认知就是「打开主窗口」（右键才是菜单）
+        .on_tray_icon_event(|tray, event| {
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                let app = tray.app_handle();
+                let app2 = app.clone();
+                let _ = app.run_on_main_thread(move || tray_show(&app2, "托盘左键"));
             }
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => tray_show(app, "托盘菜单"),
             "newnote" => {
                 // 托盘「新建便签」：真建一张、放桌面、直接把窗口摆出来（光标进去就能打字）。
                 // 之前只是把便签页里的输入框聚焦，等于没建，用户看着像没反应。
@@ -1289,6 +1291,21 @@ fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     std::mem::forget(tray);
     Ok(())
+}
+
+/// 托盘的「打开主窗口」：有窗口就亮出来，没有就现建一个（左键与菜单「显示」共用）。
+fn tray_show(app: &tauri::AppHandle, from: &str) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        log_line(&format!("[壳] {from}：显示已有窗口"));
+    } else {
+        match make_window(app, &inject_script(), "app.html") {
+            Ok(_) => log_line(&format!("[壳] {from}：已打开仪表盘窗口")),
+            Err(e) => log_line(&format!("[壳] {from}开窗失败：{e}")),
+        }
+    }
 }
 
 /// 托盘「新建便签」：写库 → 标记为桌面便签 → 开悬浮窗，返回新便签 id。
