@@ -1,8 +1,8 @@
 //! 采集宿主的命令行入口：用于自测（跑 N 秒后退出并打印统计）。
 //!
 //! 用法：
-//!   pchabit-collect --db <path> --seconds 30 [--no-hooks]
-//!   pchabit-collect --check                     # 只做环境检查（netd 可连、库可写）
+//!   pchabit-collect --db <path> --seconds 30 [--no-hooks] [--no-ws] [--ws-port 8765]
+//!   pchabit-collect --check                     # 只做环境检查（netd 可连、库可写、端口是否空闲）
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,6 +14,8 @@ fn main() {
     let mut db = default_db();
     let mut seconds: Option<u64> = None;
     let mut hooks = true;
+    let mut websync = true;
+    let mut ws_port: u16 = 8765;
     let mut check = false;
 
     while let Some(a) = args.next() {
@@ -27,6 +29,12 @@ fn main() {
                 seconds = args.next().and_then(|v| v.parse().ok());
             }
             "--no-hooks" => hooks = false,
+            "--no-ws" => websync = false,
+            "--ws-port" => {
+                if let Some(v) = args.next() {
+                    ws_port = v.parse().unwrap_or(8765);
+                }
+            }
             "--check" => check = true,
             _ => {}
         }
@@ -44,6 +52,10 @@ fn main() {
             None => println!("netd：未找到"),
         }
         println!("PChabit.exe 在跑：{}", pchabit_collect::win::process_running("PChabit.exe"));
+        println!(
+            "扩展通道端口 {ws_port} 空闲：{}",
+            std::net::TcpListener::bind(("127.0.0.1", ws_port)).is_ok()
+        );
         return;
     }
 
@@ -52,6 +64,8 @@ fn main() {
         hooks,
         log: log.clone(),
         run_for: seconds,
+        websync,
+        ws_port,
     };
 
     let host = match Host::start(cfg) {

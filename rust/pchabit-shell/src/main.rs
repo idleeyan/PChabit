@@ -781,7 +781,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.3.0";
+const VERSION: &str = "4.4.0";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -864,6 +864,8 @@ fn main() {
                     hooks: true,
                     log,
                     run_for: None,
+                    websync: true,
+                    ws_port: 8765,
                 };
                 match pchabit_collect::Host::start(cfg) {
                     Ok(h) => {

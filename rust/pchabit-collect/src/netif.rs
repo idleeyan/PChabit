@@ -180,3 +180,112 @@ pub fn snapshot_bytes() -> Option<(u64, u64)> {
     // 用性能计数器的原始值不方便，这里直接靠 PDH 速率换算不到累计，故省略。
     None
 }
+
+/// 磁盘活动：`\PhysicalDisk(_Total)` 的读写字节/秒与 % Idle Time。
+///
+/// 口径与 WPF 侧 LHM 的 `DISK.Activity` / `DISK.Read` / `DISK.Write` 三键对齐：
+/// 活动率 = 100 − 空闲率（0~100 夹取），读写各取峰值（库里的列叫 `DiskReadMax` / `DiskWriteMax`）。
+pub struct DiskMeter {
+    query: isize,
+    read: isize,
+    write: isize,
+    idle: isize,
+    primed: bool,
+}
+
+impl DiskMeter {
+    pub fn new() -> Option<DiskMeter> {
+        unsafe {
+            let mut query: isize = 0;
+            if PdhOpenQueryW(std::ptr::null(), 0, &mut query) != 0 {
+                return None;
+            }
+            let read_path = wide(r"\PhysicalDisk(_Total)\Disk Read Bytes/sec");
+            let write_path = wide(r"\PhysicalDisk(_Total)\Disk Write Bytes/sec");
+            let idle_path = wide(r"\PhysicalDisk(_Total)\% Idle Time");
+            let mut read: isize = 0;
+            let mut write: isize = 0;
+            let mut idle: isize = 0;
+            if PdhAddEnglishCounterW(query, read_path.as_ptr(), 0, &mut read) != 0
+                || PdhAddEnglishCounterW(query, write_path.as_ptr(), 0, &mut write) != 0
+                || PdhAddEnglishCounterW(query, idle_path.as_ptr(), 0, &mut idle) != 0
+            {
+                let _ = PdhCloseQuery(query);
+                return None;
+            }
+            let _ = PdhCollectQueryData(query);
+            Some(DiskMeter {
+                query,
+                read,
+                write,
+                idle,
+                primed: false,
+            })
+        }
+    }
+
+    /// 单实例计数器（不是数组）取值：`\PhysicalDisk(_Total)` 只有一个实例。
+    fn single(&self, counter: isize) -> f64 {
+        unsafe {
+            let mut size: u32 = 0;
+            let mut count: u32 = 0;
+            let st = PdhGetFormattedCounterArrayW(
+                counter,
+                PDH_FMT_DOUBLE,
+                &mut size,
+                &mut count,
+                std::ptr::null_mut(),
+            );
+            if st != PDH_MORE_DATA && st != 0 {
+                return 0.0;
+            }
+            if size == 0 {
+                return 0.0;
+            }
+            let mut buf = vec![0u8; size as usize];
+            let items = buf.as_mut_ptr() as *mut FmtCounterValueItemW;
+            if PdhGetFormattedCounterArrayW(
+                counter,
+                PDH_FMT_DOUBLE,
+                &mut size,
+                &mut count,
+                items,
+            ) != 0
+            {
+                return 0.0;
+            }
+            let mut total = 0.0f64;
+            for i in 0..count as usize {
+                let item = &*items.add(i);
+                let v = f64::from_bits(item.value.value_bits);
+                if v.is_finite() {
+                    total += v;
+                }
+            }
+            total
+        }
+    }
+
+    /// 返回 (活动率 %, 读 B/s, 写 B/s)。第一拍返回 None（速率还没基准）。
+    pub fn sample(&mut self) -> Option<(f64, f64, f64)> {
+        unsafe {
+            let _ = PdhCollectQueryData(self.query);
+        }
+        let read = self.single(self.read).max(0.0);
+        let write = self.single(self.write).max(0.0);
+        let idle = self.single(self.idle).clamp(0.0, 100.0);
+        if !self.primed {
+            self.primed = true;
+            return None;
+        }
+        Some(((100.0 - idle).clamp(0.0, 100.0), read, write))
+    }
+}
+
+impl Drop for DiskMeter {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = PdhCloseQuery(self.query);
+        }
+    }
+}

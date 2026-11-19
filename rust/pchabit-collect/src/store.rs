@@ -38,6 +38,10 @@ pub struct HwBucket {
     pub mem_n: i64,
     pub mem_max: f64,
     pub mem_used_max: f64,
+    pub disk_act_sum: f64,
+    pub disk_act_n: i64,
+    pub disk_read_max: f64,
+    pub disk_write_max: f64,
     pub net_up_sum: f64,
     pub net_down_sum: f64,
     pub net_n: i64,
@@ -52,6 +56,9 @@ pub const F_VRAM_USED: i64 = 1 << 4;
 pub const F_VRAM_TOTAL: i64 = 1 << 5;
 pub const F_MEM_LOAD: i64 = 1 << 6;
 pub const F_MEM_USED: i64 = 1 << 7;
+pub const F_DISK_ACT: i64 = 1 << 8;
+pub const F_DISK_READ: i64 = 1 << 9;
+pub const F_DISK_WRITE: i64 = 1 << 10;
 pub const F_NET_UP: i64 = 1 << 11;
 pub const F_NET_DOWN: i64 = 1 << 12;
 
@@ -108,6 +115,30 @@ pub struct AppRow {
     pub category: Option<String>,
 }
 
+/// `WebSessions` 一行。时长列都是 100ns ticks（与 `AppSessions.Duration` 同一单位）。
+#[derive(Default, Clone)]
+pub struct WebRow {
+    pub id: String,
+    pub start: String,
+    pub end: Option<String>,
+    pub duration_ticks: i64,
+    pub url: String,
+    pub title: String,
+    pub domain: String,
+    pub favicon: Option<String>,
+    pub browser: String,
+    pub tab_id: i64,
+    pub scroll_depth: i64,
+    pub click_count: i64,
+    pub has_form: bool,
+    pub is_active_tab: bool,
+    pub active_ticks: i64,
+    pub idle_ticks: i64,
+    pub category_id: Option<i64>,
+    pub category_name: Option<String>,
+    pub category_source: Option<String>,
+}
+
 impl Store {
     pub fn open(path: &Path) -> Result<Store, String> {
         let conn = Connection::open(path).map_err(|e| format!("打开数据库失败: {e}"))?;
@@ -142,16 +173,19 @@ impl Store {
             (Id, Timestamp, CpuLoadAvg, CpuLoadMax, CpuTempMax, GpuLoadAvg, GpuLoadMax, GpuTempMax, \
              VramUsedMax, VramTotal, MemLoadAvg, MemLoadMax, MemUsedMax, \
              DiskActivityAvg, DiskReadMax, DiskWriteMax, NetUpAvg, NetDownAvg, SampleCount, SensorFlags) \
-            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,NULL,NULL,NULL,?14,?15,?16,?17) \
+            VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20) \
             ON CONFLICT(Timestamp) DO UPDATE SET \
              CpuLoadAvg=excluded.CpuLoadAvg, CpuLoadMax=excluded.CpuLoadMax, GpuLoadAvg=excluded.GpuLoadAvg, \
              GpuLoadMax=excluded.GpuLoadMax, GpuTempMax=excluded.GpuTempMax, VramUsedMax=excluded.VramUsedMax, \
              VramTotal=excluded.VramTotal, MemLoadAvg=excluded.MemLoadAvg, MemLoadMax=excluded.MemLoadMax, \
-             MemUsedMax=excluded.MemUsedMax, NetUpAvg=excluded.NetUpAvg, NetDownAvg=excluded.NetDownAvg, \
+             MemUsedMax=excluded.MemUsedMax, DiskActivityAvg=excluded.DiskActivityAvg, \
+             DiskReadMax=excluded.DiskReadMax, DiskWriteMax=excluded.DiskWriteMax, \
+             NetUpAvg=excluded.NetUpAvg, NetDownAvg=excluded.NetDownAvg, \
              SampleCount=excluded.SampleCount, SensorFlags=excluded.SensorFlags";
         let cpu_avg = HwBucket::avg(b.cpu_sum, b.cpu_n);
         let gpu_avg = HwBucket::avg(b.gpu_sum, b.gpu_n);
         let mem_avg = HwBucket::avg(b.mem_sum, b.mem_n);
+        let disk_act = HwBucket::avg(b.disk_act_sum, b.disk_act_n);
         let net_up = if b.net_n > 0 {
             Some(b.net_up_sum / b.net_n as f64)
         } else {
@@ -179,6 +213,9 @@ impl Store {
                     mem_avg,
                     opt(b.mem_max, b.mem_n),
                     opt(b.mem_used_max, b.mem_n),
+                    disk_act,
+                    opt(b.disk_read_max, b.disk_act_n),
+                    opt(b.disk_write_max, b.disk_act_n),
                     net_up,
                     net_down,
                     b.samples,
@@ -468,6 +505,101 @@ impl Store {
             }
         }
         fallback.to_string()
+    }
+
+    /// 网页会话一行（`WebSessions`）。就业中会话 `end` 为 None、`is_active_tab` 为 1。
+    pub fn web_upsert(&self, r: &WebRow) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO WebSessions \
+                 (Id, StartTime, EndTime, Duration, Url, Title, Domain, Favicon, Browser, TabId, \
+                  ScrollDepth, ClickCount, HasFormInteraction, Referrer, Source, IsActiveTab, \
+                  ActiveDuration, IdleDuration, CategoryId, CategoryName, CategorySource, IsLegacy) \
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,NULL,NULL,?14,?15,?16,?17,?18,?19,0) \
+                 ON CONFLICT(Id) DO UPDATE SET \
+                  EndTime=excluded.EndTime, Duration=excluded.Duration, Url=excluded.Url, \
+                  Title=excluded.Title, Domain=excluded.Domain, Favicon=excluded.Favicon, \
+                  Browser=excluded.Browser, TabId=excluded.TabId, ScrollDepth=excluded.ScrollDepth, \
+                  ClickCount=excluded.ClickCount, HasFormInteraction=excluded.HasFormInteraction, \
+                  IsActiveTab=excluded.IsActiveTab, ActiveDuration=excluded.ActiveDuration, \
+                  IdleDuration=excluded.IdleDuration, CategoryId=excluded.CategoryId, \
+                  CategoryName=excluded.CategoryName, CategorySource=excluded.CategorySource",
+                params![
+                    r.id,
+                    r.start,
+                    r.end,
+                    r.duration_ticks,
+                    r.url,
+                    r.title,
+                    r.domain,
+                    r.favicon,
+                    r.browser,
+                    r.tab_id,
+                    r.scroll_depth,
+                    r.click_count,
+                    if r.has_form { 1 } else { 0 },
+                    if r.is_active_tab { 1 } else { 0 },
+                    r.active_ticks,
+                    r.idle_ticks,
+                    r.category_id,
+                    r.category_name,
+                    r.category_source,
+                ],
+            )
+            .map_err(|e| format!("写 WebSessions 失败: {e}"))?;
+        Ok(())
+    }
+
+    /// 浏览历史一行。Id 用 `url|visitTime`（与 C# 侧去重键一致），重复访问直接忽略。
+    pub fn history_add(
+        &self,
+        browser: &str,
+        url: &str,
+        title: &str,
+        visit_ms: i64,
+        ingested_ms: i64,
+    ) -> Result<bool, String> {
+        let id = format!("{url}|{visit_ms}");
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO BrowserHistoryItems \
+                 (Id, Url, Title, VisitTime, VisitCount, SourceBrowser, IngestedAt) \
+                 VALUES (?1,?2,?3,?4,1,?5,?6)",
+                params![id, url, title, visit_ms, browser, ingested_ms],
+            )
+            .map_err(|e| format!("写 BrowserHistoryItems 失败: {e}"))
+            .map(|n| n > 0)
+    }
+
+    /// 网站分类表（用于把域名物化成 CategoryId / CategoryName）。
+    pub fn web_catalog(&self) -> (Vec<(i64, String, bool)>, Vec<(String, i64)>) {
+        let mut cats = Vec::new();
+        if let Ok(mut stmt) = self
+            .conn
+            .prepare("SELECT Id, Name, IsActive FROM WebsiteCategories")
+        {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, i64>(2)? != 0,
+                ))
+            }) {
+                cats = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        let mut maps = Vec::new();
+        if let Ok(mut stmt) = self
+            .conn
+            .prepare("SELECT DomainPattern, CategoryId FROM WebsiteDomainMappings")
+        {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+            }) {
+                maps = rows.filter_map(|x| x.ok()).collect();
+            }
+        }
+        (cats, maps)
     }
 }
 

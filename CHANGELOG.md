@@ -2,6 +2,44 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.4.0] - 2026-11-19
+
+### 采集面补齐：网页会话与磁盘活动也进 Rust 采集宿主
+
+4.3.0 的采集宿主缺两块数据：**浏览器网页会话**（WPF 里是 `WebSocketServer` + `WebMonitor` +
+`DataCollectionService.Web` 那套会话引擎）和**磁盘三列**（`DiskActivityAvg` / `DiskReadMax` /
+`DiskWriteMax`）。
+这两个缺口都在 Rust 侧补上了，采集面已经具备替换 WPF 写入侧的能力。
+
+新增：
+
+- **`websync.rs`**：自建 WebSocket 服务（`127.0.0.1:8765`，可 `--ws-port` 改）。手写 RFC 6455 握手
+  （`Sec-WebSocket-Accept` 用自带的 `sha1.rs` 算），支持分片拼接、mask 解码、ping→pong，非 WS 的
+  HTTP GET 回一个说明页。会话语义照抄 WPF：`pageView`/`tabActivate` 开段、`pageClose`/`tabClose` 收段、
+  `heartbeat`/`visibility`/`idle` 改活跃、`scroll` 记百分比、`click` 计数、`formSubmit` 置标记；
+  `ActiveDuration` = 活跃累计、`IdleDuration` = 墙钟 − 活跃、`Duration` = 结束 − 开始（100ns ticks）。
+  分类走 `WebsiteDomainMappings`（按 pattern 长度降序、`*.` 前缀通配）→ 关键词兜底，与
+  `WebsiteCategoryService` 同口径；浏览历史落 `BrowserHistoryItems`（`Id = url|visitTime`，
+  `INSERT OR IGNORE` 去重）。
+- **`dt.rs`**：扩展推的 `timestamp` 是 UTC ISO，库里的时间列全是本地时间字符串，补一层
+  UTC→本地毫秒（对齐到分钟）→ `yyyy-MM-dd HH:mm:ss.fffffff` 的换算。
+- **`DiskMeter`**（`netif.rs`）：PDH `\PhysicalDisk(_Total)\` 的读/写字节速率与 `% Idle Time`，
+  活动率 = 100 − 空闲（0~100 夹取），算进 `HardwareSamples` 的磁盘三列；`SensorFlags` 跟着置
+  `1<<8 / 1<<9 / 1<<10`（实测 8189，仅缺 CpuTemp）。
+- **兜底与收尾**：新增线程每 30 s 把在场会话按「未结束」写一行（进程被强杀也不丢整段）；
+  `Host::stop()` 关通道后 `finalize_all` 收尾所有在场会话。
+
+踩到的坑（Windows 特有，已修）：**accept 出来的 socket 会继承监听 socket 的非阻塞标志**，
+不显式 `set_nonblocking(false)` 的话每条连接刚握手就被关掉，表现为浏览器扩展每两三秒重连一次。
+
+实测（副本库，`pchabit-collect --db <副本> --seconds 50 --no-hooks` + 手写 WS 探针）：
+
+- 探针 github 页：`5.0s / 滚动 55% / 点击 1 / 有表单 / 分类 开发（Mapping）`；
+- 探针抖音页：`4.0s / 分类 视频（Fallback）`；
+- 真实扩展（豆包浏览器 v2.2.4）同时连上并正常产会话，退出时「收尾网页会话 1 个」；
+- 硬件样本 `13:09` 行：读 4.03 MB / 写 16.36 MB / 活动 0.86%、`SensorFlags = 8189`；
+- 浏览历史两页均入库；WPF 测试 186 通过 0 失败。
+
 ## [4.3.0] - 2026-11-19
 
 ### 采集与壳合一：`pchabit-shell.exe --host` 自己当采集宿主

@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **4.3.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
+| 当前版本 | **4.4.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核、`rust/pchabit-datad` 数据面、`rust/pchabit-shell` Tauri 2 壳预览） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，**16 个页面**：仪表盘 + 五图表/分析页 + 时间线 + 网页访问 + 网络流量 + 键鼠活动 + 历史报告 + 分类管理 + 应用详情 + 设置概览 + 便签 + 数据管理），默认入口仍是 WPF 版 |
@@ -79,6 +79,7 @@
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
 | 2026-11-18 | 3.95.0 | **前台窗口采样 1 Hz → 500 ms（P2 尾巴）**。内核采样（netd）与宿主读取（AppMonitor 定时器）同频提到 500 ms，避免短于 1 秒的切换被整段合并；每拍仍只一次 GetForegroundWindow，开销可忽略 |
+| 2026-11-19 | 4.4.0 | **采集面补齐（P5-2）**：采集宿主接过网页会话与磁盘活动。新增 `websync.rs`（手写 RFC 6455 WebSocket 服务，`127.0.0.1:8765` 可配）复刻 WPF 会话引擎语义（`pageView`/`tabActivate` 开段、`pageClose`/`tabClose` 收段、`heartbeat`/`visibility`/`idle` 改活跃、`scroll` 记百分比、`click` 计数、`formSubmit` 置标记；`ActiveDuration` 累计、`IdleDuration` 墙钟−活跃、`Duration` 100ns ticks），分类走 `WebsiteDomainMappings`（pattern 长度降序 + `*.` 通配）→ 关键词兜底，历史落 `BrowserHistoryItems`（`Id = url\|visitTime`、`INSERT OR IGNORE`）；新增 `dt.rs`（UTC ISO → 本地毫秒 → `yyyy-MM-dd HH:mm:ss.fffffff`）、`sha1.rs`（握手用 SHA-1+Base64）；`netif::DiskMeter` 用 PDH `\PhysicalDisk(_Total)\` 三计数器补 `DiskActivityAvg`/`DiskReadMax`/`DiskWriteMax`（`SensorFlags` 加 `1<<8..1<<10`）；每 30 s 兜底写在场会话，`stop()` 里 `finalize_all` 收尾。踩坑：Windows accept 出的 socket 继承监听 socket 非阻塞标志，不 `set_nonblocking(false)` 则每条连接握手即关（扩展每两三秒重连）。实测副本库：github 页 5.0s/滚动 55%/点击 1/表单 1/分类 开发（Mapping）、抖音 4.0s/视频（Fallback）、真实扩展 v2.2.4 同时在线、`13:09` 磁盘行 读 4.03 MB / 写 16.36 MB / 活动 0.86%、`SensorFlags 8189`、历史两页入库；WPF 测试 186 通过。发布 4.4.0.0（465 文件）部署 `D:\Tool\PChabit` |
 | 2026-11-19 | 4.3.0 | **采集与壳合一（P5-1）**：新增 `rust/pchabit-collect`（9 文件），把原 WPF 侧写入职责整体接过——netd 托管与今日累计回填、CPU/内存/GPU/网络分钟桶（`HardwareSamples` upsert）、`NetworkTrafficSamples` 分钟行、`ProcessNetworkUsages` 小时行、前台 `AppSessions` 切段、键鼠低层钩子与 15 s 增量落库。壳带 `--host` 即采集宿主，关窗时串行收口（最后一分钟、当前会话、键鼠增量、`STOP`）。三个实测问题：netd 管道一次只服务一个客户端（多线程各连会静默卡死，改共用一条连接 + 串行化）；netd 逐进程 ESTATS 本机虚高三个数量级（Doubao 20 秒报 2.6 GB，网卡真实 2 MB，改按系统增量等比缩放）；退出时最后一分钟会丢（`stop()` 留 2.2 s 收口）。单写者：`PChabit.exe` 在跑时宿主拒绝启动。记录表 6 张逐列对齐 EF（`Date` 带时分秒、`Duration` 100ns ticks、JSON 列合并）。实测注入输入 42 键 / 5 击 5953 px；`00:16` 分钟行 CPU 18.8%、GPU 32%、内存 42.4%、网络 10.36/6.69 MB。新增 `docs/P5-collect-migration.md`。默认入口仍 WPF，`--host` 为试用开关。发布 4.3.0.0（465 文件）部署 `D:\Tool\PChabit` |
 | 2026-11-18 | 3.94.0 | **分析页计算层搬到 Rust（P3 数据面收口）**。`pchabit-datad analytics` 只读查 5 张表并算完全份报告（KPI/日历/小时热力/Top 变化/分类构成/洞察/多源指标/硬件画像），宿主 `RustAnalyticsProvider` 只做 DTO 映射，开关 `PCHABIT_RUST_ANALYTICS=0`。对账查出四个真问题：C# `F0` 是银行家舍入（Rust 需 `round_ties_even`）、WebSession ticks 单位差 100 倍、专注下降阈值整数截断、C# 漏查 AppName 导致硬件画像只显示进程名（已修）。新增 `AnalyticsParityTests` 双路径逐项对账；全量 212 项通过 |
 | 2026-11-18 | 3.93.0 | **EPPlus 彻底退出产品依赖（P3 第三块收尾）**。`AnalysisExcelExporter` 改走 Rust 写出，XLSX 协议升级为多区块（`sections`，支持硬件表的双表头）；`Infrastructure.csproj` 删除 EPPlus 包引用，产品不再依赖任何带许可证的表格库；EPPlus 仅留在测试项目做第三方校验。删掉兜底后暴露真 bug：应答反序列化缺 `PropertyNameCaseInsensitive`，导致 3.92.0 每次导出都静默回退 EPPlus，已修。全量 211 项通过 |

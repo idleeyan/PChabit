@@ -4,17 +4,19 @@
 //! 反过来宿主在跑时 WPF 版也不该再开（后续在壳里做互斥提示）。
 //!
 //! 还没搬完的部分（`docs/P5-collect-migration.md` 里有清单）：
-//! - 浏览器扩展的 WebSocket 服务端（WebSessions 数据源）；
 //! - `DailySummaries` / `AppDailyStats` 的日汇总；
 //! - 托盘、开机自启、默认入口切换。
 
+pub mod dt;
 pub mod host;
 pub mod input;
 pub mod netd;
 pub mod netif;
 pub mod sampler;
+pub mod sha1;
 pub mod store;
 pub mod timefmt;
+pub mod websync;
 pub mod win;
 
 pub use host::{Config, Host};

@@ -33,6 +33,9 @@ pub struct Config {
     pub log: LogFn,
     /// 自测用：跑满 N 秒后自动停（None = 常驻）
     pub run_for: Option<u64>,
+    /// 是否起浏览器扩展通道（`127.0.0.1:ws_port`），网页会话靠它产数据
+    pub websync: bool,
+    pub ws_port: u16,
 }
 
 #[derive(Default, Clone)]
@@ -53,7 +56,7 @@ struct NetDelta {
 }
 
 struct Ctx {
-    store: Mutex<Store>,
+    store: Arc<Mutex<Store>>,
     gpu: Mutex<GpuSnap>,
     net: Mutex<NetDelta>,
     proc: Mutex<HashMap<String, (i64, i64, i64)>>,
@@ -88,6 +91,8 @@ impl Ctx {
 pub struct Host {
     ctx: Arc<Ctx>,
     shared_input: Option<Arc<InputShared>>,
+    web: Arc<Mutex<crate::websync::Engine>>,
+    ws: Option<crate::websync::Server>,
 }
 
 impl Host {
@@ -99,9 +104,13 @@ impl Host {
             );
         }
 
-        let store = Store::open(&cfg.db)?;
-        let today = timefmt::date(&timefmt::now());
-        let seeds = store.today_proc_totals(&today);
+        let store = Arc::new(Mutex::new(Store::open(&cfg.db)?));
+        let (today, seeds) = {
+            let s = store.lock().unwrap();
+            let today = timefmt::date(&timefmt::now());
+            let seeds = s.today_proc_totals(&today);
+            (today, seeds)
+        };
         (cfg.log)(format!(
             "采集宿主启动：库 {} / 今日已有 {} 个进程累计可以回填 netd",
             cfg.db.display(),
@@ -109,7 +118,7 @@ impl Host {
         ));
 
         let ctx = Arc::new(Ctx {
-            store: Mutex::new(store),
+            store: Arc::clone(&store),
             gpu: Mutex::new(GpuSnap::default()),
             net: Mutex::new(NetDelta::default()),
             proc: Mutex::new(HashMap::new()),
@@ -174,9 +183,39 @@ impl Host {
             std::thread::spawn(move || flush_loop(ctx, sh));
         }
 
+        // 浏览器扩展通道（网页会话的数据源）
+        let web = Arc::new(Mutex::new(crate::websync::Engine::new()));
+        let ws = if cfg.websync {
+            match crate::websync::start(
+                cfg.ws_port,
+                Arc::clone(&store),
+                Arc::clone(&web),
+                Arc::clone(&cfg.log),
+            ) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    (cfg.log)(format!(
+                        "浏览器通道未启动：{e}（网页会话本轮不产新数据，端口可能被 WPF 版占用）"
+                    ));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
+        // 线程 5：就业中网页会话每 30 s 兜底写一次（进程被杀也不丢整段）
+        {
+            let ctx = Arc::clone(&ctx);
+            let web = Arc::clone(&web);
+            std::thread::spawn(move || web_save_loop(ctx, web));
+        }
+
         let host = Host {
             ctx: Arc::clone(&ctx),
             shared_input,
+            web,
+            ws,
         };
 
         if let Some(secs) = cfg.run_for {
@@ -204,6 +243,18 @@ impl Host {
                     .say(format!("退出前落库键鼠：{k} 键 / {c} 击")),
                 Err(e) => self.ctx.say(format!("退出前落库键鼠失败：{e}")),
             }
+        }
+        // 浏览器会话先收尾（带 URL 的会话不落就是整段丢）
+        if let Some(ws) = &self.ws {
+            ws.stop();
+        }
+        let web_n = {
+            let store = self.ctx.store.lock().unwrap();
+            let mut eng = self.web.lock().unwrap();
+            eng.finalize_all(&store, &self.ctx.log)
+        };
+        if web_n > 0 {
+            self.ctx.say(format!("退出前收尾网页会话：{web_n} 个"));
         }
         // 让 netd 也退（它自己 90 秒无请求也会退，这里显式更快）
         if let Some(p) = self.ctx.netd.lock().unwrap().as_mut() {
@@ -347,6 +398,10 @@ fn sample_loop(ctx: Arc<Ctx>) {
     if meter.is_none() {
         ctx.say("网卡计数器不可用：系统上下行将记 0（硬件样本网络列为空）".to_string());
     }
+    let mut disk = crate::netif::DiskMeter::new();
+    if disk.is_none() {
+        ctx.say("磁盘计数器不可用：DiskActivity/DiskRead/DiskWrite 三列将为空".to_string());
+    }
     let mut last_net_tick = Instant::now();
 
     while ctx.running.load(Ordering::SeqCst) {
@@ -388,6 +443,23 @@ fn sample_loop(ctx: Arc<Ctx>) {
                 *ctx.last_sys.lock().unwrap() = (up, down);
             }
             last_net_tick = Instant::now();
+        }
+
+        // 磁盘：活动率进均值、读写进峰值（与 WPF 侧 DISK.* 三键同口径）
+        if let Some(d) = disk.as_mut() {
+            if let Some((act, read, write)) = d.sample() {
+                bucket.disk_act_sum += act;
+                bucket.disk_act_n += 1;
+                if read > bucket.disk_read_max {
+                    bucket.disk_read_max = read;
+                }
+                if write > bucket.disk_write_max {
+                    bucket.disk_write_max = write;
+                }
+                bucket.flags |= crate::store::F_DISK_ACT
+                    | crate::store::F_DISK_READ
+                    | crate::store::F_DISK_WRITE;
+            }
         }
 
         if let Some(load) = cpu.tick() {
@@ -690,6 +762,27 @@ fn flush_loop(ctx: Arc<Ctx>, shared: Option<Arc<InputShared>>) {
         if last_hour != Some(hour) {
             last_hour = Some(hour);
             ctx.say(format!("进入 {date} {}:00 时段", hour));
+        }
+    }
+}
+
+/// 网页会话兜底：每 30 s 把在场会话按「未结束」写一行，进程被强杀也不至于整段丢。
+fn web_save_loop(ctx: Arc<Ctx>, web: Arc<Mutex<crate::websync::Engine>>) {
+    let mut last_report = Instant::now();
+    while ctx.running.load(Ordering::SeqCst) {
+        std::thread::sleep(Duration::from_secs(30));
+        if !ctx.running.load(Ordering::SeqCst) {
+            break;
+        }
+        let store = ctx.store.lock().unwrap();
+        let mut eng = web.lock().unwrap();
+        eng.save_active(&store, &ctx.log);
+        if last_report.elapsed().as_secs() >= 600 {
+            last_report = Instant::now();
+            let n = eng.active_count();
+            if n > 0 {
+                ctx.say(format!("网页会话进行中：{n} 个"));
+            }
         }
     }
 }
