@@ -72,9 +72,12 @@ impl HwBucket {
     }
 }
 
-/// 键鼠增量（相对上次落库的差值）
+/// 键鼠增量（按 (日期, 小时, 进程) 分桶后的增量）
 #[derive(Default, Clone)]
 pub struct KbDelta {
+    pub date: String,
+    pub hour: u32,
+    pub process: String,
     pub total: i64,
     pub repeat: i64,
     pub backspace: i64,
@@ -91,6 +94,9 @@ pub struct KbDelta {
 
 #[derive(Default, Clone)]
 pub struct MsDelta {
+    pub date: String,
+    pub hour: u32,
+    pub process: String,
     pub left: i64,
     pub right: i64,
     pub middle: i64,
@@ -318,18 +324,15 @@ impl Store {
         Ok(())
     }
 
-    pub fn kb_add(
-        &self,
-        date_key: &str,
-        hour: u32,
-        process: &str,
-        d: &KbDelta,
-    ) -> Result<(), String> {
+    pub fn kb_add(&self, d: &KbDelta) -> Result<(), String> {
         if d.total == 0 && d.repeat == 0 && d.freq.is_empty() && d.combos.is_empty() {
             return Ok(());
         }
+        let date_key = d.date.as_str();
+        let hour = d.hour;
+        let process = d.process.as_str();
         let (mut freq_new, mut cats_new, mut bursts_new, mut combos_new) =
-            self.kb_existing(date_key, hour)?;
+            self.kb_existing(date_key, hour, process)?;
         for (k, v) in &d.freq {
             *freq_new.entry(*k).or_insert(0) += v;
         }
@@ -376,7 +379,7 @@ impl Store {
                   AverageTypingSpeed, PeakTypingSpeed, UndoCount, DeleteCount, BackspaceCount, \
                   TypingBursts, Shortcuts, RepeatKeyPresses) \
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15) \
-                 ON CONFLICT(Date, Hour) DO UPDATE SET \
+                 ON CONFLICT(Date, Hour, ProcessName) DO UPDATE SET \
                   TotalKeyPresses=TotalKeyPresses+excluded.TotalKeyPresses, \
                   RepeatKeyPresses=RepeatKeyPresses+excluded.RepeatKeyPresses, \
                   BackspaceCount=BackspaceCount+excluded.BackspaceCount, \
@@ -385,14 +388,12 @@ impl Store {
                   KeyFrequency=excluded.KeyFrequency, KeyCategoryFrequency=excluded.KeyCategoryFrequency, \
                   TypingBursts=excluded.TypingBursts, \
                   AverageTypingSpeed=MAX(AverageTypingSpeed, excluded.AverageTypingSpeed), \
-                  PeakTypingSpeed=MAX(PeakTypingSpeed, excluded.PeakTypingSpeed), \
-                  ProcessName=CASE WHEN excluded.ProcessName IS NULL OR excluded.ProcessName='' \
-                    THEN ProcessName ELSE excluded.ProcessName END",
+                  PeakTypingSpeed=MAX(PeakTypingSpeed, excluded.PeakTypingSpeed)",
                 params![
                     uuid_like(),
                     format!("{date_key} 00:00:00"),
                     hour as i64,
-                    if process.is_empty() { None } else { Some(process) },
+                    process,
                     d.total,
                     freq_json,
                     cats_json,
@@ -414,6 +415,7 @@ impl Store {
         &self,
         date_key: &str,
         hour: u32,
+        process: &str,
     ) -> Result<
         (
             BTreeMap<i32, i64>,
@@ -427,8 +429,8 @@ impl Store {
             .conn
             .query_row(
                 "SELECT KeyFrequency, KeyCategoryFrequency, TypingBursts, Shortcuts \
-                 FROM KeyboardSessions WHERE Date = ?1 AND Hour = ?2",
-                params![format!("{date_key} 00:00:00"), hour as i64],
+                 FROM KeyboardSessions WHERE Date = ?1 AND Hour = ?2 AND ifnull(ProcessName,'') = ?3",
+                params![format!("{date_key} 00:00:00"), hour as i64, process],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()
@@ -495,13 +497,7 @@ impl Store {
         }
     }
 
-    pub fn mouse_add(
-        &self,
-        date_key: &str,
-        hour: u32,
-        process: &str,
-        d: &MsDelta,
-    ) -> Result<(), String> {
+    pub fn mouse_add(&self, d: &MsDelta) -> Result<(), String> {
         if d.left == 0 && d.right == 0 && d.middle == 0 && d.scroll == 0 && d.dist < 0.5 {
             return Ok(());
         }
@@ -511,20 +507,18 @@ impl Store {
                  (Id, Date, Hour, ProcessName, LeftClickCount, RightClickCount, MiddleClickCount, \
                   TotalMoveDistance, MoveEventCount, ScrollCount, ScrollLines, AverageClickInterval) \
                  VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,0,0.0) \
-                 ON CONFLICT(Date, Hour) DO UPDATE SET \
+                 ON CONFLICT(Date, Hour, ProcessName) DO UPDATE SET \
                   LeftClickCount=LeftClickCount+excluded.LeftClickCount, \
                   RightClickCount=RightClickCount+excluded.RightClickCount, \
                   MiddleClickCount=MiddleClickCount+excluded.MiddleClickCount, \
                   ScrollCount=ScrollCount+excluded.ScrollCount, \
                   TotalMoveDistance=TotalMoveDistance+excluded.TotalMoveDistance, \
-                  MoveEventCount=MoveEventCount+excluded.MoveEventCount, \
-                  ProcessName=CASE WHEN excluded.ProcessName IS NULL OR excluded.ProcessName='' \
-                    THEN ProcessName ELSE excluded.ProcessName END",
+                  MoveEventCount=MoveEventCount+excluded.MoveEventCount",
                 params![
                     uuid_like(),
-                    format!("{date_key} 00:00:00"),
-                    hour as i64,
-                    if process.is_empty() { None } else { Some(process) },
+                    format!("{} 00:00:00", d.date),
+                    d.hour as i64,
+                    d.process.as_str(),
                     d.left,
                     d.right,
                     d.middle,
@@ -1106,7 +1100,21 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("t.db");
         let store = Store::open(&path).unwrap();
-        // 库结构平时由 WPF 的 EF 迁移建，测试里只建用到的几张表
+        // 库结构平时由 WPF 的 EF 迁移建；现在 `Store::open` 会跑完整 schema，
+        // 测试要的是精简版，所以先删掉同名表再建（临时库，互不影响）
+        store
+            .conn
+            .execute_batch(
+                "DROP TABLE IF EXISTS KeyboardSessions;\
+                 DROP TABLE IF EXISTS MouseSessions;\
+                 DROP TABLE IF EXISTS WebSessions;\
+                 DROP TABLE IF EXISTS AppSessions;\
+                 DROP TABLE IF EXISTS AppDailyStats;\
+                 DROP TABLE IF EXISTS HardwareSamples;\
+                 DROP TABLE IF EXISTS DailySummaries;\
+                 DROP TABLE IF EXISTS SearchQueries;",
+            )
+            .unwrap();
         store
             .conn
             .execute_batch(
@@ -1214,6 +1222,55 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM DailySummaries", params![], |r| r.get(0))
             .unwrap();
         assert_eq!(rows, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 4.12.22：同一小时里不同应用必须各占一行，且同一应用多次落库要累加。
+    #[test]
+    fn kb_mouse_rows_split_by_process() {
+        let dir = std::env::temp_dir().join(format!("pchabit_store_kbsplit_{}", uuid_like()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // 这里直接用 `Store::open` 建好的完整表结构（已有 (Date,Hour,ProcessName) 唯一索引）
+        let store = Store::open(&dir.join("t.db")).unwrap();
+
+        for (proc, n) in [("A", 3), ("B", 4), ("A", 5)] {
+            let mut d: KbDelta = Default::default();
+            d.date = "2026-11-20".into();
+            d.hour = 10;
+            d.process = proc.into();
+            d.total = n;
+            store.kb_add(&d).unwrap();
+        }
+        let (rows, ta, tb): (i64, i64, i64) = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*), \
+                    (SELECT SUM(TotalKeyPresses) FROM KeyboardSessions WHERE ProcessName='A'), \
+                    (SELECT SUM(TotalKeyPresses) FROM KeyboardSessions WHERE ProcessName='B') \
+                 FROM KeyboardSessions",
+                params![],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(rows, 2, "同一小时不同应用应各占一行");
+        assert_eq!(ta, 8, "同应用的多次落库应累加");
+        assert_eq!(tb, 4);
+
+        for (proc, l) in [("A", 2), ("B", 1)] {
+            let mut d: MsDelta = Default::default();
+            d.date = "2026-11-20".into();
+            d.hour = 10;
+            d.process = proc.into();
+            d.left = l;
+            d.middle = 0;
+            d.right = 0;
+            store.mouse_add(&d).unwrap();
+        }
+        let ms_rows: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM MouseSessions", params![], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ms_rows, 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

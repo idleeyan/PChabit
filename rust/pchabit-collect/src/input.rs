@@ -29,11 +29,9 @@ struct Mods {
     win: bool,
 }
 
-#[derive(Default)]
-struct KbAcc {
-    date: String,
-    hour: u32,
-    process: String,
+/// 一个「(日期, 小时, 进程)」桶里的键盘累计（落库后整桶被取走，不再需要水位）。
+#[derive(Default, Clone)]
+struct KbBucket {
     total: i64,
     repeat: i64,
     backspace: i64,
@@ -42,46 +40,49 @@ struct KbAcc {
     freq: BTreeMap<i32, i64>,
     cats: BTreeMap<String, i64>,
     combos: BTreeMap<String, i64>,
-    // 已落库水位
-    c_total: i64,
-    c_repeat: i64,
-    c_backspace: i64,
-    c_delete: i64,
-    c_undo: i64,
-    c_freq: BTreeMap<i32, i64>,
-    c_cats: BTreeMap<String, i64>,
-    c_combos: BTreeMap<String, i64>,
-    // 状态
-    pressed: HashSet<i32>,
-    last_down: HashMap<i32, u64>,
-    mods: Mods,
     // 连续输入段
     burst_start_ms: u64,
     burst_count: i64,
     last_key_ms: u64,
     bursts: Vec<(u64, u64, i64)>,
     peak_speed: f64,
-    avg_speed: f64,
+    seg_sum: f64,
+    segs: i64,
 }
 
-#[derive(Default)]
-struct MsAcc {
-    date: String,
-    hour: u32,
-    process: String,
+impl KbBucket {
+    fn avg_speed(&self) -> f64 {
+        if self.segs > 0 {
+            self.seg_sum / self.segs as f64
+        } else {
+            0.0
+        }
+    }
+}
+
+/// 一个「(日期, 小时, 进程)」桶里的鼠标累计。
+#[derive(Default, Clone)]
+struct MsBucket {
     left: i64,
     right: i64,
     middle: i64,
     scroll: i64,
     dist: f64,
     move_events: i64,
-    c_left: i64,
-    c_right: i64,
-    c_middle: i64,
-    c_scroll: i64,
-    c_dist: f64,
-    c_move_events: i64,
     last_pt: Option<(i32, i32)>,
+}
+
+#[derive(Default)]
+struct KbState {
+    buckets: HashMap<(String, u32, String), KbBucket>,
+    pressed: HashSet<i32>,
+    last_down: HashMap<i32, u64>,
+    mods: Mods,
+}
+
+#[derive(Default)]
+struct MsState {
+    buckets: HashMap<(String, u32, String), MsBucket>,
 }
 
 #[derive(Default)]
@@ -92,8 +93,8 @@ struct FgCache {
 }
 
 pub struct InputShared {
-    kb: Mutex<KbAcc>,
-    ms: Mutex<MsAcc>,
+    kb: Mutex<KbState>,
+    ms: Mutex<MsState>,
     fg: Mutex<FgCache>,
 }
 
@@ -106,8 +107,8 @@ impl Default for InputShared {
 impl InputShared {
     pub fn new() -> Self {
         Self {
-            kb: Mutex::new(KbAcc::default()),
-            ms: Mutex::new(MsAcc::default()),
+            kb: Mutex::new(KbState::default()),
+            ms: Mutex::new(MsState::default()),
             fg: Mutex::new(FgCache::default()),
         }
     }
@@ -150,29 +151,6 @@ impl InputShared {
         let t = timefmt::now();
         let date = timefmt::date(&t);
         let hour = timefmt::hour(&t);
-        if kb.date != date || kb.hour != hour {
-            kb.date = date;
-            kb.hour = hour;
-            // 新的小时：水量归零，但仍在同一对象里累加
-            kb.total = 0;
-            kb.repeat = 0;
-            kb.backspace = 0;
-            kb.delete = 0;
-            kb.undo = 0;
-            kb.freq.clear();
-            kb.cats.clear();
-            kb.c_total = 0;
-            kb.c_repeat = 0;
-            kb.c_backspace = 0;
-            kb.c_delete = 0;
-            kb.c_undo = 0;
-            kb.c_freq.clear();
-            kb.c_cats.clear();
-            kb.burst_start_ms = 0;
-            kb.burst_count = 0;
-            kb.last_key_ms = 0;
-            kb.bursts.clear();
-        }
 
         // 修饰键
         let modifier = matches!(
@@ -206,245 +184,183 @@ impl InputShared {
         };
         kb.last_down.insert(vk, now_ms);
 
+        // 按 (日期, 小时, 前台进程) 分桶累加：不再有「每小时一行、进程被后者覆盖」的问题，
+        // 也不会在整点把未落库的增量清掉。
+        let mods = kb.mods;
+        let proc = self.foreground();
+        let b = kb.buckets.entry((date, hour, proc)).or_default();
+
         if is_repeat {
-            kb.repeat += 1;
+            b.repeat += 1;
             return;
         }
 
-        let proc = self.foreground();
-        if !proc.is_empty() {
-            kb.process = proc.clone();
-        }
-
-        kb.total += 1;
-        *kb.freq.entry(vk).or_insert(0) += 1;
+        b.total += 1;
+        *b.freq.entry(vk).or_insert(0) += 1;
         let cat = key_category(vk);
-        *kb.cats.entry(cat.to_string()).or_insert(0) += 1;
+        *b.cats.entry(cat.to_string()).or_insert(0) += 1;
         // 组合键：只有 Ctrl / Alt / Win 参与才算快捷键（Shift+字母是正常大写输入）
-        if kb.mods.ctrl || kb.mods.alt || kb.mods.win {
+        if mods.ctrl || mods.alt || mods.win {
             let mut parts: Vec<&str> = Vec::new();
-            if kb.mods.ctrl {
+            if mods.ctrl {
                 parts.push("Ctrl");
             }
-            if kb.mods.alt {
+            if mods.alt {
                 parts.push("Alt");
             }
-            if kb.mods.shift {
+            if mods.shift {
                 parts.push("Shift");
             }
-            if kb.mods.win {
+            if mods.win {
                 parts.push("Win");
             }
             let name = format!("{}+{}", parts.join("+"), key_name(vk));
-            *kb.combos.entry(name).or_insert(0) += 1;
+            *b.combos.entry(name).or_insert(0) += 1;
         }
         match vk {
-            0x08 => kb.backspace += 1,
-            0x2E => kb.delete += 1,
-            0x5A if kb.mods.ctrl => kb.undo += 1,
+            0x08 => b.backspace += 1,
+            0x2E => b.delete += 1,
+            0x5A if mods.ctrl => b.undo += 1,
             _ => {}
         }
 
-        // 连续输入段
-        if kb.last_key_ms == 0 {
-            kb.burst_start_ms = now_ms;
+        // 连续输入段（按桶统计）
+        if b.last_key_ms == 0 {
+            b.burst_start_ms = now_ms;
         } else {
-            let gap = now_ms.saturating_sub(kb.last_key_ms);
+            let gap = now_ms.saturating_sub(b.last_key_ms);
             if gap > BURST_GAP_MS {
-                let dur = kb.last_key_ms.saturating_sub(kb.burst_start_ms);
-                if kb.burst_count > 0 {
-                    let start = kb.burst_start_ms;
-                    let count = kb.burst_count;
-                    kb.bursts.push((start, dur, count));
+                let dur = b.last_key_ms.saturating_sub(b.burst_start_ms);
+                if b.burst_count > 0 {
+                    let start = b.burst_start_ms;
+                    let count = b.burst_count;
+                    b.bursts.push((start, dur, count));
                     let kpm = count as f64 / (dur as f64 / 60_000.0).max(0.001);
-                    if kpm > kb.peak_speed {
-                        kb.peak_speed = kpm;
+                    if kpm > b.peak_speed {
+                        b.peak_speed = kpm;
                     }
-                    let n = kb.bursts.len() as f64;
-                    let avg = kb
-                        .bursts
-                        .iter()
-                        .map(|(_, d, c)| *c as f64 / ((*d as f64 / 60_000.0).max(0.001)))
-                        .sum::<f64>()
-                        / n;
-                    kb.avg_speed = avg;
+                    b.seg_sum += kpm;
+                    b.segs += 1;
                 }
-                kb.burst_start_ms = now_ms;
-                kb.burst_count = 0;
+                b.burst_start_ms = now_ms;
+                b.burst_count = 0;
             }
         }
-        kb.burst_count += 1;
-        kb.last_key_ms = now_ms;
+        b.burst_count += 1;
+        b.last_key_ms = now_ms;
     }
 
     fn on_mouse(&self, msg: usize, point: (i32, i32), wheel: bool) {
-        let mut ms = self.ms.lock().unwrap();
         let t = timefmt::now();
         let date = timefmt::date(&t);
         let hour = timefmt::hour(&t);
-        if ms.date != date || ms.hour != hour {
-            ms.date = date;
-            ms.hour = hour;
-            ms.left = 0;
-            ms.right = 0;
-            ms.middle = 0;
-            ms.scroll = 0;
-            ms.dist = 0.0;
-            ms.move_events = 0;
-            ms.c_left = 0;
-            ms.c_right = 0;
-            ms.c_middle = 0;
-            ms.c_scroll = 0;
-            ms.c_dist = 0.0;
-            ms.c_move_events = 0;
-            ms.last_pt = None;
-        }
-        if ms.process.is_empty() {
-            let p = self.foreground();
-            if !p.is_empty() {
-                ms.process = p;
-            }
-        }
+        // 每次事件都取当前前台进程（旧版整小时只取一次，后续切到别的应用也记在前一个头上）
+        let proc = self.foreground();
+        let mut ms = self.ms.lock().unwrap();
+        let b = ms.buckets.entry((date, hour, proc)).or_default();
 
         match msg {
-            WM_LBUTTONDOWN => ms.left += 1,
-            WM_RBUTTONDOWN => ms.right += 1,
-            WM_MBUTTONDOWN => ms.middle += 1,
-            WM_MOUSEWHEEL if wheel => ms.scroll += 1,
+            WM_LBUTTONDOWN => b.left += 1,
+            WM_RBUTTONDOWN => b.right += 1,
+            WM_MBUTTONDOWN => b.middle += 1,
+            WM_MOUSEWHEEL if wheel => b.scroll += 1,
             WM_MOUSEMOVE => {
-                if let Some((px, py)) = ms.last_pt {
+                if let Some((px, py)) = b.last_pt {
                     let dx = (point.0 - px) as f64;
                     let dy = (point.1 - py) as f64;
                     let d = (dx * dx + dy * dy).sqrt();
                     if d >= 1.0 {
-                        ms.dist += d;
-                        ms.move_events += 1;
+                        b.dist += d;
+                        b.move_events += 1;
                     }
                 }
-                ms.last_pt = Some(point);
+                b.last_pt = Some(point);
             }
             _ => {}
         }
     }
 
-    /// 取「相对上次落库」的增量（并推进水位）。
-    fn take_deltas(&self) -> (String, u32, String, KbDelta, Option<(String, u32, String, MsDelta)>) {
-        let mut kb = self.kb.lock().unwrap();
-        let kd = KbDelta {
-            total: kb.total - kb.c_total,
-            repeat: kb.repeat - kb.c_repeat,
-            backspace: kb.backspace - kb.c_backspace,
-            delete: kb.delete - kb.c_delete,
-            undo: kb.undo - kb.c_undo,
-            freq: kb
-                .freq
-                .iter()
-                .filter_map(|(k, v)| {
-                    let c = kb.c_freq.get(k).copied().unwrap_or(0);
-                    if *v - c > 0 {
-                        Some((*k, *v - c))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            cats: kb
-                .cats
-                .iter()
-                .filter_map(|(k, v)| {
-                    let c = kb.c_cats.get(k).copied().unwrap_or(0);
-                    if *v - c > 0 {
-                        Some((k.clone(), *v - c))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            combos: kb
-                .combos
-                .iter()
-                .filter_map(|(k, v)| {
-                    let c = kb.c_combos.get(k).copied().unwrap_or(0);
-                    if *v - c > 0 {
-                        Some((k.clone(), *v - c))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            avg_speed: kb.avg_speed,
-            peak_speed: kb.peak_speed,
-            bursts: std::mem::take(&mut kb.bursts),
-        };
-        kb.c_total = kb.total;
-        kb.c_repeat = kb.repeat;
-        kb.c_backspace = kb.backspace;
-        kb.c_delete = kb.delete;
-        kb.c_undo = kb.undo;
-        kb.c_freq = kb.freq.clone();
-        kb.c_cats = kb.cats.clone();
-        kb.c_combos = kb.combos.clone();
-        let kb_key = (kb.date.clone(), kb.hour, kb.process.clone());
+    /// 取走所有桶（落库后清空，下一次从零开始累加）。
+    fn drain(&self) -> (Vec<KbDelta>, Vec<MsDelta>) {
+        let mut kb_rows: Vec<KbDelta> = Vec::new();
+        {
+            let mut kb = self.kb.lock().unwrap();
+            for ((date, hour, proc), b) in kb.buckets.drain() {
+                if b.total == 0 && b.repeat == 0 && b.freq.is_empty() && b.combos.is_empty() {
+                    continue;
+                }
+                let mut bursts = b.bursts.clone();
+                if b.burst_count >= 2 && b.last_key_ms > b.burst_start_ms {
+                    bursts.push((
+                        b.burst_start_ms,
+                        b.last_key_ms - b.burst_start_ms,
+                        b.burst_count,
+                    ));
+                }
+                let avg = b.avg_speed();
+                kb_rows.push(KbDelta {
+                    date,
+                    hour,
+                    process: proc,
+                    total: b.total,
+                    repeat: b.repeat,
+                    backspace: b.backspace,
+                    delete: b.delete,
+                    undo: b.undo,
+                    freq: b.freq,
+                    cats: b.cats,
+                    combos: b.combos,
+                    avg_speed: avg,
+                    peak_speed: b.peak_speed,
+                    bursts,
+                });
+            }
+        }
 
-        let mut ms = self.ms.lock().unwrap();
-        let md = MsDelta {
-            left: ms.left - ms.c_left,
-            right: ms.right - ms.c_right,
-            middle: ms.middle - ms.c_middle,
-            scroll: ms.scroll - ms.c_scroll,
-            dist: ms.dist - ms.c_dist,
-            move_events: ms.move_events - ms.c_move_events,
-        };
-        let has_mouse = md.left != 0
-            || md.right != 0
-            || md.middle != 0
-            || md.scroll != 0
-            || md.dist >= 0.5;
-        ms.c_left = ms.left;
-        ms.c_right = ms.right;
-        ms.c_middle = ms.middle;
-        ms.c_scroll = ms.scroll;
-        ms.c_dist = ms.dist;
-        ms.c_move_events = ms.move_events;
-        let ms_key = (
-            ms.date.clone(),
-            ms.hour,
-            ms.process.clone(),
-            ms_len(ms.move_events, &md),
-        );
-        let mouse = if has_mouse {
-            Some((ms_key.0, ms_key.1, ms_key.2, md))
-        } else {
-            None
-        };
-
-        (kb_key.0, kb_key.1, kb_key.2, kd, mouse)
+        let mut ms_rows: Vec<MsDelta> = Vec::new();
+        {
+            let mut ms = self.ms.lock().unwrap();
+            for ((date, hour, proc), b) in ms.buckets.drain() {
+                if b.left == 0 && b.right == 0 && b.middle == 0 && b.scroll == 0 && b.dist < 0.5 {
+                    continue;
+                }
+                ms_rows.push(MsDelta {
+                    date,
+                    hour,
+                    process: proc,
+                    left: b.left,
+                    right: b.right,
+                    middle: b.middle,
+                    scroll: b.scroll,
+                    dist: b.dist,
+                    move_events: b.move_events,
+                });
+            }
+        }
+        (kb_rows, ms_rows)
     }
-}
-
-fn ms_len(_ev: i64, _d: &MsDelta) -> i64 {
-    0
 }
 
 /// 落库：把这一轮的增量写进 KeyboardSessions / MouseSessions。
 /// 统一口径：进程名一律去扩展名（WPF 的鼠标会话写的是 `xxx.exe`，键盘会话是 `xxx`，
 /// 混在一张图里会把同一个应用拆成两行）。
 pub fn flush(shared: &InputShared, store: &Store) -> Result<(i64, i64), String> {
-    let (date, hour, proc, kd, mouse) = shared.take_deltas();
-    let proc = norm_proc(&proc);
+    let (kb_rows, ms_rows) = shared.drain();
     let mut keys = 0i64;
     let mut clicks = 0i64;
-    if !date.is_empty() {
-        // 设置页的「记录键盘 / 记录鼠标」在这里生效：关掉就不再落库（增量照常丢弃）
-        if crate::settings::bool_of("TrackKeyboard", true) && (kd.total != 0 || kd.repeat != 0) {
-            keys = kd.total;
-            store.kb_add(&date, hour, &proc, &kd)?;
+    // 设置页的「记录键盘 / 记录鼠标」在这里生效：关掉就不再落库（增量照常丢弃）
+    if crate::settings::bool_of("TrackKeyboard", true) {
+        for mut d in kb_rows {
+            d.process = norm_proc(&d.process);
+            keys += d.total;
+            store.kb_add(&d)?;
         }
-        if crate::settings::bool_of("TrackMouse", true) {
-            if let Some((md, mh, mp, delta)) = mouse {
-                clicks = delta.left + delta.right + delta.middle;
-                store.mouse_add(&md, mh, &norm_proc(&mp), &delta)?;
-            }
+    }
+    if crate::settings::bool_of("TrackMouse", true) {
+        for mut d in ms_rows {
+            d.process = norm_proc(&d.process);
+            clicks += d.left + d.right + d.middle;
+            store.mouse_add(&d)?;
         }
     }
     Ok((keys, clicks))
@@ -581,6 +497,52 @@ pub fn start(shared: Arc<InputShared>) -> bool {
     std::thread::sleep(std::time::Duration::from_millis(150));
     kb_ok.load(std::sync::atomic::Ordering::Relaxed)
         && ms_ok.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 计数口径回归：普通键按下计 1；修饰键不计；按住不放只进 repeat；左右中键各计 1。
+    #[test]
+    fn key_and_click_counting() {
+        let s = InputShared::new();
+        // 10 个字母，每个都成对按下/抬起
+        for _ in 0..10 {
+            s.on_key(0x41, true, false);
+            s.on_key(0x41, false, true);
+        }
+        // Ctrl 按下不计入总数，但随后 C 要算进组合键
+        s.on_key(0x11, true, false);
+        s.on_key(0x43, true, false);
+        s.on_key(0x43, false, true);
+        s.on_key(0x11, false, true);
+        // 按住不放（没有抬起）→ 只进 repeat
+        s.on_key(0x42, true, false);
+        s.on_key(0x42, true, false);
+
+        let (kb_rows, _) = s.drain();
+        let total: i64 = kb_rows.iter().map(|d| d.total).sum();
+        let repeat: i64 = kb_rows.iter().map(|d| d.repeat).sum();
+        let combos: i64 = kb_rows.iter().map(|d| d.combos.values().sum::<i64>()).sum();
+        assert_eq!(total, 12, "10 个字母 + C 一次 + B 首次按下");
+        assert_eq!(repeat, 1, "B 的第二次按下算长按重复");
+        assert_eq!(combos, 1, "Ctrl+C 应进组合键");
+
+        // 左键 3 次、右键 1 次、中键 1 次
+        for _ in 0..3 {
+            s.on_mouse(WM_LBUTTONDOWN, (0, 0), false);
+        }
+        s.on_mouse(WM_RBUTTONDOWN, (0, 0), false);
+        s.on_mouse(WM_MBUTTONDOWN, (0, 0), false);
+        let (_, ms_rows) = s.drain();
+        let l: i64 = ms_rows.iter().map(|d| d.left).sum();
+        let r: i64 = ms_rows.iter().map(|d| d.right).sum();
+        let m: i64 = ms_rows.iter().map(|d| d.middle).sum();
+        assert_eq!(l, 3);
+        assert_eq!(r, 1);
+        assert_eq!(m, 1);
+    }
 }
 
 

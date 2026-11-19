@@ -2550,6 +2550,9 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
     let t0 = Instant::now();
 
     let mut keys = 0i64;
+    let mut repeat_keys = 0i64;
+    let mut hour_slots: i64 = 0;
+    let mut hour_set: HashSet<(String, i64)> = HashSet::new();
     let mut bursts = 0i64;
     let mut key_rows = 0i64;
     let mut typed_by_proc: HashMap<String, i64> = HashMap::new();
@@ -2560,20 +2563,26 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
     {
         let mut stmt = conn
             .prepare(
-                "SELECT Hour, ProcessName, TotalKeyPresses, TypingBursts, KeyFrequency, Shortcuts \
+                "SELECT Date, Hour, ProcessName, TotalKeyPresses, RepeatKeyPresses, TypingBursts, \
+                    KeyFrequency, Shortcuts \
                  FROM KeyboardSessions WHERE substr(Date,1,10) >= ?1 AND substr(Date,1,10) <= ?2",
             )
             .map_err(|e| e.to_string())?;
         let mut rows = stmt.query([start, end]).map_err(|e| e.to_string())?;
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            let h: i64 = row.get::<_, Option<i64>>(0).unwrap_or(None).unwrap_or(0);
-            let proc: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
-            let k: i64 = row.get::<_, Option<i64>>(2).unwrap_or(None).unwrap_or(0);
-            let b: String = row.get::<_, Option<String>>(3).unwrap_or(None).unwrap_or_default();
-            let freq: String = row.get::<_, Option<String>>(4).unwrap_or(None).unwrap_or_default();
-            let sc: String = row.get::<_, Option<String>>(5).unwrap_or(None).unwrap_or_default();
+            let d: String = row.get::<_, Option<String>>(0).unwrap_or(None).unwrap_or_default();
+            let h: i64 = row.get::<_, Option<i64>>(1).unwrap_or(None).unwrap_or(0);
+            let proc: String = row.get::<_, Option<String>>(2).unwrap_or(None).unwrap_or_default();
+            let k: i64 = row.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0);
+            let rp: i64 = row.get::<_, Option<i64>>(4).unwrap_or(None).unwrap_or(0);
+            let b: String = row.get::<_, Option<String>>(5).unwrap_or(None).unwrap_or_default();
+            let freq: String = row.get::<_, Option<String>>(6).unwrap_or(None).unwrap_or_default();
+            let sc: String = row.get::<_, Option<String>>(7).unwrap_or(None).unwrap_or_default();
             keys += k;
+            repeat_keys += rp;
             key_rows += 1;
+            hour_set.insert((d, h));
+            hour_slots = hour_set.len() as i64;
             if !b.trim().is_empty() && b.trim() != "[]" {
                 bursts += 1;
             }
@@ -2706,7 +2715,9 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
         "moveDistance": round1(move_dist),
         "moveText": human_meters(move_dist),
         "moveEvents": move_events,
-        "keysPerHour": if key_rows > 0 { round1(keys as f64 / key_rows as f64) } else { 0.0 },
+        "keysPerHour": if hour_slots > 0 { round1(keys as f64 / hour_slots as f64) } else { 0.0 },
+        "hourSlots": hour_slots,
+        "repeat": repeat_keys,
         "hourlyKeys": hourly_keys,
         "hourlyClicks": hourly_clicks,
         "topKeys": top_keys,

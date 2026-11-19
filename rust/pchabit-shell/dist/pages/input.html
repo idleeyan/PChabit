@@ -66,6 +66,7 @@
 </div>
 
 <div class="kpis" id="kpis"></div>
+<div class="hint" id="note" style="margin-bottom:12px;line-height:1.5"></div>
 
 <section style="margin-bottom:12px">
   <h2>24 小时分布 <em>键盘（蓝）/ 点击（橙）</em></h2>
@@ -131,7 +132,8 @@
       ? (d.days === 1 ? '今日' : ('近 ' + d.days + ' 天'))
       : '全部历史';
     [
-      ['按键总数', n(d.keys), scopeTxt],
+      ['按键总数', n(d.keys), scopeTxt + ' · 不含修饰键/长按重复'],
+      ['长按重复', n(d.repeat || 0), '按住不放的自动重复'],
       ['鼠标点击', n(d.clicks), '左/右/中合计'],
       ['左键', n(d.leftClicks), '单击'],
       ['右键', n(d.rightClicks), '单击'],
@@ -148,6 +150,12 @@
       b.appendChild(el('div', 's', k[2]));
       kp.appendChild(b);
     });
+
+    var note = document.getElementById('note');
+    if (note) {
+      note.textContent = '口径：按键总数只统计「非修饰键、非按住自动重复」的按下次数；'
+        + '提权（以管理员身份运行）窗口与 UAC 安全桌面里的输入，普通权限的钩子拿不到，会漏计。';
+    }
 
     // 24 小时双柱
     var hours = document.getElementById('hours');
@@ -177,7 +185,7 @@
     }
 
     // 排行
-    [['topkeys', d.topKeys, 'keys'], ['topclicks', d.topClicks, 'clicks']].forEach(function (cfg) {
+    [['topkeys', d.topKeys, 'keys', d.keys], ['topclicks', d.topClicks, 'clicks', d.clicks]].forEach(function (cfg) {
       var tb = document.getElementById(cfg[0]);
       tb.innerHTML = '';
       var arr = cfg[1] || [];
@@ -187,12 +195,13 @@
         td0.colSpan = 3; tr0.appendChild(td0); tb.appendChild(tr0);
         return;
       }
-      var maxv = arr.reduce(function (m, x) { return Math.max(m, x[cfg[2]] || 0); }, 1);
+      // 分母用总量（不是最大值），这样「占比」加起来才是 100%
+      var denom = Math.max(cfg[3] || 0, 1);
       arr.forEach(function (x) {
         var tr = document.createElement('tr');
         tr.appendChild(el('td', 'nm', x.name));
         tr.appendChild(el('td', 'r', n(x[cfg[2]])));
-        tr.appendChild(el('td', 'r', ((x[cfg[2]] / maxv) * 100).toFixed(1) + '%'));
+        tr.appendChild(el('td', 'r', ((x[cfg[2]] / denom) * 100).toFixed(1) + '%'));
         tb.appendChild(tr);
       });
     });

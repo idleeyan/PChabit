@@ -360,8 +360,16 @@ CREATE UNIQUE INDEX "IX_EfficiencyScores_Date" ON "EfficiencyScores" ("Date");
 CREATE UNIQUE INDEX IX_HardwareSamples_Timestamp ON HardwareSamples (Timestamp);
 CREATE INDEX "IX_InsightReports_ReportType" ON "InsightReports" ("ReportType");
 CREATE INDEX "IX_InsightReports_StartDate" ON "InsightReports" ("StartDate");
-CREATE UNIQUE INDEX "IX_KeyboardSessions_Date_Hour" ON "KeyboardSessions" ("Date", "Hour");
-CREATE UNIQUE INDEX "IX_MouseSessions_Date_Hour" ON "MouseSessions" ("Date", "Hour");
+-- 迁移（4.12.22）：旧版把每小时合成一行，进程名被最后一次写入覆盖，导致按应用的键鼠归属完全错。
+-- 改成 (Date, Hour, ProcessName) 唯一，同一小时不同应用各占一行。
+DROP INDEX IF EXISTS "IX_KeyboardSessions_Date_Hour";
+DROP INDEX IF EXISTS "IX_MouseSessions_Date_Hour";
+DROP INDEX IF EXISTS "IX_KeyboardSessions_Date_Hour_Process";
+DROP INDEX IF EXISTS "IX_MouseSessions_Date_Hour_Process";
+UPDATE "KeyboardSessions" SET "ProcessName" = '' WHERE "ProcessName" IS NULL;
+UPDATE "MouseSessions" SET "ProcessName" = '' WHERE "ProcessName" IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_KeyboardSessions_Date_Hour_Process" ON "KeyboardSessions" ("Date", "Hour", "ProcessName");
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_MouseSessions_Date_Hour_Process" ON "MouseSessions" ("Date", "Hour", "ProcessName");
 CREATE UNIQUE INDEX IX_NetworkTrafficSamples_Timestamp ON NetworkTrafficSamples (Timestamp);
 CREATE INDEX IX_ProcessNetworkUsages_Date ON ProcessNetworkUsages (Date);
 CREATE UNIQUE INDEX "IX_ProgramCategories_Name" ON "ProgramCategories" ("Name");
