@@ -2,6 +2,30 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.20] - 2026-11-20
+
+### 键鼠活动补回「具体键位 / 组合键 / 鼠标分键 / 位移」四项明细
+
+用户反馈：「以前能看具体键位和组合键次数，鼠标也分左右中键和移动范围，现在都没有了」。
+核查结论：**采集侧的数据一直在库里**（`KeyboardSessions.KeyFrequency` 存着 VK→次数，
+`MouseSessions` 有 `LeftClickCount/RightClickCount/MiddleClickCount/TotalMoveDistance`），
+缺的是两件事——`Shortcuts` 列从 Rust 版起一直写 `"[]"`，以及页面根本没去汇总这些列。
+
+- **采集侧组合键**（`input.rs`）：按 Ctrl/Alt/Win（Shift 参与但单独按下不算）组合当前按键，
+  累加 `Ctrl+C`、`Alt+Tab` 这类名字；`KbDelta` 增 `combos`，`store.rs::kb_add` 把
+  `Shortcuts` 从固定 `"[]"` 改成 JSON 对象并做增量合并（读的时候同时认老 WPF 的数组格式）。
+- **键名口径**：新增 `input::key_name(vk)` / `datad::vk_name(vk)`——字母、数字、F1–F24、
+  小键盘、Enter/Tab/Esc/Space/Backspace/Delete、方向键、常用符号，`0xFC`（输入法未定义键）
+  标「输入法(未定义)」。
+- **数据面**（`datad::input_json`）：`KeyboardSessions` 查询补 `KeyFrequency` / `Shortcuts` 两列并汇总，
+  新增输出 `keyFreq`（前 18 个键位）、`shortcuts`（前 12 个组合键）、
+  `leftClicks` / `rightClicks` / `middleClicks`、`scrollCount`。
+- **页面**（`input.html`）：KPI 增「左键 / 右键 / 中键」三格；新增「具体键位」与「组合键」两张表
+  （次数 + 占全部按键百分比）；位移提示改成实际值（实测 915.1 米）。
+- 实测（真实库 2026-11-14 ~ 11-20）：95,842 键 / 37,454 击（左 35,327 / 右 2,117 / 中 10）/
+  滚轮 54,018 格 / 位移 915.1 米；键位榜首 W 30,615、Space 24,076、→ 10,496；
+  编辑页无头 Edge 渲染通过。组合键从本版起开始累计（历史行里没有）。
+
 ## [4.12.19] - 2026-11-19
 
 ### 补齐三个缺失子系统：云备份（WebDAV）、自动备份轮转、全局热键 + 通知

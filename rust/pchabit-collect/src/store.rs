@@ -82,6 +82,8 @@ pub struct KbDelta {
     pub undo: i64,
     pub freq: BTreeMap<i32, i64>,
     pub cats: BTreeMap<String, i64>,
+    /// 组合键 → 次数（如 `Ctrl+C`），4.12.20 补回 WPF 时代的 `Shortcuts`
+    pub combos: BTreeMap<String, i64>,
     pub avg_speed: f64,
     pub peak_speed: f64,
     pub bursts: Vec<(u64, u64, i64)>, // (起始毫秒偏移, 时长 ms, 键数)
@@ -323,15 +325,19 @@ impl Store {
         process: &str,
         d: &KbDelta,
     ) -> Result<(), String> {
-        if d.total == 0 && d.repeat == 0 && d.freq.is_empty() {
+        if d.total == 0 && d.repeat == 0 && d.freq.is_empty() && d.combos.is_empty() {
             return Ok(());
         }
-        let (mut freq_new, mut cats_new, mut bursts_new) = self.kb_existing(date_key, hour)?;
+        let (mut freq_new, mut cats_new, mut bursts_new, mut combos_new) =
+            self.kb_existing(date_key, hour)?;
         for (k, v) in &d.freq {
             *freq_new.entry(*k).or_insert(0) += v;
         }
         for (k, v) in &d.cats {
             *cats_new.entry(k.clone()).or_insert(0) += v;
+        }
+        for (k, v) in &d.combos {
+            *combos_new.entry(k.clone()).or_insert(0) += v;
         }
         for (off_ms, dur_ms, count) in &d.bursts {
             bursts_new.push(json!({
@@ -351,6 +357,13 @@ impl Store {
         let cats_json = {
             let mut m = Map::new();
             for (k, v) in &cats_new {
+                m.insert(k.clone(), json!(v));
+            }
+            Value::Object(m).to_string()
+        };
+        let combos_json = {
+            let mut m = Map::new();
+            for (k, v) in &combos_new {
                 m.insert(k.clone(), json!(v));
             }
             Value::Object(m).to_string()
@@ -389,7 +402,7 @@ impl Store {
                     d.delete,
                     d.backspace,
                     Value::Array(bursts_new).to_string(),
-                    "[]",
+                    combos_json,
                     d.repeat,
                 ],
             )
@@ -401,21 +414,34 @@ impl Store {
         &self,
         date_key: &str,
         hour: u32,
-    ) -> Result<(BTreeMap<i32, i64>, BTreeMap<String, i64>, Vec<Value>), String> {
-        let existing: Option<(String, String, String)> = self
+    ) -> Result<
+        (
+            BTreeMap<i32, i64>,
+            BTreeMap<String, i64>,
+            Vec<Value>,
+            BTreeMap<String, i64>,
+        ),
+        String,
+    > {
+        let existing: Option<(String, String, String, String)> = self
             .conn
             .query_row(
-                "SELECT KeyFrequency, KeyCategoryFrequency, TypingBursts FROM KeyboardSessions \
-                 WHERE Date = ?1 AND Hour = ?2",
+                "SELECT KeyFrequency, KeyCategoryFrequency, TypingBursts, Shortcuts \
+                 FROM KeyboardSessions WHERE Date = ?1 AND Hour = ?2",
                 params![format!("{date_key} 00:00:00"), hour as i64],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()
             .map_err(|e| format!("读 KeyboardSessions 失败: {e}"))?;
 
         match existing {
-            None => Ok((BTreeMap::new(), BTreeMap::new(), vec![])),
-            Some((f, c, b)) => {
+            None => Ok((
+                BTreeMap::new(),
+                BTreeMap::new(),
+                vec![],
+                BTreeMap::new(),
+            )),
+            Some((f, c, b, s)) => {
                 let mut freq = BTreeMap::new();
                 if let Ok(Value::Object(m)) = serde_json::from_str::<Value>(&f) {
                     for (k, v) in m {
@@ -436,7 +462,35 @@ impl Store {
                     .ok()
                     .and_then(|v| v.as_array().cloned())
                     .unwrap_or_default();
-                Ok((freq, cats, bursts))
+                // Shortcuts 兼容两代格式：老 WPF 写数组，这里写对象，读的时候都认
+                let mut combos = BTreeMap::new();
+                match serde_json::from_str::<Value>(&s) {
+                    Ok(Value::Object(m)) => {
+                        for (k, v) in m {
+                            if let Some(vv) = v.as_i64() {
+                                combos.insert(k, vv);
+                            }
+                        }
+                    }
+                    Ok(Value::Array(a)) => {
+                        for item in a {
+                            let name = item["name"]
+                                .as_str()
+                                .or_else(|| item["Name"].as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let n = item["count"]
+                                .as_i64()
+                                .or_else(|| item["Count"].as_i64())
+                                .unwrap_or(0);
+                            if !name.is_empty() {
+                                *combos.entry(name).or_insert(0) += n;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                Ok((freq, cats, bursts, combos))
             }
         }
     }

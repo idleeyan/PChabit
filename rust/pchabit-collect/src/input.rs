@@ -41,6 +41,7 @@ struct KbAcc {
     undo: i64,
     freq: BTreeMap<i32, i64>,
     cats: BTreeMap<String, i64>,
+    combos: BTreeMap<String, i64>,
     // 已落库水位
     c_total: i64,
     c_repeat: i64,
@@ -49,6 +50,7 @@ struct KbAcc {
     c_undo: i64,
     c_freq: BTreeMap<i32, i64>,
     c_cats: BTreeMap<String, i64>,
+    c_combos: BTreeMap<String, i64>,
     // 状态
     pressed: HashSet<i32>,
     last_down: HashMap<i32, u64>,
@@ -218,6 +220,24 @@ impl InputShared {
         *kb.freq.entry(vk).or_insert(0) += 1;
         let cat = key_category(vk);
         *kb.cats.entry(cat.to_string()).or_insert(0) += 1;
+        // 组合键：只有 Ctrl / Alt / Win 参与才算快捷键（Shift+字母是正常大写输入）
+        if kb.mods.ctrl || kb.mods.alt || kb.mods.win {
+            let mut parts: Vec<&str> = Vec::new();
+            if kb.mods.ctrl {
+                parts.push("Ctrl");
+            }
+            if kb.mods.alt {
+                parts.push("Alt");
+            }
+            if kb.mods.shift {
+                parts.push("Shift");
+            }
+            if kb.mods.win {
+                parts.push("Win");
+            }
+            let name = format!("{}+{}", parts.join("+"), key_name(vk));
+            *kb.combos.entry(name).or_insert(0) += 1;
+        }
         match vk {
             0x08 => kb.backspace += 1,
             0x2E => kb.delete += 1,
@@ -340,6 +360,18 @@ impl InputShared {
                     }
                 })
                 .collect(),
+            combos: kb
+                .combos
+                .iter()
+                .filter_map(|(k, v)| {
+                    let c = kb.c_combos.get(k).copied().unwrap_or(0);
+                    if *v - c > 0 {
+                        Some((k.clone(), *v - c))
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             avg_speed: kb.avg_speed,
             peak_speed: kb.peak_speed,
             bursts: std::mem::take(&mut kb.bursts),
@@ -351,6 +383,7 @@ impl InputShared {
         kb.c_undo = kb.undo;
         kb.c_freq = kb.freq.clone();
         kb.c_cats = kb.cats.clone();
+        kb.c_combos = kb.combos.clone();
         let kb_key = (kb.date.clone(), kb.hour, kb.process.clone());
 
         let mut ms = self.ms.lock().unwrap();
@@ -427,8 +460,7 @@ fn norm_proc(name: &str) -> String {
     }
 }
 
-fn key_category(vk: i32) -> &'static str {
-    match vk {
+fn key_category(vk: i32) -> &'static str {    match vk {
         0x41..=0x5A => "字母",
         0x30..=0x39 => "数字",
         0x70..=0x87 => "功能键",
@@ -444,6 +476,45 @@ fn key_category(vk: i32) -> &'static str {
 }
 
 static SHARED: OnceLock<Arc<InputShared>> = OnceLock::new();
+
+/// VK 码 → 给人看的键名（组合键显示、页面排行都用这套口径）。
+pub fn key_name(vk: i32) -> String {
+    match vk {
+        0x41..=0x5A => ((b'A' + (vk as u8 - 0x41)) as char).to_string(),
+        0x30..=0x39 => ((b'0' + (vk as u8 - 0x30)) as char).to_string(),
+        0x70..=0x87 => format!("F{}", vk - 0x6F),
+        0x60..=0x69 => format!("小键盘{}", vk - 0x60),
+        0x08 => "Backspace".into(),
+        0x09 => "Tab".into(),
+        0x0D => "Enter".into(),
+        0x1B => "Esc".into(),
+        0x20 => "Space".into(),
+        0x2E => "Delete".into(),
+        0x25 => "←".into(),
+        0x26 => "↑".into(),
+        0x27 => "→".into(),
+        0x28 => "↓".into(),
+        0x21 => "PageUp".into(),
+        0x22 => "PageDown".into(),
+        0x23 => "End".into(),
+        0x24 => "Home".into(),
+        0x2D => "-".into(),
+        0x2B => "+".into(),
+        0xBD => "-".into(),
+        0xBB => "+".into(),
+        0xBC => ",".into(),
+        0xBE => ".".into(),
+        0xBF => "/".into(),
+        0xBA => ";".into(),
+        0xDE => "'".into(),
+        0xDB => "[".into(),
+        0xDD => "]".into(),
+        0xDC => "\\".into(),
+        0xC0 => "`".into(),
+        0xFC => "输入法(未定义)".into(),
+        other => format!("VK_{other:02X}"),
+    }
+}
 
 unsafe extern "system" fn kb_hook(code: i32, w: usize, l: isize) -> isize {
     if code >= 0 {

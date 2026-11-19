@@ -1576,6 +1576,43 @@ fn write_cell(
 ///
 /// 注意：不能直接 `p[p.len()-4..]` 判断后缀——进程名可能以中文结尾（如「某工具」），
 /// 按字节切会落在多字节字符中间直接 panic。先按字节比较尾部，再切。
+/// VK 码 → 键名（与采集侧 `input::key_name` 同一口径，键鼠页排行用）。
+pub(crate) fn vk_name(vk: i32) -> String {
+    match vk {
+        0x41..=0x5A => ((b'A' + (vk as u8 - 0x41)) as char).to_string(),
+        0x30..=0x39 => ((b'0' + (vk as u8 - 0x30)) as char).to_string(),
+        0x70..=0x87 => format!("F{}", vk - 0x6F),
+        0x60..=0x69 => format!("小键盘{}", vk - 0x60),
+        0x08 => "Backspace".into(),
+        0x09 => "Tab".into(),
+        0x0D => "Enter".into(),
+        0x1B => "Esc".into(),
+        0x20 => "Space".into(),
+        0x2E => "Delete".into(),
+        0x25 => "←".into(),
+        0x26 => "↑".into(),
+        0x27 => "→".into(),
+        0x28 => "↓".into(),
+        0x21 => "PageUp".into(),
+        0x22 => "PageDown".into(),
+        0x23 => "End".into(),
+        0x24 => "Home".into(),
+        0x2D | 0xBD => "-".into(),
+        0x2B | 0xBB => "+".into(),
+        0xBC => ",".into(),
+        0xBE => ".".into(),
+        0xBF => "/".into(),
+        0xBA => ";".into(),
+        0xDE => "'".into(),
+        0xDB => "[".into(),
+        0xDD => "]".into(),
+        0xDC => "\\".into(),
+        0xC0 => "`".into(),
+        0xFC => "输入法(未定义)".into(),
+        other => format!("VK_{other:02X}"),
+    }
+}
+
 pub(crate) fn normalize_process_name(process_name: &str) -> String {
     let p = process_name.trim();
     let bytes = p.as_bytes();
@@ -2484,11 +2521,14 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
     let mut key_rows = 0i64;
     let mut typed_by_proc: HashMap<String, i64> = HashMap::new();
     let mut hourly_keys = vec![0i64; 24];
+    // 具体键位 / 组合键：4.12.20 起从 KeyFrequency、Shortcuts 两个 JSON 列汇总
+    let mut key_freq: HashMap<i32, i64> = HashMap::new();
+    let mut shortcuts: HashMap<String, i64> = HashMap::new();
     {
         let mut stmt = conn
             .prepare(
-                "SELECT Hour, ProcessName, TotalKeyPresses, TypingBursts FROM KeyboardSessions \
-                 WHERE substr(Date,1,10) >= ?1 AND substr(Date,1,10) <= ?2",
+                "SELECT Hour, ProcessName, TotalKeyPresses, TypingBursts, KeyFrequency, Shortcuts \
+                 FROM KeyboardSessions WHERE substr(Date,1,10) >= ?1 AND substr(Date,1,10) <= ?2",
             )
             .map_err(|e| e.to_string())?;
         let mut rows = stmt.query([start, end]).map_err(|e| e.to_string())?;
@@ -2497,6 +2537,8 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
             let proc: String = row.get::<_, Option<String>>(1).unwrap_or(None).unwrap_or_default();
             let k: i64 = row.get::<_, Option<i64>>(2).unwrap_or(None).unwrap_or(0);
             let b: String = row.get::<_, Option<String>>(3).unwrap_or(None).unwrap_or_default();
+            let freq: String = row.get::<_, Option<String>>(4).unwrap_or(None).unwrap_or_default();
+            let sc: String = row.get::<_, Option<String>>(5).unwrap_or(None).unwrap_or_default();
             keys += k;
             key_rows += 1;
             if !b.trim().is_empty() && b.trim() != "[]" {
@@ -2506,11 +2548,48 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
                 hourly_keys[h as usize] += k;
             }
             *typed_by_proc.entry(normalize_process_name(&proc)).or_insert(0) += k;
+
+            if let Ok(serde_json::Value::Object(m)) = serde_json::from_str::<serde_json::Value>(&freq) {
+                for (vk, v) in m {
+                    if let (Ok(vk), Some(n)) = (vk.parse::<i32>(), v.as_i64()) {
+                        *key_freq.entry(vk).or_insert(0) += n;
+                    }
+                }
+            }
+            match serde_json::from_str::<serde_json::Value>(&sc) {
+                Ok(serde_json::Value::Object(m)) => {
+                    for (name, v) in m {
+                        if let Some(n) = v.as_i64() {
+                            *shortcuts.entry(name).or_insert(0) += n;
+                        }
+                    }
+                }
+                Ok(serde_json::Value::Array(a)) => {
+                    for item in a {
+                        let name = item["name"]
+                            .as_str()
+                            .or_else(|| item["Name"].as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let n = item["count"]
+                            .as_i64()
+                            .or_else(|| item["Count"].as_i64())
+                            .unwrap_or(0);
+                        if !name.is_empty() {
+                            *shortcuts.entry(name).or_insert(0) += n;
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
     let mut clicks = 0i64;
     let mut scroll = 0i64;
+    let mut left_clicks = 0i64;
+    let mut right_clicks = 0i64;
+    let mut middle_clicks = 0i64;
     let mut move_dist = 0.0f64;
     let mut move_events = 0i64;
     let mut click_by_proc: HashMap<String, i64> = HashMap::new();
@@ -2535,6 +2614,9 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
             let mv: i64 = row.get::<_, Option<i64>>(7).unwrap_or(None).unwrap_or(0);
             let c = l + r + m;
             clicks += c;
+            left_clicks += l;
+            right_clicks += r;
+            middle_clicks += m;
             scroll += s;
             move_dist += dist;
             move_events += mv;
@@ -2563,7 +2645,24 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
         top_clicks = Vec::new();
     }
 
-    Ok(serde_json::json!({
+    // 具体键位排行（VK 码 → 键名）
+    let mut vk_pairs: Vec<(i32, i64)> = key_freq.into_iter().filter(|(_, n)| *n > 0).collect();
+    vk_pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    let key_freq_top: Vec<serde_json::Value> = vk_pairs
+        .into_iter()
+        .take(18)
+        .map(|(vk, n)| serde_json::json!({ "vk": vk, "name": vk_name(vk), "count": n }))
+        .collect();
+
+    let mut sc_pairs: Vec<(String, i64)> = shortcuts.into_iter().filter(|(_, n)| *n > 0).collect();
+    sc_pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    let shortcut_top: Vec<serde_json::Value> = sc_pairs
+        .into_iter()
+        .take(12)
+        .map(|(name, n)| serde_json::json!({ "name": name, "count": n }))
+        .collect();
+
+        Ok(serde_json::json!({
         "ok": true,
         "range": { "start": start, "end": end },
         "keys": keys,
@@ -2579,6 +2678,12 @@ pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value
         "hourlyClicks": hourly_clicks,
         "topKeys": top_keys,
         "topClicks": top_clicks,
+        "leftClicks": left_clicks,
+        "rightClicks": right_clicks,
+        "middleClicks": middle_clicks,
+        "scrollCount": scroll,
+        "keyFreq": key_freq_top,
+        "shortcuts": shortcut_top,
         "ms": t0.elapsed().as_secs_f64() * 1000.0,
     }))
 }

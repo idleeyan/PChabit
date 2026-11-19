@@ -77,6 +77,19 @@
   </section>
 </div>
 
+<div class="row">
+  <section>
+    <h2>具体键位 <em>按按键次数</em></h2>
+    <table><thead><tr><th>按键</th><th class="r">次数</th><th class="r">占全部</th></tr></thead>
+      <tbody id="keyfreq"></tbody></table>
+  </section>
+  <section>
+    <h2>组合键 <em>Ctrl / Alt / Win 组合</em></h2>
+    <table><thead><tr><th>组合</th><th class="r">次数</th><th class="r">占全部</th></tr></thead>
+      <tbody id="shortcuts"></tbody></table>
+  </section>
+</div>
+
 <script>
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -101,6 +114,9 @@
     [
       ['按键总数', n(d.keys), '近 ' + ((d.range && d.range.end) ? '7' : 'N') + ' 天'],
       ['鼠标点击', n(d.clicks), '左/右/中合计'],
+      ['左键', n(d.leftClicks), '单击'],
+      ['右键', n(d.rightClicks), '单击'],
+      ['中键', n(d.middleClicks), '滚轮按下'],
       ['滚轮格数', n(d.scroll), '所有应用'],
       ['打字爆发', n(d.bursts), '连续输入段'],
       ['每小时按键', (d.keysPerHour || 0).toFixed(0), '平均'],
@@ -166,6 +182,27 @@
       d.moveDistance > 0
         ? '鼠标位移 ' + d.moveText + '（按 96 DPI 粗算）'
         : '当前数据库里鼠标位移全为 0：键鼠钩子在部署版里未产出位移，属采集侧限制，不是页面问题。';
+
+    // 具体键位 / 组合键
+    [['keyfreq', d.keyFreq, d.keys], ['shortcuts', d.shortcuts, d.keys]].forEach(function (cfg) {
+      var tb = document.getElementById(cfg[0]);
+      tb.innerHTML = '';
+      var arr = cfg[1] || [];
+      if (!arr.length) {
+        var tr0 = document.createElement('tr');
+        var td0 = el('td', 'empty', '这段时间没有记录（旧数据只在总按键数里，键位分布从 4.12.20 起才有）');
+        td0.colSpan = 3; tr0.appendChild(td0); tb.appendChild(tr0);
+        return;
+      }
+      var total = Math.max(cfg[2] || 0, 1);
+      arr.forEach(function (x) {
+        var tr = document.createElement('tr');
+        tr.appendChild(el('td', 'nm', x.name));
+        tr.appendChild(el('td', 'r', n(x.count)));
+        tr.appendChild(el('td', 'r', ((x.count / total) * 100).toFixed(2) + '%'));
+        tb.appendChild(tr);
+      });
+    });
 
     return 'ok: ' + n(d.keys) + ' 键 / ' + n(d.clicks) + ' 击 / ' + n(d.scroll) + ' 滚';
   }
