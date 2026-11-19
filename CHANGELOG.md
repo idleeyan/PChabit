@@ -2,6 +2,22 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.10.8] - 2026-11-19
+
+### 桌面硬件悬浮窗 Rust 化
+
+- 新增 `rust/pchabit-shell/src/desktop_widget.rs`：`WS_EX_LAYERED | TOOLWINDOW | NOACTIVATE | TOPMOST`
+  分层窗口，`UpdateLayeredWindow(ULW_ALPHA)` 逐像素透明；GDI 先把字画进黑底 DIB（白字），
+  再按亮度当 alpha 合成到圆角深色卡片（`#202329` / 92% 不透明）上，避免色键方案的边缘杂色。
+- 内容每秒刷新：CPU（`GetSystemTimes` 增量）、内存（`GlobalMemoryStatusEx`）、下载/上传（`netif::NetMeter` PDH）。
+- 交互：左键拖动直接改窗口位置，松手写回 `settings.json` 的 `DesktopWidgetLeft/Top/Width/Height`；
+  双击经 `run_on_main_thread` 打开仪表盘；首次启动按 `SPI_GETWORKAREA` 放主屏右侧。
+- 开关 `PChabitShell.exe --desktop`（默认关，避免与 WPF 面板同屏重复）。
+
+实测：日志 `[桌面] 悬浮窗已创建 385×365 @(2175,14)`；停掉 WPF 后截图确认
+「PChabit · 硬件 / CPU 23% / 内存 49% / 下载 586 B/s / 上传 1 K/s」与圆角深色卡片渲染正常
+（期间修掉一个 rop 常量错误：`BLACKNESS` 应是 `0x00000042`，之前误写成 `WHITENESS` 导致卡片发白）。
+
 ## [4.10.7] - 2026-11-19
 
 ### 任务栏小窗 Rust 化 + 托盘菜单对齐 WPF

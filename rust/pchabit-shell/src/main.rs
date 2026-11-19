@@ -14,6 +14,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use tauri::Manager;
 
+mod desktop_widget;
 mod taskbar;
 
 /// 找壳自己的 `dist` 目录（页面资产由 build.rs 从 WPF 工程原样复制进来）。
@@ -1021,7 +1022,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.7";
+const VERSION: &str = "4.10.8";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -1143,6 +1144,8 @@ fn main() {
     let headless = raw_args.iter().any(|a| a == "--headless");
     // --taskbar：额外在任务栏左侧画 Rust 小窗（默认关，避免与 WPF 小窗重复）
     let with_taskbar = raw_args.iter().any(|a| a == "--taskbar");
+    // --desktop：额外画 Rust 桌面硬件悬浮窗（同上，默认关）
+    let with_desktop = raw_args.iter().any(|a| a == "--desktop");
     // 窗口模式默认带托盘：关窗=隐到托盘，托盘「退出」才真退（--no-tray 关掉）
     let window_tray = !raw_args.iter().any(|a| a == "--no-tray");
     let positional: Vec<String> = raw_args
@@ -1312,6 +1315,11 @@ fn main() {
                     "[小窗] 启动 Rust 任务栏小窗（{} 主题）",
                     if light { "浅色" } else { "深色" }
                 ));
+            }
+
+            if with_desktop {
+                desktop_widget::start(app.handle().clone());
+                log_line("[桌面] 启动 Rust 桌面硬件悬浮窗");
             }
 
             Ok(())
