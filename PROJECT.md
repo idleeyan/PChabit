@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **4.10.9**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
+| 当前版本 | **4.10.10**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核、`rust/pchabit-datad` 数据面、`rust/pchabit-shell` Tauri 2 壳预览） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，**16 个页面**：仪表盘 + 五图表/分析页 + 时间线 + 网页访问 + 网络流量 + 键鼠活动 + 历史报告 + 分类管理 + 应用详情 + 设置概览 + 便签 + 数据管理），默认入口仍是 WPF 版 |
@@ -79,11 +79,13 @@
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
 | 2026-11-18 | 3.95.0 | **前台窗口采样 1 Hz → 500 ms（P2 尾巴）**。内核采样（netd）与宿主读取（AppMonitor 定时器）同频提到 500 ms，避免短于 1 秒的切换被整段合并；每拍仍只一次 GetForegroundWindow，开销可忽略 |
+| 2026-11-19 | 4.10.10 | **键鼠口径统一 + 内核健康度 + 历史乱码清理**：collect 落库统一去 .exe；一次性脚本合并 MouseSessions 1065 条旧行（备份 204 MB）；设置页首行加「采集内核（netd）」HEALTH 状态（66→67 项）；CHANGELOG 3.21.1 及更早乱码正文改为仅留版本标题，csproj 8 段乱码注释删除且 XML 校验通过 |
 | 2026-11-19 | 4.10.9 | **应用搜索下沉到数据层**：datad 增 search_json + CLI search <关键字>（裸参数也认），壳增 pp_search(q)；分类页进程 >300 时走 IPC 过滤（220ms 防抖），小表仍本地过滤。实测 search chrome 1 条、?qtest=chrome → qtest 1 条 / chrome。另：确认 Verysync 以用户态进程运行（2 个进程，非服务） |
 | 2026-11-19 | 4.10.8 | **桌面硬件悬浮窗 Rust 化**：新增 desktop_widget.rs（分层窗口 ULW_ALPHA 逐像素透明、GDI 白字黑底当蒙版、圆角深色卡片、拖动记忆位置、双击开仪表盘），--desktop 开关默认关；修 BLACKNESS rop 常量错误。实测 385×365 @(2175,14)，截图渲染正常 |
 | 2026-11-19 | 4.10.7 | **任务栏小窗 Rust 化 + 托盘菜单对齐 WPF**：新增 	askbar.rs（SetParent 到 Shell_TrayWnd、色键透明、GDI 每秒刷新 CPU/内存/网速、点击开仪表盘），--taskbar 开关默认关；托盘补「显示窗口 / 新建便签 / 便签列表 / 退出采集」。实测窗口 254×48 @L=8、截图内容正确 |
 | 2026-11-19 | 4.10.6 | **历史报告页可导出 Excel**：壳命令 xport_weekly 把 eports_json（16 周）+ dashboard_json（近 7 天、今日应用）拼成 3 个工作表，spawn pchabit-datad.exe xlsx（stdin JSON）写盘到 %LOCALAPPDATA%\PChabit\Exports\周报_YYYY-MM-DD.xlsx；datad 查找兼容同目录与上一级。实测 8 KB / 31 行，解包确认三个工作表与表头正确 |
 | 2026-11-19 | 4.10.5 | **便签可写 + 修逐进程网络虚高**：便签 CRUD（软删除，与 WPF 共用 StickyNotes，写连接 3 s busy_timeout，日志不写正文）；netd 跳过回环连接（127/8、::1）并对每拍进程增量之和按系统增量等比收缩——实测下行比从 3.69 降到 0.42、上行从 14.26 降到 0.43；历史脏数据先 VACUUM 备份再按小时系统值等比校正，去掉虚高 14,269 MB |
+| 2026-11-19 | 4.10.10 | **键鼠口径统一 + 内核健康度 + 历史乱码清理**：collect 落库统一去 .exe；一次性脚本合并 MouseSessions 1065 条旧行（备份 204 MB）；设置页首行加「采集内核（netd）」HEALTH 状态（66→67 项）；CHANGELOG 3.21.1 及更早乱码正文改为仅留版本标题，csproj 8 段乱码注释删除且 XML 校验通过 |
 | 2026-11-19 | 4.10.9 | **应用搜索下沉到数据层**：datad 增 search_json + CLI search <关键字>（裸参数也认），壳增 pp_search(q)；分类页进程 >300 时走 IPC 过滤（220ms 防抖），小表仍本地过滤。实测 search chrome 1 条、?qtest=chrome → qtest 1 条 / chrome。另：确认 Verysync 以用户态进程运行（2 个进程，非服务） |
 | 2026-11-19 | 4.10.8 | **桌面硬件悬浮窗 Rust 化**：新增 desktop_widget.rs（分层窗口 ULW_ALPHA 逐像素透明、GDI 白字黑底当蒙版、圆角深色卡片、拖动记忆位置、双击开仪表盘），--desktop 开关默认关；修 BLACKNESS rop 常量错误。实测 385×365 @(2175,14)，截图渲染正常 |
 | 2026-11-19 | 4.10.7 | **任务栏小窗 Rust 化 + 托盘菜单对齐 WPF**：新增 	askbar.rs（SetParent 到 Shell_TrayWnd、色键透明、GDI 每秒刷新 CPU/内存/网速、点击开仪表盘），--taskbar 开关默认关；托盘补「显示窗口 / 新建便签 / 便签列表 / 退出采集」。实测窗口 254×48 @L=8、截图内容正确 |

@@ -394,8 +394,11 @@ fn ms_len(_ev: i64, _d: &MsDelta) -> i64 {
 }
 
 /// 落库：把这一轮的增量写进 KeyboardSessions / MouseSessions。
+/// 统一口径：进程名一律去扩展名（WPF 的鼠标会话写的是 `xxx.exe`，键盘会话是 `xxx`，
+/// 混在一张图里会把同一个应用拆成两行）。
 pub fn flush(shared: &InputShared, store: &Store) -> Result<(i64, i64), String> {
     let (date, hour, proc, kd, mouse) = shared.take_deltas();
+    let proc = norm_proc(&proc);
     let mut keys = 0i64;
     let mut clicks = 0i64;
     if !date.is_empty() {
@@ -405,10 +408,20 @@ pub fn flush(shared: &InputShared, store: &Store) -> Result<(i64, i64), String> 
         }
         if let Some((md, mh, mp, delta)) = mouse {
             clicks = delta.left + delta.right + delta.middle;
-            store.mouse_add(&md, mh, &mp, &delta)?;
+            store.mouse_add(&md, mh, &norm_proc(&mp), &delta)?;
         }
     }
     Ok((keys, clicks))
+}
+
+/// 去扩展名（不区分大小写），与 `win::process_stem` 的口径对齐。
+fn norm_proc(name: &str) -> String {
+    let t = name.trim();
+    if t.len() > 4 && t[t.len() - 4..].eq_ignore_ascii_case(".exe") {
+        t[..t.len() - 4].to_string()
+    } else {
+        t.to_string()
+    }
 }
 
 fn key_category(vk: i32) -> &'static str {

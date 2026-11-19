@@ -1013,6 +1013,21 @@ fn payload_settings() -> serde_json::Value {
         })
         .unwrap_or_default();
 
+    // 采集内核健康度：设置页顺带看一眼 netd 是否活着（没有 settings 键可读，靠管道问）
+    let mut items = items;
+    let health = pchabit_collect::netd::Pipe::connect(2)
+        .and_then(|mut p| p.cmd("HEALTH"))
+        .unwrap_or_else(|| "未连接（守护进程没起）".to_string());
+    items.insert(
+        0,
+        serde_json::json!({
+            "key": "采集内核（netd）",
+            "kind": "text",
+            "value": health,
+            "set": true,
+        }),
+    );
+
     let masked = items.iter().filter(|i| i["masked"].as_bool().unwrap_or(false)).count();
     log_line(&format!(
         "settings: {} 项（{} 项敏感已打码）",
@@ -1028,7 +1043,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.9";
+const VERSION: &str = "4.10.10";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);

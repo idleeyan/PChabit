@@ -10,7 +10,7 @@
         <RootNamespace>PChabit</RootNamespace>
         <AssemblyName>PChabit</AssemblyName>
         <Product>PChabit</Product>
-        <Version>4.10.9</Version>
+        <Version>4.10.10</Version>
         <Platforms>x64</Platforms>
         <PlatformTarget>x64</PlatformTarget>
         <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -20,21 +20,8 @@
         <ApplicationIcon>pchabit.ico</ApplicationIcon>
         <EnableMsixTooling>false</EnableMsixTooling>
         <WindowsPackageType>None</WindowsPackageType>
-        <!--
-            闁诲海鎳撻懟顖炲矗韫囨稒鍤婃い蹇撳閻﹀爼鏌涘鐓庝喊闁稿骸顕槐鏃傛嫚瑜忕粣妤呮煙绾版ê浜鹃梺?WinAppSDK 闂佸憡顭囬崰鎾诲极?DLL 婵犮垼娉涚粔鎾春濡ゅ懎绀嗛柟宄扮灱缂堝鏌涢幋锝嗩仩婵炲弶濯介妵鎰板即椤忓棛顦繛鎴炴尭缁夊磭娆㈡搴㈠皫闁哄稁鍋婇崗鍥╃磽?framework package闂?
-            婵炴垶鏌ㄩ鍛櫠?WindowsAppSDKSelfContained=false 婵炴挻纰嶇换鍡欑矉閸℃瑥瀵查柤濮愬€楅崺?WindowsAppRuntime framework package闂?
-            婵炶揪绲藉Λ娑㈡焾鐎靛摜纾奸柣鏃堫棑閹界娀鏌?2.2.0/2.3.0/2.3.1 婵犮垼鍩栭惌顕€鏌屽鍫熷亱闁割偆鍠愰幏閬嶆煥濞戞ê顨欑紒?NuGet 闁荤喐鐟辩徊楣冩倵娴犲鍎?WinUI 2.2.1 婵炴垶鎸哥粔瀵镐焊椤曗偓閺屽﹤顓艰箛鏇狀槷
-            闁诲簼绲绘竟鍫ュ吹?XAML 闁荤喐鐟辩徊楣冩倵娴犲闂柕濞垮劜闊?MeasureOverride 闂傚倸鍟抽崺鏍敊瀹€鍕婵炴垶顭囩槐?TextBox闂佹寧绋戦悧濠勬暜閼哥數顩?ControlTemplate 闂佸憡鍔曢幊搴ｇ矈閻㈢绀傞柛鎰典簽椤﹂亶鏌ㄥ☉姗嗘Ч婵?
-            闂?COMException 0x80004005 "Cannot create instance of type 'TextBox'"闂?
-        -->
         <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
         <WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>true</WindowsAppSDKUndockedRegFreeWinRTInitializeAtStartup>
-        <!--
-            闂佺绻戞繛濠囧极椤撱垺鏅慨姗嗗墯闊?self-contained 濠碘槅鍨埀顒€纾涵鈧繛鎴炴尭椤戞垹妲愬┑濠勭杸闁告稒鐣埀顒€绻樺畷姘攽閸♀晜缍忛梺?Bootstrap 闂佸綊娼х粔鐑藉礂濮椻偓瀹曟繈鎮╅悜妯笺偘 WindowsAppRuntime闂?
-            闂佸憡鐔粻鎴﹀垂?WinUI 闂佺鐭囬崒娑卞仺闂佹寧绋戝﹢绀秞tBox/NumberBox 缂備焦绋戦¨鈧紒杈ㄥ哺瀹?MeasureOverride 闂傚倸鍟抽崺鏍敊瀹€鍕婵炴垶顭囩槐锕傛煛?
-            闂?COMException 0x80004005 "Cannot create instance of type 'TextBox'"闂?
-            Bootstrap.Initialize() 婵炴潙鍚嬬喊宥夋偂閿熺姴绠ラ柟顖嗗棗鐝梺鍛婃⒒婵儳霉閸ヮ剙瑙︾€光偓閳ь剙煤閹峰被浜归柡鍥ㄦ皑閻熸捇鏌?WindowsAppRuntime DLL闂?
-        -->
         <WindowsAppSDKBootstrapInitializeAtStartup>true</WindowsAppSDKBootstrapInitializeAtStartup>
         <EnableMrtTargets>false</EnableMrtTargets>
         <SatelliteResourceLanguages>en-US;zh-CN</SatelliteResourceLanguages>
@@ -43,33 +30,10 @@
         <TieredPGO>true</TieredPGO>
     </PropertyGroup>
 
-    <!--
-        ============================================================
-        WinUI 闂佸憡鍔曢幊鎰版偪閸℃稑绠崇憸灞解枎閵忊€崇窞婵ɑ鍓氶崵鏃堟偡鐏忎礁浜鹃柣鐘欏啫顏紒顭戝櫍閹倿鎸婃径瀣偓鎶芥煕濡や焦绌跨紒杈ㄧ懇瀹曪綁顢旈崘顏嗩啍闂佷紮绲鹃悷褔鎮惧┑鍥ㄥ闁规崘灏崢顒勬煛?+ 闂佸吋妲掔划楣冾敋閵忋倖鏅?
-
-        婵烇絽娲︾换鍕汲閳ь剙顪冮妶鍥仧缂?
-          - zh-CN闂佹寧绋掑銊╂偩濠靛洦濯撮柟鎹愬蔼閸橆剟鏌?
-          - en-us闂佹寧绋掓穱铏光偓姘－閹风娀顢橀妸褏顦╅梺鍛婅壘閺堫剙顪冮崒鐐插強?WinUI 闂佹眹鍔岀€氼亪鎳欓幋锕€绠戠憸宥吤洪弽顓熺劵闁逞屽墰閹风娀顢橀埦鈧弸鍛存煥?
-        闂傚倸娲犻崑鎾绘偡閺囨碍绁伴悗姘暱椤曪綀绠涘顒変紗闁荤姴娴傞崢钘夘渻閸岀偛缁╅梺顐ｇ缁€瀣煥濞戞瑯鍔甴-CN;en-us;en-GB
-        ============================================================
-    -->
     <PropertyGroup>
         <KeepLanguageFolders Condition="'$(KeepLanguageFolders)' == ''">zh-CN;en-us</KeepLanguageFolders>
     </PropertyGroup>
 
-    <!--
-        ============================================================
-        闂佺绻戞繛濠囧极椤撶喓鈹嶆い鏃傗拡濡插鏌ㄥ☉娆戞應otnet publish 婵炴垶鎸哥粔宕囨娴煎瓨鍤婃い蹇撳琚熸繝銏ｆ硾缁夋挳宕?Microsoft.UI.Xaml 闂佺儵鏅╅崰鏍礊瀹ュ绀?
-        publish 闂佺儵鏅╅崰鏍礊瀹ュ鏅€光偓閸愶絽浜剧€光偓閸愭儳娈欓梺鐑╂櫓閸犳牜绱炲鍡欌枖閻庯綆鍓氶悾?Assets\NoiseAsset_256x256_PNG.png 闂?
-        TextBox/NumberBox 缂?WinUI 闂佺鐭囬崒娑卞仺 ControlTemplate 闂婎偄娲ら幊妯恒€掗崼鏇熷剭闁告洦鍠氶妶顐ｇ節瑜庨崝鎴﹀焵?
-        缂傚倸鍊搁幖顐﹀Φ閹寸偛顕辨慨姗嗗墻閸ゃ倝鏌?COMException 0x8007007E (ERROR_MOD_NOT_FOUND) 闂?
-        0x80004005 (E_FAIL)闂佹寧绋戦懟顖氾耿?MeasureOverride 闂傚倸鍟抽崺鏍敊瀹€鍕婵炴垶顭囩槐?TextBox 闂佸搫鍟冲▔娑氱矚閸喒鏀﹂柛鎰惰吂閸?
-
-        濠?Target 闂?Publish 闂佸憡鑹炬绋款啅闁秴绀嗛柡鍫㈡暩閻?bin 婵犮垼娉涚粔鎾春?Microsoft.UI.Xaml 闂佽桨鑳剁换婵嬫煂濠婂牊鍎庢い鏃囧亹缁?
-        闂?PublishDir闂佹寧绋戦惉濂稿灳濡崵鈹嶆繝闈涳功缁犮儵鎮跺☉妯绘拱婵＄偛鍊块幊妤呮嚍閵夈儺妫熼梺?NoiseAsset 闁荤姍鍐仾缂侇煈鍣ｆ俊?
-        闂佹寧绋戝﹢鎭ld 闂傚倸鍟抽崺鏍敊?WindowsAppSDK 闂佺厧顨庢禍婊堟偨椤愶附鍎?targets 婵炴潙鍚嬫穱娲吹濠婂牆绀夐柕濞垮労濡插鏌涢幒鏇熺【闁?bin闂佹寧绋戦張顒€螞閵堝顥嗛柍褜鍓熼悰顕€寮婚妷顔芥闂侀潧妫楅崑濠勬?
-        ============================================================
-    -->
     <Target Name="EnsureMicrosoftUIXamlInPublish" AfterTargets="Publish">
         <ItemGroup>
             <_MuxFilesForPublish Include="$(OutDir)Microsoft.UI.Xaml\**\*.*"
@@ -82,43 +46,6 @@
         <Message Text="閻庣懓鎲¤ぐ鍐啅闁秴绀嗛悹杞拌濡插鏌?Microsoft.UI.Xaml 闂?$(PublishDir) (@(_MuxFilesForPublish->Count()) 婵炴垶鎼╂禍婵嬪几閸愨晝顩?" Importance="high" />
     </Target>
 
-    <!--
-        ============================================================
-        濠电偞鎸搁幊鎰板箖婵犲啯缍囬柟鎯у暱濮ｅ鏌ｉ埡濠傛灈缂傚秴绉电粙澶愵敇閻戝棙鈻兼繛杈剧稻閻熝冣枔?WinUI 闁荤姴娴傞崣鈧柍璇茬墢閹秆囧礋椤掑倻鍩嶉梺?mui闂?
-
-        闂佸搫绉堕幊鎾趁哄鍫熸櫖婵繀宸ヽrosoft.WindowsAppSDK.WinUI 闂佸憡鐗曢幊搴★耿?
-          runtimes-framework\win-x64\native\<闁荤姴娴傞崣鈧柍璇茬墛缁傛帡鏁愰崶鈺佺仯>\
-        婵炴垶鎸搁鍡涘箚閿涘嫭鏆?30+ 缂備礁顦粔鐑筋敋閵忋垺鍤婇柍褜鍓熼弫宥夊锤閸?ZA / de-DE / ja-JP / zh-TW ...闂佹寧绋戦ˇ鍗炩枔?
-          Microsoft.ui.xaml.dll.mui
-          Microsoft.UI.Xaml.Phone.dll.mui
-        闂佺厧顨庢禍婊呪偓鍨耿瀹曘儵顢曢敃鈧崝銉х磽閸愵収鍤嬬紒杈ㄢ敀indowsAppSDKSelfContained=true闂佹寧绋戦ˇ鏉款渻閸岀偞鏅?
-        Microsoft.WindowsAppSDK.SelfContained.targets 闂?
-          <MicrosoftWindowsAppSDKFiles Include="...\**\*.mui" />
-        闂佺绻堥崝鎴﹀闯?glob 婵犮垼娉涚粔鎾春濡ゅ懏鏅悘鐐跺亹閻熸繈鏌涚€ｎ偂浜㈡い鏇樺灮閹虫盯鍩€椤掍焦浜ら柛銉ｅ妽婵垽鏌ㄥ☉娆戭灱闁?<SatelliteResourceLanguages>
-        闂佸憡鐟禍娆戠礊閺冨牊鍋ㄩ柕濞垮€楅懝?NuGet 闂佺懓鐏氶…鍥敇閹间焦鈷旈柛鏇ㄥ亞濞硷絿绱掔€ｎ亶鍎忕紒顭戝弮濮婂潡宕遍鐘殿槷闁诲海鏁搁、濠勬崲閺嶎偆灏甸悹鍥ㄥ絻閺傃囨煟?.mui 闂佸搫鍟版慨鐢稿疾閵夆晛违?
-        闂佹悶鍎虫慨鐢割敆?en-GB / zh-TW 婵炴潙鍚嬫穱娲綖閿旂晫鈻旈柍褜鍓熼悰顕€骞嗛幍顔剧倳闂佸憡鍨甸幖顐﹀春?bin 婵?publish闂?
-
-        缂備焦绋掗悧婊堝汲閹扮増鏅慨妯块哺椤忋倝鏌涘顒傂㈢€?+ 闂佸搫绉村ú鈺咁敊閸ヮ剙妫橀柛銉檮椤愪粙鏌涢幒瀣偓鏇㈡偩?
-          1) 闂佸憡鐟禍婵嗭耿娓氣偓婵℃潙鐣濋埀顒€煤閹峰被浜归柡鍥╁仜閺佸爼鎮楀☉娅亜锕?Microsoft.ui.xaml.dll.mui闂侀潧妫楃粔璺衡枔閹达附鍎庢い鏃囧亹缁夊潡鏌熼棃娑毿ユい顐閹叉挳宕遍弴锛勵槹
-             WinUI 闁荤姴娴傞崣鈧柍璇茬墦閹嫰顢欓懖鈺冃梺鎸庣☉閼活垶宕ｉ悙顒佸婵炲棙鍨剁粣妤冩喐閻楀牊绌跨紒杈熀ssets / Views / extensions /
-             Microsoft.UI.Xaml / runtimes ...闂佹寧绋戦ˇ顔剧博閺夋埈鍤楅悗锝傛櫇閻熸繈鏌涘▎蹇撯偓椋庣箔瀹€鍕鐟滅増甯掔敮鎶芥煥?
-          2) 闂佸憡绋掗崹婵嬫嚈閹达箑鍐€闁搞儺浜堕崬璺好归敐鍛棛缂佹顦靛畷?$(KeepLanguageFolders) 闂佸憡鍔曢幊鎰枔閹达附鍎庢い鏃囧亹缁夊潡鏌熼棃娑毿㈤柛銊ョ秺濮婁粙濡堕崘锝呬壕?
-
-        闂佸疇娉曟刊瀵哥箔?闂婎偄娲ら幊姗€濡磋箛娑欏仺闁靛绲洪崑鎾朵沪閻ｅ本娈梺杞拌兌椤ユ劙鎯岄幆褜鍤?+ Exclude闂侀潧妫楃粔瀛樼濞戙垺鍎岄柦妯侯槹閸婃娊鏌涘Δ浣圭閻忓浚鍣ｉ弻濠傤吋韫囨洜顦梺鍝勭墕椤︻喗绂嶉幒鎾垛枖閻庯絺鏅為埛鍫ユ煛婢跺棌鍋撳畷鍥ㄦ緰濠电偞娼欓鍡涘汲閳ь剟鎮规笟鍥у伎缂?
-          - 缂備礁鍊烽悞锕傤敆濞戙垹绠┑鐘插缁愭鎲搁悧鍫熺闁诡喗娲熷畷妯衡枎閹烘梻顔掗梺绋跨箰閸燁垶寮抽悢鐓庣妞ゆ梻鍘ч弲娆撴煟椤剙濡奸柣锝囧█瀹曟岸濡堕崱妯煎姺闂佹寧绋戦悧鍛閵夛缚绻嗛柛灞剧闊?ItemGroup 闂備焦褰冮懟顖炴偩閻愵剛鈻?
-            <DirLower>$([System.String]::Copy('%(Filename)').ToLowerInvariant())</DirLower>闂佹寧绋戦¨鈧紒?
-            MSBuild 闂侀潻璐熼崝宀勫储閹捐鏋侀柣妤€鐗嗙粊锕傛倵鐟欏嫮鐓紒鐘靛枑閹峰懎顓奸崶鈺傜€繛鎴炴尭缁夋挳鎯堝鍜佸殨闁?%(Identity)/%(Filename)闂佹寧绋戞總鏃傛娴煎瓨顥堟繛鍡樻尵鐢稓鈧數澧楅〃鍛村春瀹€鈧划姘姜閹峰矈娲梺?
-            闁诲簼绲绘竟鍫ュ吹瑜旈幆鍌炴寠婢跺鈧娊鏌涘Δ浣圭闁搞劋绮欏顒勵敇閻旀儼鍩呮繛?false闂佹寧绋戦張顒佷繆閸濄儲瀚氶柕澶堝€楃粻浠嬫煟閿濆棛鎳呮繛?zh-CN / en-us 婵炴垶鎸撮崑鎾绘偣瑜嶉崲鏌ュ垂瑜版帒绠冲鑸电〒缁€鍕煛閸愵亜校濠殿喓鍊濋弻銊モ枎瀹ヤ礁浜惧ù锝堫潐閿熴儵鎮归埀顒勬晝閳ь剟骞夐敓鐘虫櫖濠㈣埖绋撻獮?
-          - 缂備礁鍊烽悞锕傤敆濞戙垺鍋ㄩ柕濞垮劤閹界喓绱掑Δ瀣窗閻?Contains 闂佺顑嗗銊モ枍瑜斿畷銉ヮ吋閸涱厾顦伴梺鍛婄墪缂嶅﹪宕㈤妶澶嬫櫖婵椴搁崺鍌炴倵閸︻厼浠ф繛鍙夊閵囨劙寮撮悙鏉戔偓鍐差熆閸棗鍟板В鍫ユ煕閹邦厾鎳佺紒妤€顦辩槐鎺楁偄閸撲緡浼?
-            闂佹寧绋戝鎶?GB 婵犮垹鐖㈤崘銊︽闂侀潧妫旈煬鐞?us 闁诲繐绻愮换鎰板疮閹捐违濞存粌鍎?CN 濠电儑绲介崲鏌ュ箖鎼淬劍鏅鑸电〒缁€澶愭倵濞戞瑯娈樻い鎴滅劍缁嬪宕ｆ径灞拘ラ柡澶婄墕閸熲晝妲愰弶娆剧叾闊洦鎸搁悘鏌ユ煏?
-            MSBuild 闂?Exclude 闁荤姍鍕€滈柣顓熷劤椤曘儵宕熼銏㈠煃闂備焦婢樼粙鍕濠靛洤绶炵憸宥夋儍椤掑嫬绀冩繛鍡楁捣閻熸繈鏌℃担鍝ョ闁告柨鎳橀弫宥囦沪閽樺顔夐柣搴℃贡閹虫挾鎹㈡繝鍕珰闁靛鍎查埢鏇犫偓?
-            闂佹寧绋戦悧鍡涙偪閸曨個鍦偓锝呭缁愭鏌ｈ濡嫰骞冮弴銏犵闁哄洨鍋涢弲鎼佹煙?ZH-cn;EN-US 婵炲濮寸粔鐑藉礂濡警娼伴柨婵嗘礌閳ь剚蓱缁屽崬鈹戦崼鐔哥暚 zh-CN / en-us闂佹寧绋戦ˇ顓㈠焵?
-
-        闂佸疇娉曟刊瀵哥箔?闂佸搫娲﹂崕鎶芥偤閵娾晛鎹堕柕濞у嫮鏆犵紓鍌氬€瑰钘夆枍閿熺姵鏅慨姗嗗幗閿涘鎮楅崷顓炰户妤犵偛娲幃浠嬪Ω閿濆倸浜剧€光偓閳ь剙煤閹峰被浜归柡鍥╁仦閸婂啿鈽夐幘宕囆″ù?en-/zh- 閻庢鍠掗崑鎾愁熆閼稿灚缍戞慨妯稿姂瀹曟岸鎮╃紒妯煎綉闂?
-        婵炲濮撮幊鎾绘儑椤曗偓瀹?Assets/Views/Microsoft.UI.Xaml闂侀潧妫楃粔璺衡枔閹达箑鐭楃€广儱鎳忛崐濠氬级閳轰焦澶勯柟韬插€濋弫?
-        婵炴潙鍚嬫穱娲敋閵堝绀?extensions 缂備焦绋戦ˇ顔剧箔閻旂厧绀夐柨娑樺缁愭鎲搁悧鍫熺８闁逞屽墮閸婂綊寮绘繝鍕ㄥ亾閸︻厼浠ф鐐叉处缁嬪顓奸崨顓熸珒闁荤喐鐟辨俊鍥綖椤愶絿顩烽悹浣哥－缁夊潡姊婚崼銏犱哗妞ゆ洏鍨婚幊娑㈠焵椤掑嫭鍎庢い鏃囧亹缁夊潡鏌?
-        ============================================================
-    -->
     <Target Name="RemoveUnusedMuiLanguageFolders" AfterTargets="Build" Condition="Exists('$(OutDir)')">
         <ItemGroup>
             <_OutDirEntryFortrim Include="$([System.IO.Directory]::GetDirectories('$(OutDir)'))" />
@@ -126,7 +53,6 @@
                              Condition="Exists('%(Identity)\Microsoft.ui.xaml.dll.mui')" />
             <_KeepLangEntry Include="$(KeepLanguageFolders.Split(';'))" />
             <_KeepLangDirFull Include="@(_KeepLangEntry->'$(OutDir)%(Identity)\')" />
-            <!-- 闂佸憡鍔栭妵鐐电礊閹寸偟鈹嶆繝闈涱儐閻濓箓鏌ㄥ☉娆掑鐎规挸妫欓幏鍛存嚄椤栨粎顔愭繛瀛樼矋缁嬫挸煤閹峰被浜归柡鍥ュ灩濞咃繝鎮樿箛鎾搭棡婵炶偐鏁诲畷娆撴惞閻熸壆鐤€闂佸憡鑹鹃懟顖炲箖?.mui闂佹寧绋戞總鏃傚姬閸愨晝鈻旂€广儱鎳庡Λ妯衡槈閹惧啿顒㈢紒鏂款煼閹?-->
             <_ProtectedDirName Include="Assets;Views;extensions;Microsoft.UI.Xaml;runtimes" />
             <_ProtectedDirFull Include="@(_ProtectedDirName->'$(OutDir)%(Identity)\')" />
         </ItemGroup>
@@ -134,7 +60,6 @@
             <_MuiLanguageDirToDelete Include="@(_MuiLanguageDir)"
                                      Exclude="@(_KeepLangDirFull);@(_ProtectedDirFull)" />
         </ItemGroup>
-        <!-- 闁荤姴娲ら敃銉╁蓟閸ヮ剚鍋ㄦい顓熷笧缁€?v:d 闂佸憡鐟崹鐢革綖閸℃稒鏅鑸电〒缁愭鏌熼悜妯虹瑲闁绘搫绱曢幏鐘活敇閳锯偓閺嬪懘鏌ｉ埡濠傛灈缂傚秴绉瑰畷姘跺Χ閸涱垱姣庢繛鎴炴崄濡椼劎绱炲澶婂珘妞ゅ繐瀚崵鎺戔槈?-->
         <Message Text="[PCH-LANG][Build] OutDir=$(OutDir)" Importance="low" />
         <Message Text="[PCH-LANG][Build] candidates=@(_MuiLanguageDir)" Importance="low" />
         <Message Text="[PCH-LANG][Build] keep=@(_KeepLangDirFull)" Importance="low" />
@@ -177,13 +102,6 @@
         <Message Text="mui-clean" Importance="low" />
     </Target>
 
-    <!--
-        濠碘剝顨呭Λ娆撴倶閿旂晫鐟规繝闈涳功椤╊偅淇婇妞诲亾瀹曞洨顢呴梺鎸庣☉濠€鐥歭fContained=false闂? 闂?RuntimeIdentifier 闂佸搫鍟抽鎰?
-        NuGet 闂?runtimes\<rid>\native\ 闂佸憡顭囬崰鎾诲极閹惧瓨鍎熼柟鎹愬皺閻熸繂霉閸忛棿浜㈡い顐畵閹虫盯顢旈崟顐嶆顭跨捄铏剐㈤柛鈺傤殜瀹曟岸骞忓畝鈧紙濠氭煕閹达絾顏犳繛鍙夊閵囨劙寮撮鍡欘槷
-        婵?deps.json 婵炲濮寸粔瀵告閳哄懏鍋?runtimes\win-x64\native\e_sqlite3.dll闂?
-        濠?Target 婵?NuGet 闂佸憡鐗曢幊鎰閿旈敮鍋撳☉娅ジ鎳欓幋鐐茬窞鐎广儱鎳庨悡?SQLite 闂佸憡顭囬崰鎾诲极閹惧瓨鍎熼柟鎯у暱閻撳倿寮堕崼鐔稿碍闁搞値鍙冮幆鍕敊閼测晝协闂?runtimes\win-x64\native\ 闁诲孩绋掗崝妤€煤閹峰被浜归柡鍥朵簽缁€?
-        闁?.NET 闁哄鏅滈崝姗€銆侀幋锕€绫嶉柟顖涙緲閸樻挳鏌?deps.json 闂?runtimeTargets 濠殿喗绻愮徊鍧楀灳濮椻偓瀹曟繈鎮╅悜妯笺偘闂?
-    -->
     <Target Name="CopyNativeSqliteToOutput" AfterTargets="Build">
         <ItemGroup>
             <_SqliteNativeCandidate Include="$(NuGetPackageRoot)sqlitepclraw.lib.e_sqlite3\**\runtimes\win-x64\native\e_sqlite3.dll" />
