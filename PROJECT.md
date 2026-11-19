@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.5**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.6**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-19 | 4.12.6 | **小窗网速优先**：顺序 ↓上行→↑→竖线→CPU→内存；下行 21pt 粗体强化；Segment 增加 alue_pt/divider_before，量宽按各自字号 |
 | 2026-11-19 | 4.12.5 | **任务栏小窗可读性**：深浅改读注册表 SystemUsesLightTheme（每帧重读，切系统主题即变），字号 12/16pt，色键改为从 Shell_TrayWnd 取像素（挂父窗口之前取） |
 | 2026-11-19 | 4.12.3 | **netd 黑窗修掉**（spawn 加 CREATE_NO_WINDOW，datad xlsx 同样处理）；任务栏小窗启动条件改为 --taskbar 或 TaskbarEnabled=true，桌面悬浮窗同口径；重启后日志出现「已创建并挂载任务栏（Rust）」 |
 | 2026-11-19 | 4.12.2 | **图标空白修好**：根因是 icons\icon.ico 本身近乎全透明（32×32 中心 alpha=34），已用 Square150x150Logo.scale-200.png 重生成 7 尺寸 ico（16–256，31 KB）；make_window 加 set_icon；Assets\PChabit.ico + 快捷方式 IconLocation 指向它，ie4uinit -show 刷缓存。实测 ExtractAssociatedIcon 中心 alpha=255 |

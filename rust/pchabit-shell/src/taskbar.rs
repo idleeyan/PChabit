@@ -210,6 +210,11 @@ const MIN_WIDTH: i32 = 72;
 /// 字号（pt）：11/15 贴到任务栏上偏小，抬到 12/16
 const LABEL_PT: i32 = 12;
 const VALUE_PT: i32 = 16;
+/// 下行网速单独放大加粗，作为「主指标」
+const NET_PT: i32 = 21;
+/// 网速区与 CPU/内存区之间的分隔线宽度、两侧留白
+const DIVIDER_W: i32 = 1;
+const DIVIDER_GAP: i32 = 9;
 
 /// 任务栏是深是浅，只能问 Windows 的个性化设置（`SystemUsesLightTheme`），
 /// 不能看应用内主题：应用深色 + 任务栏浅色时会用近白色字画在浅灰底上，糊成一片。
@@ -277,6 +282,10 @@ struct Segment {
     label: String,
     value: String,
     tone: Tone,
+    /// 数值字号（pt）：下行网速用更大的字，其余用常规字号
+    value_pt: i32,
+    /// 这一项前面要不要画一条竖分隔线（把「网速区」和「CPU/内存区」分开）
+    divider_before: bool,
 }
 
 struct State {
@@ -527,13 +536,30 @@ unsafe fn paint(hwnd: HWND) {
     };
     let font_label = make_font(LABEL_PT, 400, dpi);
     let font_value = make_font(VALUE_PT, 700, dpi);
+    let font_net = make_font(NET_PT, 700, dpi);
 
     let mut x = PADDING;
     for seg in &segments {
+        // 分隔线：把网速区和 CPU/内存区分开
+        if seg.divider_before && x > PADDING {
+            let line = Rect {
+                left: x,
+                top: (h_ as f64 * 0.18) as i32,
+                right: x + DIVIDER_W,
+                bottom: (h_ as f64 * 0.82) as i32,
+            };
+            let divider = CreateSolidBrush(divider_color(light));
+            let _ = fill_rect(mem_dc, &line, divider);
+            DeleteObject(divider as HGDIOBJ);
+            x += DIVIDER_W + DIVIDER_GAP;
+        }
+
+        let label_font = if seg.value_pt >= NET_PT { font_net } else { font_label };
+
         // 标签
         let l = w(&seg.label);
         SetTextColor(mem_dc, label_color(light));
-        SelectObject(mem_dc, font_label);
+        SelectObject(mem_dc, label_font);
         let mut sz = Size::default();
         GetTextExtentPoint32W(mem_dc, l.as_ptr(), (l.len() - 1) as i32, &mut sz);
         let ly = (h_ - sz.cy) / 2;
@@ -543,7 +569,8 @@ unsafe fn paint(hwnd: HWND) {
         // 数值
         let v = w(&seg.value);
         SetTextColor(mem_dc, tone_color(seg.tone, light));
-        SelectObject(mem_dc, font_value);
+        let value_font = if seg.value_pt >= NET_PT { font_net } else { font_value };
+        SelectObject(mem_dc, value_font);
         let mut sz2 = Size::default();
         GetTextExtentPoint32W(mem_dc, v.as_ptr(), (v.len() - 1) as i32, &mut sz2);
         let vy = (h_ - sz2.cy) / 2;
@@ -558,6 +585,7 @@ unsafe fn paint(hwnd: HWND) {
     DeleteDC(mem_dc);
     DeleteObject(font_label as HGDIOBJ);
     DeleteObject(font_value as HGDIOBJ);
+    DeleteObject(font_net as HGDIOBJ);
     EndPaint(hwnd, &ps);
 }
 
@@ -591,6 +619,11 @@ unsafe fn make_font(pt: i32, weight: i32, dpi: u32) -> HFONT {
 
 fn label_color(light: bool) -> u32 {
     if light { LABEL_LIGHT } else { LABEL_DARK }
+}
+
+/// 网速区与其它指标之间的竖分隔线
+fn divider_color(light: bool) -> u32 {
+    if light { rgb(0xB0, 0xB4, 0xB8) } else { rgb(0x5A, 0x5E, 0x62) }
 }
 
 fn log_theme_switch(light: bool) {
@@ -669,11 +702,36 @@ fn tick_loop() {
             None => (0.0, 0.0),
         };
 
+        // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存
         let segments = vec![
-            Segment { label: "CPU".into(), value: format!("{:.0}%", cpu), tone: load_tone(cpu) },
-            Segment { label: "内存".into(), value: format!("{:.0}%", mem), tone: load_tone(mem) },
-            Segment { label: "↓".into(), value: rate(down), tone: Tone::Net },
-            Segment { label: "↑".into(), value: rate(up), tone: Tone::Net },
+            Segment {
+                label: "↓".into(),
+                value: rate(down),
+                tone: Tone::Net,
+                value_pt: NET_PT,
+                divider_before: false,
+            },
+            Segment {
+                label: "↑".into(),
+                value: rate(up),
+                tone: Tone::Net,
+                value_pt: VALUE_PT,
+                divider_before: false,
+            },
+            Segment {
+                label: "CPU".into(),
+                value: format!("{:.0}%", cpu),
+                tone: load_tone(cpu),
+                value_pt: VALUE_PT,
+                divider_before: true,
+            },
+            Segment {
+                label: "内存".into(),
+                value: format!("{:.0}%", mem),
+                tone: load_tone(mem),
+                value_pt: VALUE_PT,
+                divider_before: false,
+            },
         ];
 
         let changed = with_state(|s| {
@@ -682,7 +740,7 @@ fn tick_loop() {
                     .segments
                     .iter()
                     .zip(segments.iter())
-                    .all(|(a, b)| a.value == b.value && a.tone == b.tone);
+                    .all(|(a, b)| a.value == b.value && a.tone == b.tone && a.value_pt == b.value_pt);
             if !same {
                 s.segments = segments.clone();
             }
@@ -762,16 +820,23 @@ fn remeasure() {
         };
         let font_label = make_font(LABEL_PT, 400, dpi);
         let font_value = make_font(VALUE_PT, 700, dpi);
+        let font_net = make_font(NET_PT, 700, dpi);
 
         let mut width = PADDING;
         for seg in &segments {
+            if seg.divider_before && width > PADDING {
+                width += DIVIDER_W + DIVIDER_GAP;
+            }
+            let big = seg.value_pt >= NET_PT;
+            let label_font = if big { font_net } else { font_label };
+            let value_font = if big { font_net } else { font_value };
             let l = w(&seg.label);
             let v = w(&seg.value);
-            SelectObject(hdc, font_label);
+            SelectObject(hdc, label_font);
             let mut sz = Size::default();
             GetTextExtentPoint32W(hdc, l.as_ptr(), (l.len() - 1) as i32, &mut sz);
             width += sz.cx + LABEL_GAP;
-            SelectObject(hdc, font_value);
+            SelectObject(hdc, value_font);
             let mut sz2 = Size::default();
             GetTextExtentPoint32W(hdc, v.as_ptr(), (v.len() - 1) as i32, &mut sz2);
             width += sz2.cx + ITEM_GAP;
@@ -781,6 +846,7 @@ fn remeasure() {
         ReleaseDC(hwnd, hdc);
         DeleteObject(font_label as HGDIOBJ);
         DeleteObject(font_value as HGDIOBJ);
+        DeleteObject(font_net as HGDIOBJ);
 
         with_state(|s| s.width = width);
         position();
