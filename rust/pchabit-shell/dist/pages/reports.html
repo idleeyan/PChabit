@@ -40,6 +40,9 @@
 <header>
   <h1>历史报告</h1>
   <span class="hint" id="meta">加载中…</span>
+  <button id="expXlsx" style="margin-left:auto;padding:4px 12px;border-radius:6px;
+    border:1px solid #223049;background:#1d4ed8;color:#fff;cursor:pointer;font-size:12px">导出 Excel</button>
+  <span class="hint" id="expMsg"></span>
 </header>
 
 <div class="kpis" id="kpis"></div>
@@ -147,6 +150,21 @@
       try { window.__REP_RESULT__ = renderReports(window.__REP_DATA__); }
       catch (e) { window.__REP_RESULT__ = 'error: ' + e.message; }
     }
+    var btn = document.getElementById('expXlsx');
+    if (btn) btn.addEventListener('click', function () {
+      var msg = document.getElementById('expMsg');
+      if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC'; return; }
+      msg.textContent = '导出中…';
+      window.__TAURI__.core.invoke('export_weekly', {})
+        .then(function (p) {
+          msg.textContent = '已导出：' + p;
+          window.__REP_RESULT__ = 'export: ' + p;
+        })
+        .catch(function (e) {
+          msg.textContent = '失败：' + e;
+          window.__REP_RESULT__ = 'export-error: ' + e;
+        });
+    });
   });
 </script>
 </body>

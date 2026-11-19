@@ -777,6 +777,127 @@ const SETTING_WHITELIST: &[&str] = &[
     "TrackWebBrowsing",
 ];
 
+/// 导出周报 Excel：把「周汇总 / 近 7 天 / 今日应用」拼成工作簿，交给 datad 的 `xlsx` 子命令写盘。
+/// 输出目录：`%LOCALAPPDATA%\PChabit\Exports\周报_YYYY-MM-DD.xlsx`。
+#[tauri::command]
+fn export_weekly() -> Result<String, String> {
+    let db = pchabit_datad::default_db();
+    let reports = pchabit_datad::reports_json(&db)?;
+    let dash = pchabit_datad::dashboard_json(&db)?;
+
+    let exports = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("Exports");
+    std::fs::create_dir_all(&exports).map_err(|e| format!("建导出目录失败：{e}"))?;
+    let file = exports.join(format!("周报_{}.xlsx", pchabit_datad::today_local()));
+
+    let header = vec!["周", "活跃分钟", "日均分钟", "专注分钟", "专注占比%", "按键", "点击", "应用切换", "网页分钟"];
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for w in reports["weeks"].as_array().cloned().unwrap_or_default() {
+        rows.push(serde_json::json!([
+            w["label"].as_str().unwrap_or("-"),
+            round1(w["activeMinutes"].as_f64().unwrap_or(0.0)),
+            round1(w["avgActiveMinutes"].as_f64().unwrap_or(0.0)),
+            round1(w["focusMinutes"].as_f64().unwrap_or(0.0)),
+            round1(w["focusRatio"].as_f64().unwrap_or(0.0)),
+            w["keys"].as_i64().unwrap_or(0),
+            w["clicks"].as_i64().unwrap_or(0),
+            w["switches"].as_i64().unwrap_or(0),
+            round1(w["webMinutes"].as_f64().unwrap_or(0.0)),
+        ]));
+    }
+
+    let mut trend_rows: Vec<serde_json::Value> = Vec::new();
+    for t in dash["trend"].as_array().cloned().unwrap_or_default() {
+        trend_rows.push(serde_json::json!([
+            t["label"].as_str().unwrap_or("-"),
+            round1(t["minutes"].as_f64().unwrap_or(0.0)),
+            t["source"].as_str().unwrap_or("-"),
+        ]));
+    }
+
+    let mut app_rows: Vec<serde_json::Value> = Vec::new();
+    for a in dash["topApps"].as_array().cloned().unwrap_or_default() {
+        app_rows.push(serde_json::json!([
+            a["process"].as_str().unwrap_or("-"),
+            round1(a["minutes"].as_f64().unwrap_or(0.0)),
+            round1(a["share"].as_f64().unwrap_or(0.0)),
+        ]));
+    }
+
+    let spec = serde_json::json!({
+        "file": file.to_string_lossy(),
+        "sheets": [
+            {
+                "name": "周汇总",
+                "widths": [22, 12, 12, 12, 12, 12, 12, 12, 12],
+                "sections": [
+                    { "title": "PChabit 周汇总", "headers": header, "rows": rows }
+                ]
+            },
+            {
+                "name": "近7天",
+                "widths": [12, 12, 12],
+                "sections": [
+                    { "title": "近 7 天活跃分钟", "headers": ["日期", "分钟", "来源"], "rows": trend_rows }
+                ]
+            },
+            {
+                "name": "今日应用",
+                "widths": [28, 12, 12],
+                "sections": [
+                    { "title": "今日应用排行", "headers": ["应用", "分钟", "占比%"], "rows": app_rows }
+                ]
+            }
+        ]
+    });
+
+    // datad 可能与壳同目录（publish\Shell 测试时），也可能在其上一级（D:\Tool\PChabit\Shell 旁边）
+    let datad = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+        .and_then(|dir| {
+            [
+                dir.join("pchabit-datad.exe"),
+                dir.parent().map(|p| p.join("pchabit-datad.exe")).unwrap_or_default(),
+            ]
+            .into_iter()
+            .find(|c| c.exists())
+        })
+        .ok_or_else(|| "找不到 pchabit-datad.exe（壳目录或上一级）".to_string())?;
+
+    use std::io::Write;
+    let mut child = std::process::Command::new(&datad)
+        .arg("xlsx")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("启动 datad 失败：{e}"))?;
+    if let Some(stdin) = child.stdin.as_mut() {
+        stdin
+            .write_all(spec.to_string().as_bytes())
+            .map_err(|e| format!("写请求失败：{e}"))?;
+    }
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("等待导出失败：{e}"))?;
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let v: serde_json::Value = serde_json::from_str(text.trim())
+        .map_err(|e| format!("导出结果解析失败（{e}）：{text}"))?;
+    if v["ok"].as_bool() != Some(true) {
+        return Err(format!("导出失败：{text}"));
+    }
+    let size = v["bytes"].as_i64().unwrap_or(0);
+    log_line(&format!(
+        "[壳] 导出周报：{}（{} KB / {} 行）",
+        file.display(),
+        (size as f64 / 1024.0).round(),
+        v["rows"].as_i64().unwrap_or(0)
+    ));
+    Ok(file.to_string_lossy().to_string())
+}
+
 /// 写回 `%LOCALAPPDATA%\PChabit\settings.json`：先备份 `settings.json.bak`，再整份重写。
 #[tauri::command]
 fn set_setting(key: String, value: serde_json::Value) -> Result<String, String> {
@@ -881,7 +1002,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.5";
+const VERSION: &str = "4.10.6";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -1017,7 +1138,8 @@ fn main() {
             notes_create,
             notes_update,
             notes_pin,
-            notes_delete
+            notes_delete,
+            export_weekly
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {

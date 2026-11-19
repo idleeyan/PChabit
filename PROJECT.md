@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **4.10.5**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
+| 当前版本 | **4.10.6**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核、`rust/pchabit-datad` 数据面、`rust/pchabit-shell` Tauri 2 壳预览） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，**16 个页面**：仪表盘 + 五图表/分析页 + 时间线 + 网页访问 + 网络流量 + 键鼠活动 + 历史报告 + 分类管理 + 应用详情 + 设置概览 + 便签 + 数据管理），默认入口仍是 WPF 版 |
@@ -79,7 +79,9 @@
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
 | 2026-11-18 | 3.95.0 | **前台窗口采样 1 Hz → 500 ms（P2 尾巴）**。内核采样（netd）与宿主读取（AppMonitor 定时器）同频提到 500 ms，避免短于 1 秒的切换被整段合并；每拍仍只一次 GetForegroundWindow，开销可忽略 |
+| 2026-11-19 | 4.10.6 | **历史报告页可导出 Excel**：壳命令 xport_weekly 把 eports_json（16 周）+ dashboard_json（近 7 天、今日应用）拼成 3 个工作表，spawn pchabit-datad.exe xlsx（stdin JSON）写盘到 %LOCALAPPDATA%\PChabit\Exports\周报_YYYY-MM-DD.xlsx；datad 查找兼容同目录与上一级。实测 8 KB / 31 行，解包确认三个工作表与表头正确 |
 | 2026-11-19 | 4.10.5 | **便签可写 + 修逐进程网络虚高**：便签 CRUD（软删除，与 WPF 共用 StickyNotes，写连接 3 s busy_timeout，日志不写正文）；netd 跳过回环连接（127/8、::1）并对每拍进程增量之和按系统增量等比收缩——实测下行比从 3.69 降到 0.42、上行从 14.26 降到 0.43；历史脏数据先 VACUUM 备份再按小时系统值等比校正，去掉虚高 14,269 MB |
+| 2026-11-19 | 4.10.6 | **历史报告页可导出 Excel**：壳命令 xport_weekly 把 eports_json（16 周）+ dashboard_json（近 7 天、今日应用）拼成 3 个工作表，spawn pchabit-datad.exe xlsx（stdin JSON）写盘到 %LOCALAPPDATA%\PChabit\Exports\周报_YYYY-MM-DD.xlsx；datad 查找兼容同目录与上一级。实测 8 KB / 31 行，解包确认三个工作表与表头正确 |
 | 2026-11-19 | 4.10.5 | **便签可写**：datad::notes_create/update/pin/delete（逐列对齐 StickyNotes，删除为软删除，Version 自增，Id 用纳秒+pid 生成 GUID 形状串）；壳命令与 
 otes.html 的「新便签 / 编辑 / 保存 / 置顶 / 删除」；写连接 3 s usy_timeout；日志只记 Id/字数/颜色，不写正文。实测副本库 CRUD 全通、软删除后重读不计数 |
 | 2026-11-19 | 4.10.4 | **修发布版翻页 bug + 壳可写**：page_data 去掉磁盘存在性检查（发布版页面内嵌 exe，旧逻辑导致托盘开窗后翻页全报缺资产）；datad::cleanup_old/backup_now + 壳命令 cleanup_data/backup_db，数据管理页可备份/清理（实测备份 190 MB、保留 60 天删 180,029 条）；设置页白名单可写 set_setting（写前 .bak 备份），修 settings 页映射与载荷结构；壳窗口 60 s 自动刷新（写库页跳过）；采集 CLI 新增 --compare 日汇总对账（11-18 完全一致）。发布 4.10.4.0 部署 D:\Tool\PChabit |

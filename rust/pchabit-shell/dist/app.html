@@ -368,6 +368,13 @@
           .catch(function (e) { note('dtest 失败：' + e); });
       }
 
+      // 自测钩子：?xtest=1 验证周报导出（生成 Excel 并回写路径）
+      if (page === 'reports' && new URLSearchParams(location.search).get('xtest') === '1') {
+        window.__TAURI__.core.invoke('export_weekly', {})
+          .then(function (p) { note('xtest 导出 ' + p); })
+          .catch(function (e) { note('xtest 失败：' + e); });
+      }
+
       // 自测钩子：?ntest=1 验证便签写库（新建 → 改 → 置顶 → 删），配合 PCHABIT_DB 指向库副本
       if (page === 'notes' && new URLSearchParams(location.search).get('ntest') === '1') {
         var nid = null;
