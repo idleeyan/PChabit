@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.20**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.21**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.21 | 网页访问/网络流量/应用详情/键鼠活动 统一范围条（全部/今日/7/30/90），网络页新增 net_data 与全量口径 |
 | 2026-11-20 | 4.12.20 | 键鼠活动补回明细：具体键位排行、组合键次数（Shortcuts 真正写入）、鼠标左/右/中键分项统计、位移展示 |
 | 2026-11-19 | 4.12.19 | 补齐缺失子系统：WebDAV 云备份客户端 + 本地/云端备份轮转、系统通知、全局热键（Ctrl+Alt+N 便签 / Ctrl+Alt+B 主窗）、每日目标 KPI、桌面悬浮窗逐项开关与置顶/穿透、额外 WebSocket 端口 |
 | 2026-11-19 | 4.12.18 | 设置页「Rust 未接入」第一批接线：键盘/鼠标/网页访问/浏览器历史/匿名化/MinimizeToTray/开机自启 7 项真正生效（采集侧新增 settings.rs 按 mtime 缓存读设置） |

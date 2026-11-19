@@ -69,6 +69,7 @@
     <div class="top"><input id="q" placeholder="搜索应用…" /></div>
     <div class="ranges" id="ranges">
       <button data-days="0" class="on">全部</button>
+  <button data-days="1">今日</button>
       <button data-days="7">7天</button>
       <button data-days="30">30天</button>
       <button data-days="90">90天</button>
@@ -104,7 +105,7 @@
   var chosenDays = 0;   // 0 = 全部历史
 
   function rangeLabel() {
-    return chosenDays <= 0 ? '全部历史' : ('近 ' + chosenDays + ' 天');
+    return chosenDays <= 0 ? '全部历史' : (chosenDays === 1 ? '今日' : ('近 ' + chosenDays + ' 天'));
   }
 
   function fmtMins(v) {

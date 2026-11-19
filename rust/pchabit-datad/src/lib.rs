@@ -2508,6 +2508,39 @@ pub fn net_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value, 
     }))
 }
 
+/// 网络用量最早一天（`ProcessNetworkUsages` 的 MIN(Date)）。
+pub fn net_earliest_date(db: &Path) -> Option<String> {
+    if !db.exists() {
+        return None;
+    }
+    let conn = open_readonly(db).ok()?;
+    let mut stmt = conn
+        .prepare("SELECT MIN(substr(Date,1,10)) FROM ProcessNetworkUsages")
+        .ok()?;
+    let mut rows = stmt.query([]).ok()?;
+    let row = rows.next().ok()??;
+    let min: Option<String> = row.get(0).ok()?;
+    min.filter(|s| s.len() >= 10).map(|s| s[..10].to_string())
+}
+
+/// 键鼠数据最早一天（`KeyboardSessions` / `MouseSessions` 的 MIN(Date)）。
+pub fn input_earliest_date(db: &Path) -> Option<String> {
+    if !db.exists() {
+        return None;
+    }
+    let conn = open_readonly(db).ok()?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT MIN(substr(Date,1,10)) FROM (\
+               SELECT Date FROM KeyboardSessions UNION ALL SELECT Date FROM MouseSessions)",
+        )
+        .ok()?;
+    let mut rows = stmt.query([]).ok()?;
+    let row = rows.next().ok()??;
+    let min: Option<String> = row.get(0).ok()?;
+    min.filter(|s| s.len() >= 10).map(|s| s[..10].to_string())
+}
+
 /// 键鼠统计：`KeyboardSessions` / `MouseSessions` 按日期区间聚合。
 pub fn input_json(db: &Path, start: &str, end: &str) -> Result<serde_json::Value, String> {
     if !db.exists() {

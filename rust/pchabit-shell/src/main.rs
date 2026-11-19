@@ -696,12 +696,23 @@ fn payload_dashboard() -> serde_json::Value {
     }
 }
 
-/// 网络流量（只读）：近 7 天按进程聚合 + 24 小时下行 + 日趋势。
+/// 网络流量（只读）：默认全部历史，页面内可切范围。
 fn payload_net() -> serde_json::Value {
+    net_payload(0)
+}
+
+/// 网络流量按范围取数：`days = 0` 全部历史，`1` 今日。
+fn net_payload(days: i64) -> serde_json::Value {
+    let db = pchabit_datad::default_db();
     let today = pchabit_datad::today_local();
-    let start = pchabit_datad::date_shift(&today, -6);
-    match pchabit_datad::net_json(&pchabit_datad::default_db(), &start, &today) {
-        Ok(v) => {
+    let start = if days <= 0 {
+        pchabit_datad::net_earliest_date(&db)
+            .unwrap_or_else(|| pchabit_datad::date_shift(&today, -6))
+    } else {
+        pchabit_datad::date_shift(&today, -(days - 1))
+    };
+    match pchabit_datad::net_json(&db, &start, &today) {
+        Ok(mut v) => {
             log_line(&format!(
                 "net: {start}~{today} / 下 {} / 上 {} / {} 进程 / {:.1} ms",
                 v["totalDownText"].as_str().unwrap_or(""),
@@ -709,6 +720,7 @@ fn payload_net() -> serde_json::Value {
                 v["processes"].as_array().map(|a| a.len()).unwrap_or(0),
                 v["ms"].as_f64().unwrap_or(0.0)
             ));
+            v["days"] = serde_json::json!(days);
             v
         }
         Err(e) => {
@@ -720,12 +732,33 @@ fn payload_net() -> serde_json::Value {
     }
 }
 
-/// 键鼠活动（只读）：近 7 天按键 / 点击 / 滚动 / 分布 / 排行。
+/// 前端切范围时调：`days = 0` 表示全部历史。
+#[tauri::command]
+fn net_data(days: i64) -> Result<serde_json::Value, String> {
+    let v = net_payload(days);
+    if v["ok"].as_bool().unwrap_or(false) {
+        Ok(v)
+    } else {
+        Err(v["error"].as_str().unwrap_or("读取失败").to_string())
+    }
+}
+
+/// 键鼠活动（只读）：默认全部历史，页面内可切范围。
 fn payload_input() -> serde_json::Value {
+    input_payload(0)
+}
+
+/// 键鼠活动按范围取数：`days <= 0` = 全部历史（起点取库内最早一天）。
+fn input_payload(days: i64) -> serde_json::Value {
+    let db = pchabit_datad::default_db();
     let today = pchabit_datad::today_local();
-    let start = pchabit_datad::date_shift(&today, -6);
-    match pchabit_datad::input_json(&pchabit_datad::default_db(), &start, &today) {
-        Ok(v) => {
+    let start = if days <= 0 {
+        pchabit_datad::input_earliest_date(&db).unwrap_or_else(|| pchabit_datad::date_shift(&today, -29))
+    } else {
+        pchabit_datad::date_shift(&today, -(days - 1))
+    };
+    match pchabit_datad::input_json(&db, &start, &today) {
+        Ok(mut v) => {
             log_line(&format!(
                 "input: {start}~{today} / {} 键 / {} 击 / {} 滚 / {:.1} ms",
                 v["keys"].as_i64().unwrap_or(0),
@@ -733,15 +766,27 @@ fn payload_input() -> serde_json::Value {
                 v["scroll"].as_i64().unwrap_or(0),
                 v["ms"].as_f64().unwrap_or(0.0)
             ));
+            v["days"] = serde_json::json!(days);
             v
         }
         Err(e) => {
             log_line(&format!("input: 读取失败 {e}"));
             serde_json::json!({
                 "ok": false, "error": e, "topKeys": [], "topClicks": [],
-                "hourlyKeys": [], "hourlyClicks": []
+                "hourlyKeys": [], "hourlyClicks": [], "keyFreq": [], "shortcuts": []
             })
         }
+    }
+}
+
+/// 前端切范围时调：`days = 0` 表示全部历史。
+#[tauri::command]
+fn input_data(days: i64) -> Result<serde_json::Value, String> {
+    let v = input_payload(days);
+    if v["ok"].as_bool().unwrap_or(false) {
+        Ok(v)
+    } else {
+        Err(v["error"].as_str().unwrap_or("读取失败").to_string())
     }
 }
 
@@ -1320,7 +1365,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.20";
+const VERSION: &str = "4.12.21";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1700,6 +1745,8 @@ fn main() {
             pages_data,
             web_data,
             apps_stats,
+            input_data,
+            net_data,
             note,
             set_category,
             create_category,

@@ -11,6 +11,12 @@
   h1 { font-size:15px; font-weight:600; margin:0; }
   .hint { color:#94a3b8; font-size:11px; }
 
+  .ranges { display:flex; gap:6px; margin:-4px 0 12px; }
+  .ranges button { background:#182234; border:1px solid #263349; color:#94a3b8; border-radius:6px;
+    padding:3px 10px; font-size:11px; cursor:pointer; font-family:inherit; }
+  .ranges button:hover { border-color:#3b82f6; color:#cbd5e1; }
+  .ranges button.on { background:#1d3a63; border-color:#3b82f6; color:#e2e8f0; }
+
   .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin-bottom:14px; }
   .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
   .kpi .n { color:#94a3b8; font-size:10px; }
@@ -53,6 +59,14 @@
   <h1>网络流量</h1>
   <span class="hint" id="meta">加载中…</span>
 </header>
+
+<div class="ranges" id="ranges">
+  <button data-days="0" class="on">全部历史</button>
+  <button data-days="1">今日</button>
+  <button data-days="7">近 7 天</button>
+  <button data-days="30">近 30 天</button>
+  <button data-days="90">近 90 天</button>
+</div>
 
 <div class="kpis" id="kpis"></div>
 
@@ -106,6 +120,7 @@
       document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
       return 'error';
     }
+    if (chosenDays !== 0 && !d.__explicit) return 'skip: 保持用户选择的范围';
     var rg = d.range || {};
     document.getElementById('meta').textContent =
       (rg.start || '') + ' ~ ' + (rg.end || '') + '　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
@@ -203,7 +218,37 @@
   }
 
   window.renderNet = renderNet;
+
+  var chosenDays = 0;          // 0 = 全部历史
+  function pickRange(days, btn) {
+    chosenDays = days;
+    var bar = document.getElementById('ranges');
+    if (bar) {
+      Array.prototype.forEach.call(bar.children, function (b) {
+        b.className = (b === btn) ? 'on' : '';
+      });
+    }
+    var meta = document.getElementById('meta');
+    if (!window.__TAURI__ || !window.__TAURI__.core) { return; }
+    meta.textContent = '读取中…';
+    window.__TAURI__.core.invoke('net_data', { days: days }).then(function (d) {
+      d.__explicit = true;
+      window.__NET_DATA__ = d;
+      window.__NET_RESULT__ = renderNet(d);
+    }).catch(function (e) {
+      meta.textContent = '读取失败：' + e;
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
+    var bar = document.getElementById('ranges');
+    if (bar) {
+      Array.prototype.forEach.call(bar.children, function (b) {
+        b.addEventListener('click', function () {
+          pickRange(Number(b.getAttribute('data-days')) || 0, b);
+        });
+      });
+    }
     if (window.__NET_DATA__) {
       try { window.__NET_RESULT__ = renderNet(window.__NET_DATA__); }
       catch (e) { window.__NET_RESULT__ = 'error: ' + e.message; }
