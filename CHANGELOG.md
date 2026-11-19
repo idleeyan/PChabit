@@ -2,6 +2,27 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.11.0] - 2026-11-19
+
+### P5 采集与壳合一：开机自启跑壳单进程（窗口 + 托盘 + 采集）
+
+- **启动模型收敛**：计划任务「PChabit 采集宿主」的参数由 `--host --headless` 改为 `--host`，
+  登录后直接起**一个** `PChabitShell.exe`：带窗口、带托盘、带采集宿主，不再需要
+  `PChabit.exe`（WPF）在托盘里陪跑。
+- **WPF 自启下线**：删除 `HKCU\…\Run\PChabit`（原值 `"D:\Tool\PChabit\PChabit.exe"`），
+  WPF 版二进制仍留在 `D:\Tool\PChabit\PChabit.exe`，可手动打开做对照，但不再随开机启动。
+- **踩坑**：`schtasks /change /TR "\"path\" --arg"` 的引号会多出一层反斜杠被拒；
+  `Set-ScheduledTask` 又因任务 `RunLevel=Highest` 需要管理员而「拒绝访问」。
+  最终用一次性 UAC 提权（`Start-Process pwsh -Verb RunAs` 跑脚本）才改成功。
+- **每日对账任务**：新增计划任务「PChabit 每日对账」，00:10 跑
+  `pchabit-collect --compare <昨天>`，结果追加到
+  `%LOCALAPPDATA%\PChabit\Logs\compare.log`，给双轨观察期留证据。
+
+实测（通过计划任务启动）：`托盘已建立（窗口模式）：关窗隐到托盘` / `采集宿主启动` /
+`netd：已拉起新实例` / `键鼠钩子：键盘 + 鼠标均安装成功` / `浏览器扩展握手成功（豆包浏览器 v2.2.4）` /
+`页面加载完成 [main]`；进程只有 `PChabitShell` + `pchabit-netd` 两个。
+对账首跑 `2026-11-18`：键数 1375/1375、点击数 5777/5777、活跃分钟 391.3/391.3，结论一致。
+
 ## [4.10.10] - 2026-11-19
 
 ### 键鼠进程名口径统一 + 内核健康度进设置页 + 历史乱码清理
