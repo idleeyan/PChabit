@@ -8,7 +8,10 @@
         html, body {
             width: 100%;
             height: 100%;
-            background: transparent;
+            /* 自己铺深色底：以前写 transparent，单独打开这一页时画布是白的，
+               而图例文字按深色主题取近白色 → 白底白字几乎看不见 */
+            background: #0f172a;
+            color: #e2e8f0;
             overflow: hidden;
         }
         #chart { width: 100%; height: 100%; }
@@ -19,16 +22,15 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #888;
+            color: #94a3b8;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: transparent;
+            background: #0f172a;
         }
         #empty-icon { font-size: 48px; margin-bottom: 16px; }
         #empty-text { font-size: 16px; }
 
-        /* 深色主题：由 WebView2 PreferredColorScheme 驱动 prefers-color-scheme */
         @media (prefers-color-scheme: dark) {
-            #empty { color: #aaa; }
+            #empty { color: #94a3b8; }
         }
     </style>
 </head>
@@ -43,11 +45,13 @@
         var __pieData = null;
 
         function isDark() {
-            return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            // 这一页固定深色底（见上面 html/body 的 background），
+            // 不再跟随 prefers-color-scheme：否则系统浅色时会用深色字画在深底上，同样糊成一片
+            return true;
         }
 
-        function themeText()   { return isDark() ? '#e8e8e8' : '#333'; }
-        function themeSub()    { return isDark() ? '#9aa0a6' : '#666'; }
+        function themeText()   { return isDark() ? '#f1f5f9' : '#333'; }
+        function themeSub()    { return isDark() ? '#a8b3c4' : '#666'; }
         function themeBorder() { return isDark() ? '#3c4043' : '#ddd'; }
         function tooltipBg()   { return isDark() ? 'rgba(32,33,36,0.96)' : 'rgba(255,255,255,0.96)'; }
         function sliceBorder() { return isDark() ? '#1e1e1e' : '#ffffff'; }
@@ -115,13 +119,16 @@
                     },
                     legend: {
                         orient: 'vertical',
-                        right: 20,
+                        right: 18,
                         top: 'center',
-                        itemWidth: 12,
-                        itemHeight: 12,
+                        itemWidth: 14,
+                        itemHeight: 14,
+                        itemGap: 9,
+                        // 字号 12 在这块窄条上偏小、且原来是浅灰低对比；抬到 13 并换成近白
                         textStyle: {
-                            fontSize: 12,
-                            color: themeText()
+                            fontSize: 13,
+                            color: themeText(),
+                            lineHeight: 18
                         },
                         formatter: function(name) {
                             var item = data.find(function(d) { return d.name === name; });
