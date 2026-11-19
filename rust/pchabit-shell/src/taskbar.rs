@@ -723,6 +723,9 @@ fn tick_loop() {
     let mut first = true;
     let mut meter = pchabit_collect::netif::NetMeter::new();
     let mut tick: u32 = 0;
+    // netd 管道：GPU 每秒问一次，断了就下一拍重连（不阻塞采集）
+    let mut gpu_pipe: Option<pchabit_collect::netd::Pipe> = pchabit_collect::netd::Pipe::connect(1);
+    let mut gpu_logged = false;
 
     loop {
         std::thread::sleep(std::time::Duration::from_millis(1000));
@@ -767,13 +770,54 @@ fn tick_loop() {
             None => (0.0, 0.0),
         };
 
+        // GPU：向 netd 问一次快照（NVML 直读；无 N 卡时 avail=false）
+        let (gpu_load, vram_used, vram_total) = {
+            let reply = match gpu_pipe.as_mut() {
+                Some(p) => p.cmd("GPU"),
+                None => None,
+            };
+            let mut out = None;
+            if let Some(text) = reply {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if v["avail"].as_bool().unwrap_or(false) {
+                        out = Some((
+                            v["load"].as_f64().unwrap_or(0.0),
+                            v["vramUsed"].as_f64().unwrap_or(0.0),
+                            v["vramTotal"].as_f64().unwrap_or(0.0),
+                        ));
+                    }
+                }
+            } else {
+                // 管道断了：这拍先空着，下一拍重新连
+                gpu_pipe = pchabit_collect::netd::Pipe::connect(1);
+            }
+            match out {
+                Some(t) => t,
+                None => (-1.0, 0.0, 0.0),
+            }
+        };
+        let gpu_avail = gpu_load >= 0.0;
+        if gpu_avail && !gpu_logged {
+            gpu_logged = true;
+            crate::log_line(&format!(
+                "[小窗] GPU 接入：{:.0}% / 显存 {:.0}MB÷{:.0}MB",
+                gpu_load, vram_used, vram_total
+            ));
+        } else if !gpu_avail && !gpu_logged && tick % 30 == 0 {
+            crate::log_line("[小窗] GPU 暂不可用（netd 无 NVML 或管道未连上）");
+        }
+
         // 每一拍都重读设置：设置页里勾掉某项，1 秒内小窗就变
         let show_net = setting_bool("TaskbarShowNet", true);
         let show_cpu = setting_bool("TaskbarShowCpu", true);
         let show_mem = setting_bool("TaskbarShowMemory", true);
+        let show_gpu = setting_bool("TaskbarShowGpu", true);
+        let show_vram = setting_bool("TaskbarShowVram", true);
 
-        // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存
-        let mut segments: Vec<Segment> = Vec::with_capacity(4);
+        // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存 / GPU / 显存
+        let has_gpu = gpu_avail && (show_gpu || show_vram);
+        let vram_pct = if vram_total > 0.0 { (vram_used / vram_total * 100.0).clamp(0.0, 100.0) } else { 0.0 };
+        let mut segments: Vec<Segment> = Vec::with_capacity(6);
         if show_net {
             segments.push(Segment {
                 label: "↓".into(),
@@ -790,7 +834,7 @@ fn tick_loop() {
                 divider_before: false,
             });
         }
-        if show_cpu || show_mem {
+        if show_cpu || show_mem || has_gpu {
             // 网速区之后用一条竖线隔开；网速没开就由第一个指标自己顶上
             let mut first_of_group = true;
             if show_cpu {
@@ -808,6 +852,26 @@ fn tick_loop() {
                     label: "内存".into(),
                     value: format!("{:.0}%", mem),
                     tone: load_tone(mem),
+                    value_pt: VALUE_PT,
+                    divider_before: show_net && first_of_group,
+                });
+                first_of_group = false;
+            }
+            if has_gpu && show_gpu {
+                segments.push(Segment {
+                    label: "GPU".into(),
+                    value: format!("{:.0}%", gpu_load),
+                    tone: load_tone(gpu_load),
+                    value_pt: VALUE_PT,
+                    divider_before: show_net && first_of_group,
+                });
+                first_of_group = false;
+            }
+            if has_gpu && show_vram {
+                segments.push(Segment {
+                    label: "显存".into(),
+                    value: format!("{:.0}%", vram_pct),
+                    tone: load_tone(vram_pct),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
                 });

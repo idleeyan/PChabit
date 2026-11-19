@@ -105,6 +105,7 @@
     TaskbarShowCpu: '小窗显示 CPU',
     TaskbarShowMemory: '小窗显示内存',
     TaskbarShowGpu: '小窗显示 GPU',
+    TaskbarShowVram: '小窗显示显存',
     TaskbarShowNet: '小窗显示网速',
     TaskbarShowDisk: '小窗显示磁盘',
     TaskbarShowTemp: '小窗显示温度',
@@ -139,6 +140,7 @@
   // 改了当拍就生效的键（其余标「重启生效」或「未接入」）
   var LIVE = {
     TaskbarEnabled: 1, TaskbarShowCpu: 1, TaskbarShowMemory: 1, TaskbarShowNet: 1,
+    TaskbarShowGpu: 1, TaskbarShowVram: 1,
     DataRetentionDays: 1
   };
 
@@ -153,7 +155,7 @@
     BrowserSyncEnabled: 1, BrowserHistoryIngestEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1,
     BackupPath: 1, AutoBackupEnabled: 1, AutoBackupIntervalHours: 1, MaxBackupCount: 1, MaxCloudBackupCount: 1,
     ArchiveBeforeCleanup: 1,
-    TaskbarShowGpu: 1, TaskbarShowDisk: 1, TaskbarShowTemp: 1, TaskbarShowUsage: 1,
+    TaskbarShowDisk: 1, TaskbarShowTemp: 1, TaskbarShowUsage: 1,
     DesktopWidgetShowCpu: 1, DesktopWidgetShowMemory: 1, DesktopWidgetShowGpu: 1, DesktopWidgetShowVram: 1,
     DesktopWidgetShowNet: 1, DesktopWidgetShowDisk: 1, DesktopWidgetShowUsage: 1, DesktopWidgetShowCurrentApp: 1,
     DesktopWidgetTopmost: 1, DesktopWidgetClickThrough: 1, DesktopWidgetClampToScreen: 1, DesktopWidgetScreen: 1,
@@ -166,7 +168,7 @@
     ['采集', ['TrackKeyboard','TrackMouse','TrackWebBrowsing','AnonymizeData','DataRetentionDays','RetentionDays','AutoCleanupEnabled','ArchiveBeforeCleanup','MonitoringInterval','IdleThreshold']],
     ['网络与同步', ['WebSocketPort','WebDAVEnabled','WebDAVUrl','WebDAVUsername','WebDAVPassword','WebDAVLastSync','BrowserSyncEnabled','BrowserHistoryIngestEnabled','BrowserSyncIntervalMinutes','BrowserAutoPush']],
     ['备份', ['BackupPath','AutoBackupEnabled','AutoBackupIntervalHours','MaxBackupCount','MaxCloudBackupCount']],
-    ['任务栏小窗', ['TaskbarEnabled','TaskbarShowNet','TaskbarShowCpu','TaskbarShowMemory','TaskbarShowGpu','TaskbarShowDisk','TaskbarShowTemp','TaskbarShowUsage']],
+    ['任务栏小窗', ['TaskbarEnabled','TaskbarShowNet','TaskbarShowCpu','TaskbarShowMemory','TaskbarShowGpu','TaskbarShowVram','TaskbarShowDisk','TaskbarShowTemp','TaskbarShowUsage']],
     ['桌面悬浮窗', ['DesktopWidgetEnabled','DesktopWidgetShowCpu','DesktopWidgetShowMemory','DesktopWidgetShowGpu','DesktopWidgetShowVram','DesktopWidgetShowNet','DesktopWidgetShowDisk','DesktopWidgetShowUsage','DesktopWidgetShowCurrentApp','DesktopWidgetTopmost','DesktopWidgetClickThrough','DesktopWidgetClampToScreen','DesktopWidgetScreen','DesktopWidgetLeft','DesktopWidgetTop','DesktopWidgetWidth','DesktopWidgetHeight']],
     ['便签', ['StickyNotesEnabled','StickyNotesHotkeyNew','StickyNotesHotkeyBoard','StickyNotesSyncEnabled','StickyNotesLastSync','StickyNotesRetentionDays','StickyNotesQuickDismissOnFocusLost','StickyNotesDeviceId']]
   ];
