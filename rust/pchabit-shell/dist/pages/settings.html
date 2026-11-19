@@ -14,8 +14,11 @@
     padding:8px 10px; color:#94a3b8; font-size:11px; margin-bottom:14px; line-height:1.7; }
   .hint b { color:#cbd5e1; font-weight:600; }
 
-  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(360px, 1fr)); gap:12px; align-items:start; }
-  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
+  /* 多列流式布局：各分组高度差别很大（桌面悬浮窗 17 项、便签 8 项），
+     用 grid 会让短分组下方留下大片空白，改成列流（masonry 效果）+ 分组不跨列断开。 */
+  .grid { column-width:380px; column-gap:12px; }
+  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px;
+    break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 12px; }
   section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
     display:flex; align-items:center; gap:8px; }
   section h2 em { font-style:normal; color:#64748b; font-size:10px; font-weight:400; }
