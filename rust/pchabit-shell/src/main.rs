@@ -81,6 +81,7 @@ fn read_theme_is_light() -> bool {
 }
 
 /// 本地当前小时（UTC+8），用于把"还没到的时段"和"真的零活跃"区分开。
+#[allow(dead_code)]
 fn current_hour() -> i64 {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -178,54 +179,6 @@ fn payload_hardware(report: &serde_json::Value) -> serde_json::Value {
         summary = "暂无硬件样本".into();
     }
     serde_json::json!({ "hours": hours, "summary": summary })
-}
-
-/// 每小时活动：`__ACT_DATA__ = { bars:[{label,value,level,future}], summary }`
-fn payload_activity() -> serde_json::Value {
-    let today = pchabit_datad::today_local();
-    let report = match analytics_for(&today, &today) {
-        Ok(v) => v,
-        Err(e) => return serde_json::json!({ "bars": [], "summary": format!("数据不可用：{e}") }),
-    };
-    let now_h = current_hour();
-    let bars: Vec<serde_json::Value> = report["hourHeat"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .map(|h| {
-                    let mins = h["minutes"].as_f64().unwrap_or(0.0);
-                    let level = h["intensityLevel"].as_i64().unwrap_or(0);
-                    let hour = h["hour"].as_i64().unwrap_or(0);
-                    let grade = if mins <= 0.0 {
-                        "low"
-                    } else if level >= 3 {
-                        "high"
-                    } else if level >= 2 {
-                        "mid"
-                    } else {
-                        "low"
-                    };
-                    serde_json::json!({
-                        "label": h["label"].clone(),
-                        "value": mins.round(),
-                        "level": grade,
-                        "future": hour > now_h,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let total: f64 = bars.iter().filter_map(|b| b["value"].as_f64()).sum();
-    let summary = if total <= 0.0 {
-        "今日暂无活跃记录".to_string()
-    } else {
-        let h = (total / 60.0).floor() as i64;
-        let m = (total % 60.0).round() as i64;
-        let peak = bars.iter().filter_map(|b| b["value"].as_f64()).fold(0.0, f64::max);
-        format!("今日累计 {h}小时{m}分 · 峰值 {peak:.0} 分/小时")
-    };
-    serde_json::json!({ "bars": bars, "summary": summary })
 }
 
 /// 饼图两种模式，对齐 C# `AppStatsViewModel.BuildPieChartData`：
@@ -415,7 +368,6 @@ fn backup_db() -> Result<String, String> {
 fn page_data(page: String) -> Result<serde_json::Value, String> {
     let file = match page.as_str() {
         "hardware" => "hardware-trend.html",
-        "activity" => "activity-trend.html",
         "category" => "piechart.html",
         "sankey" => "sankey.html",
         "analytics" => "analytics.html",
@@ -441,7 +393,6 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
 
     let t0 = std::time::Instant::now();
     let data = match page.as_str() {
-        "activity" => payload_activity(),
         "sankey" => payload_sankey(),
         "admin" => {
             let apps = pchabit_datad::app_categories_json(&pchabit_datad::default_db(), 7)
@@ -489,7 +440,6 @@ fn all_pages() -> serde_json::Value {
         });
     let pages = serde_json::json!({
         "hardware": payload_hardware(&report),
-        "activity": payload_activity(),
         "category": payload_category(&report),
         "sankey": payload_sankey(),
         "analytics": report,
@@ -1091,7 +1041,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.10";
+const VERSION: &str = "4.12.11";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 

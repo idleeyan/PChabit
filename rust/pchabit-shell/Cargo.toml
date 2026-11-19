@@ -1,6 +1,6 @@
 [package]
 name = "pchabit-shell"
-version = "4.12.10"
+version = "4.12.11"
 edition = "2021"
 
 [build-dependencies]

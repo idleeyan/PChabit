@@ -2,6 +2,19 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.11] - 2026-11-19
+
+### 去掉「每小时活动」页（与仪表盘的 24 小时活跃重复）
+
+- 导航栏删掉「每小时活动」，`app.html` 里的 `ASSET` / `TITLE` / `feed()` 分支同步移除；
+- 壳侧清掉这条路径：`page_data` 的 page→文件映射与载荷分支、`all_pages()` 里的
+  `"activity": payload_activity()` 都删了；`payload_activity()` 函数整体删除
+  （`current_hour()` 暂留并标 `allow(dead_code)`）；
+- `build.rs` 不再把 `assets\Dashboard\activity-trend.html` 复制进 `dist\pages`，
+  已生成的 `dist\pages\activity-trend.html` 删除 → 发布包里不再有这个页面。
+- 24 小时活跃视图保留在**仪表盘**（`dashboard.html` 的「24 小时活跃」分节，按会话开始时间累计分钟），
+  信息不丢，只是不再重复出现一处。
+
 ## [4.12.10] - 2026-11-19
 
 ### 分类构成（饼图）右侧文字看不清
