@@ -133,6 +133,8 @@ extern "system" {
     fn DispatchMessageW(msg: *const Msg) -> isize;
     fn PostQuitMessage(code: i32);
     fn GetSystemTimes(idle: *mut u64, kernel: *mut u64, user: *mut u64) -> i32;
+    fn LoadCursorW(instance: HINSTANCE, name: *const u16) -> isize;
+    fn SetCursor(cursor: isize) -> isize;
 }
 
 #[link(name = "gdi32")]
@@ -188,6 +190,7 @@ const LWA_COLORKEY: u32 = 0x1;
 const TRANSPARENT: i32 = 1;
 const SRCCOPY: u32 = 0x00CC_0020;
 const WM_PAINT: u32 = 0x000F;
+const WM_SETCURSOR: u32 = 0x0020;
 const WM_ERASEBKGND: u32 = 0x0014;
 const WM_LBUTTONDOWN: u32 = 0x0201;
 const WM_LBUTTONUP: u32 = 0x0202;
@@ -203,6 +206,8 @@ const VALUE_LIGHT: u32 = 0x0011_1111;
 const VALUE_DARK: u32 = 0x00F8_F8F8;
 
 const CLASS_NAME: &str = "PChabitTaskbarWidgetRust";
+/// IDC_ARROW 是资源 ID 32512，`LoadCursorW(NULL, ...)` 直接取系统箭头
+const ARROW_ID: *const u16 = 32512usize as *const u16;
 const PADDING: i32 = 10;
 const ITEM_GAP: i32 = 12;
 const LABEL_GAP: i32 = 3;
@@ -351,7 +356,7 @@ unsafe fn create_window() {
         cb_wnd_extra: 0,
         h_instance: instance,
         h_icon: 0,
-        h_cursor: 0,
+        h_cursor: unsafe { LoadCursorW(0, ARROW_ID) },
         hbr_background: 0,
         lpsz_menu_name: std::ptr::null(),
         lpsz_class_name: class.as_ptr(),
@@ -466,6 +471,13 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
             0
         }
         WM_ERASEBKGND => 1,
+        WM_SETCURSOR => {
+            // 鼠标移上来必须明确给箭头：hCursor 为空且不处理 WM_SETCURSOR 时，
+            // 光标会沿用系统/父窗口的「忙碌」状态，看起来就是沙漏。
+            let arrow = LoadCursorW(0, ARROW_ID);
+            SetCursor(arrow);
+            1
+        }
         WM_LBUTTONDOWN => {
             with_state(|s| s.mouse_down = true);
             0

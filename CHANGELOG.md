@@ -2,6 +2,27 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.7] - 2026-11-19
+
+### 应用详情页修好 + 任务栏小窗不再显示沙漏光标
+
+- **详情页「显示异常」根因**：`pages/detail.html` 里有两个同名函数——
+  详情绘制 `function renderDetail(d, a)` 和列表入口 `window.renderDetail = function (payload)`。
+  后者给 `window` 赋同名属性，把前者覆盖掉了。于是点开一个应用后
+  `.then(renderDetail(d, a))` 实际调用的是**列表入口**，它拿 detail 载荷去取 `payload.apps.items`
+  取不到 → `APPS=[]` → 左侧列表被清空成「没有匹配的应用」，右侧 KPI / 24 小时热度 / 日趋势 /
+  运行画像全部不填，副标题一直停在「加载中…」。
+  **改法**：详情绘制函数改名 `paintDetail(d, a)`（附注释说明为什么不能重名），
+  `.then` 改成 `window.__DETAIL_RESULT__ = paintDetail(d, a)`。
+- **验证**：用真实库数据（`pchabit-datad detail` + `appcats` 输出）拼一个注入版页面，
+  Edge 无头渲染截图确认：左侧 30+ 应用列表、6 个 KPI（总时长 9h1m / 会话 263 / 最长 57 分钟 /
+  平均 2 分钟）、24 小时热度、每日趋势柱、运行画像（CPU 40.5% / GPU 61.7% / 72 °C）、
+  窗口标题 Top 5 全部正常。
+- **沙漏光标**：任务栏小窗的 `WndClassW.h_cursor` 一直是 0，且不处理 `WM_SETCURSOR`，
+  鼠标移上去会沿用父窗口（explorer 任务栏）的忙碌状态光标。
+  改法：注册窗口类时 `h_cursor = LoadCursorW(0, IDC_ARROW)`，并在 `wnd_proc` 里处理
+  `WM_SETCURSOR`（0x0020）显式 `SetCursor(arrow)` 后返回 1。
+
 ## [4.12.6] - 2026-11-19
 
 ### 任务栏小窗改成「网速优先」布局

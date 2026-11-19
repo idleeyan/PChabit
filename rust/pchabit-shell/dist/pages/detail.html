@@ -134,14 +134,17 @@
       appName: a.appName || '',
       category: a.category || '',
     }).then(function (d) {
-      window.__DETAIL_RESULT__ = renderDetail(d, a);
+      window.__DETAIL_RESULT__ = paintDetail(d, a);
     }).catch(function (e) {
       document.getElementById('sub').textContent = '详情加载失败：' + e;
       window.__DETAIL_RESULT__ = 'error: ' + e;
     });
   }
 
-  function renderDetail(d, a) {
+  // 注意：这里不能再叫 renderDetail —— 脚本尾部会给 window.renderDetail 赋「装列表」的入口函数，
+  // 同名会把这里的详情绘制函数覆盖掉，点开应用后 then 里调到的其实是入口函数，
+  // 结果就是左侧列表被清空、右侧 KPI/热力图全空（4.12.7 修）。
+  function paintDetail(d, a) {
     document.getElementById('sub').textContent =
       a.processName + '　分类 ' + (d.category || '未分类') + '　近 7 天';
 
