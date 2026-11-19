@@ -1043,7 +1043,145 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.11.1";
+const VERSION: &str = "4.12.0";
+
+// ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
+
+/// 桌面上该摆哪些便签。
+#[tauri::command]
+fn notes_desktop() -> serde_json::Value {
+    match pchabit_datad::notes_desktop_json(&pchabit_datad::default_db()) {
+        Ok(v) => v,
+        Err(e) => {
+            log_line(&format!("notes_desktop: 读取失败 {e}"));
+            serde_json::json!({ "count": 0, "items": [] })
+        }
+    }
+}
+
+/// 单张便签的内容（桌面便签窗口首次加载时取）。
+#[tauri::command]
+fn note_get(id: String) -> serde_json::Value {
+    let db = pchabit_datad::default_db();
+    match pchabit_datad::notes_json(&db) {
+        Ok(v) => v["items"]
+            .as_array()
+            .and_then(|a| a.iter().find(|n| n["id"].as_str() == Some(id.as_str())))
+            .cloned()
+            .unwrap_or(serde_json::json!({ "id": id, "content": "", "color": "yellow", "pinned": false })),
+        Err(e) => {
+            log_line(&format!("note_get: 读取失败 {e}"));
+            serde_json::json!({ "id": id, "content": "", "color": "yellow", "pinned": false })
+        }
+    }
+}
+
+/// 把当前窗口的位置/尺寸回写库（移动、缩放后各调一次）。
+fn save_note_pos(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
+    let label = format!("note-{id}");
+    let Some(w) = app.get_webview_window(&label) else {
+        return Ok(());
+    };
+    let pos = w.outer_position().map_err(|e| e.to_string())?;
+    let size = w.inner_size().map_err(|e| e.to_string())?;
+    let scale = w.scale_factor().unwrap_or(1.0);
+    if scale <= 0.0 {
+        return Ok(());
+    }
+    pchabit_datad::notes_set_pos(
+        id,
+        pos.x as f64 / scale,
+        pos.y as f64 / scale,
+        size.width as f64 / scale,
+        size.height as f64 / scale,
+    )
+}
+
+#[tauri::command]
+fn note_pos(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let r = save_note_pos(&app, &id);
+    if let Err(e) = &r {
+        log_line(&format!("[便签] 回写位置失败 {id}：{e}"));
+    }
+    r
+}
+
+/// 放到桌面 / 收回列表。
+#[tauri::command]
+fn note_desktop_set(app: tauri::AppHandle, id: String, on: bool) -> Result<(), String> {
+    pchabit_datad::notes_set_desktop(&id, on)?;
+    if on {
+        open_note_window(&app, &id)?;
+    } else if let Some(w) = app.get_webview_window(&format!("note-{id}")) {
+        let _ = w.close();
+    }
+    log_line(&format!("[便签] {id} {}", if on { "放到桌面" } else { "收回列表" }));
+    Ok(())
+}
+
+/// 建一张桌面便签窗口（无边框、不进任务栏，钉住的置顶）。
+fn open_note_window(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
+    let label = format!("note-{id}");
+    if app.get_webview_window(&label).is_some() {
+        return Ok(());
+    }
+    let list = pchabit_datad::notes_desktop_json(&pchabit_datad::default_db())?;
+    let note = list["items"]
+        .as_array()
+        .and_then(|a| a.iter().find(|n| n["id"].as_str() == Some(id)))
+        .cloned()
+        .ok_or_else(|| format!("便签不在桌面上：{id}"))?;
+    let url = format!("pages/note-desktop.html?note={id}");
+    let w = tauri::WebviewWindowBuilder::new(app, &label, tauri::WebviewUrl::App(url.into()))
+        .title("便签")
+        .inner_size(
+            note["width"].as_f64().unwrap_or(260.0),
+            note["height"].as_f64().unwrap_or(200.0),
+        )
+        .position(
+            note["left"].as_f64().unwrap_or(120.0),
+            note["top"].as_f64().unwrap_or(120.0),
+        )
+        .decorations(false)
+        .skip_taskbar(true)
+        .always_on_top(note["pinned"].as_bool().unwrap_or(false))
+        .initialization_script(&inject_script())
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let app2 = app.clone();
+    let id2 = id.to_string();
+    w.on_window_event(move |e| {
+        if matches!(e, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
+            let _ = save_note_pos(&app2, &id2);
+        }
+    });
+    log_line(&format!("[便签] 桌面窗口已建 {id}"));
+    Ok(())
+}
+
+/// 开机/开窗时把桌面上的便签全部摆出来。
+fn open_note_windows(app: &tauri::AppHandle) {
+    let list = match pchabit_datad::notes_desktop_json(&pchabit_datad::default_db()) {
+        Ok(v) => v,
+        Err(e) => {
+            log_line(&format!("[便签] 读桌面便签失败：{e}"));
+            return;
+        }
+    };
+    let items = list["items"].as_array().cloned().unwrap_or_default();
+    for n in &items {
+        if let Some(id) = n["id"].as_str() {
+            if let Err(e) = open_note_window(app, id) {
+                log_line(&format!("[便签] 开窗失败 {id}：{e}"));
+            }
+        }
+    }
+    if !items.is_empty() {
+        log_line(&format!("[便签] 桌面便签 {} 张", items.len()));
+    }
+}
+
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -1202,6 +1340,10 @@ fn main() {
             notes_update,
             notes_pin,
             notes_delete,
+            notes_desktop,
+            note_get,
+            note_pos,
+            note_desktop_set,
             export_weekly,
             app_search
         ])
@@ -1262,6 +1404,9 @@ fn main() {
                     }
                 }
                 let w = make_window(app.handle(), &inject, &url)?;
+
+                // 桌面便签：主窗口起来之后按库里的 IsOnDesktop 摆出来
+                open_note_windows(app.handle());
 
                 // 自检：PCHABIT_CLOSE_TEST=1 时 10 秒后自己发一次关窗，
                 // 验证「关窗→隐到托盘」而不是退出（本机点不了 X 按钮）。

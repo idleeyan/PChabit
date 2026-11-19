@@ -144,6 +144,7 @@ impl Store {
         let conn = Connection::open(path).map_err(|e| format!("打开数据库失败: {e}"))?;
         conn.busy_timeout(Duration::from_millis(5000))
             .map_err(|e| format!("设置 busy_timeout 失败: {e}"))?;
+        ensure_schema(&conn);
         Ok(Store { conn })
     }
 
@@ -1021,6 +1022,19 @@ fn uuid_like() -> String {
 }
 
 static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// 建表：整套 `schema.sql`（从生产库 `sqlite_master` 导出的 29 张表 + 索引）。
+/// 逐句执行并忽略「已存在」错误，所以老库再跑一遍也安全。
+fn ensure_schema(conn: &Connection) {
+    const DDL: &str = include_str!("schema.sql");
+    for stmt in DDL.split(";\n") {
+        let s = stmt.trim();
+        if s.is_empty() {
+            continue;
+        }
+        let _ = conn.execute_batch(&format!("{s};"));
+    }
+}
 
 #[cfg(test)]
 mod tests {

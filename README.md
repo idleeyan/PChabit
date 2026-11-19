@@ -145,10 +145,9 @@
 
 ### 环境要求
 
-- Visual Studio 2022 或 Build Tools
-- **.NET 10 SDK**
-- **Windows App SDK 2.5.1**
-- **Rust 工具链**（可选）：`cargo` 1.98+，用于构建进程网络采样内核 `rust/pchabit-netd`；未安装时构建照常完成，运行时会自动回退 C# 实现
+- **Rust 工具链**：`cargo` 1.80+（当前实测 1.9x），外加 MSVC 链接器（Visual Studio Build Tools 的「C++ 生成工具」）
+- **WebView2 运行时**：Windows 11 自带；Windows 10 需装 Evergreen Runtime
+- 不再需要 .NET SDK / Windows App SDK：C# 层已全部移除（4.12.0）
 
 ### 编译步骤
 
@@ -157,53 +156,51 @@
 git clone https://github.com/idleeyan/PChabit.git
 cd PChabit
 
-# （可选）构建 Rust 采样内核；产物 target/release/pchabit-netd.exe 会被 publish 自动带入
-cd rust/pchabit-netd
-cargo build --release
-cd ../..
+# 四个 crate 一次构建（每个都是独立的产物）
+cargo build --release --manifest-path rust/pchabit-shell/Cargo.toml
+cargo build --release --manifest-path rust/pchabit-collect/Cargo.toml
+cargo build --release --manifest-path rust/pchabit-datad/Cargo.toml
+cargo build --release --manifest-path rust/pchabit-netd/Cargo.toml
 
-# 还原并构建
-dotnet build src/PChabit.App/PChabit.App.csproj -c Release -r win-x64 -p:Platform=x64
-
-# 发布（自包含，输出到 publish\）
-dotnet publish src/PChabit.App/PChabit.App.csproj -c Release -r win-x64 --self-contained -p:Platform=x64 -o publish
+# 组装 publish\（Robocopy 到 D:\Tool\PChabit 即可用）
+#   publish\pchabit-collect.exe  pchabit-datad.exe  pchabit-netd.exe
+#   publish\Shell\PChabitShell.exe  publish\Assets\
 ```
+
+运行：`Shell\PChabitShell.exe --host`（窗口 + 托盘 + 采集，开机由计划任务「PChabit 采集宿主」拉起）；
+只跑采集不建窗口用 `--host --headless`。
 
 ### 项目结构
 
 ```
 PChabit/
-├── src/
-│   ├── PChabit.Core/                # 领域核心：实体与接口（零依赖）
-│   ├── PChabit.Infrastructure/      # 基础设施：EF Core / 监控器 / 服务 / 分析引擎
-│   ├── PChabit.Application/         # 应用层服务
-│   ├── PChabit.HardwareMonitor/     # 硬件监控（CPU/GPU/内存/磁盘/网络/电池）
-│   ├── PChabit.App/                 # WinUI 3 应用程序（表示层）
-│   └── PChabit.Tests/               # 单元测试
-├── extensions/
-│   └── tai-browser-extension/       # 浏览器扩展
 ├── rust/
-│   └── pchabit-netd/               # Rust 进程网络采样内核（命名管道，可选但默认启用）
-├── tools/
-│   └── SamplingBench/              # 采样耗时度量工具（net/lhm/rust/rust-nogetter/ab，不进 sln）
-├── scripts/                          # 构建和图标生成脚本
-├── publish/                          # 发布输出目录
-├── CHANGELOG.md                      # 更新日志
-└── README.md                         # 说明文档
+│   ├── pchabit-shell/       # Tauri 2 壳：16 个页面、托盘、任务栏小窗、桌面悬浮窗、桌面便签
+│   ├── pchabit-collect/     # 采集宿主：键鼠钩子 / 前台进程 / 网页会话 / 磁盘 / 日汇总 / 清理 / WebDAV
+│   ├── pchabit-netd/        # 采样内核：进程网络、GPU（NVML）、系统总量（命名管道）
+│   └── pchabit-datad/       # 只读数据面 + 少量写命令（查询、分类、便签、导出 xlsx）
+├── extensions/
+│   └── tai-browser-extension/   # 浏览器扩展（网页会话采集，8765 端口握手）
+├── docs/                     # 迁移记录与设计文档
+├── publish/                  # 发布输出（gitignore）
+├── CHANGELOG.md
+└── README.md
 ```
+
+数据库结构由 `rust/pchabit-collect/src/schema.sql` 一次性建好（29 张表 + 索引，
+从生产库 `sqlite_master` 导出的原样 DDL），新建空库也能直接用。
 
 ## 性能指标
 
 | 指标 | 本机实测 | 说明 |
 |------|----------|------|
-| 内存占用 | 私有约 342 MB / 工作集约 482 MB | 含 WinUI 3 与 WebView2，随页面与请求浮动 |
-| CPU 占用（空闲） | 约 50–94 ms/s（0.5–0.9% 单核） | 硬件传感器每秒轮询是主要开销 |
-| Rust 采样内核 | 常驻 5.6–6.0 MB，CPU 约 1.9 ms/s | 独立进程，`PCHABIT_RUST_NETSAMPLER=0` 可关闭 |
-| 进程网络采样耗时 | C# 5.208 ms/拍 → Rust 0.444 ms/拍 | `tools/SamplingBench` 同机对照 |
-| GPU 传感器耗时 | LHM 85.73 ms/拍 → Rust NVML 1.90~2.70 ms/拍 | `pchabit-netd nvml-probe` 与 `SamplingBench lhm-detail` |
-| App 总 CPU | 约 9% 单核 → 1.56% 单核 | 3.88.0 部署后稳态实测 |
+| 内存占用 | 壳 + netd 两个进程合计约 130–180 MB | 页面是 WebView2 渲染，随打开页数浮动 |
+| CPU 占用（空闲） | 壳约 0.5–0.9% 单核、netd 约 1.9 ms/s | 1 Hz 采样，键鼠钩子只在事件回调用力 |
+| 进程网络采样耗时 | Rust 0.444 ms/拍 | 与旧 C# 5.208 ms/拍 同机对照（`tools/SamplingBench`） |
+| GPU 传感器耗时 | Rust NVML 1.90~2.70 ms/拍 | 旧 LHM 85.73 ms/拍（`pchabit-netd nvml-probe` 对照） |
+| 安装体积 | 4 个 exe + 页面资产，约 20 MB | 无 .NET / Windows App SDK 运行时依赖 |
 
-> 上表为本机（i5-12490F / 32G 内存 / Windows 11）Release 自包含构建的实测值，不同机器与使用状态下会有差异。
+> 上表为本机（i5-12490F / 32G 内存 / Windows 11）Release 构建的实测值；4.12.0 起全部进程都是 Rust 产物，C# 层已删除。
 
 ## 隐私说明
 

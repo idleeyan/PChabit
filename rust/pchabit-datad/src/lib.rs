@@ -3106,6 +3106,69 @@ pub fn notes_json(db: &Path) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "count": items.len(), "items": items }))
 }
 
+/// 桌面上的便签（`IsOnDesktop = 1`）：带位置和尺寸，壳启动时按这个把窗口摆出来。
+pub fn notes_desktop_json(db: &Path) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT Id, Color, Content, IsPinned, COALESCE(WindowLeft,0), COALESCE(WindowTop,0), \
+             COALESCE(WindowWidth,260), COALESCE(WindowHeight,200) \
+             FROM StickyNotes WHERE IsDeleted = 0 AND IsOnDesktop = 1 \
+             ORDER BY UpdatedAt DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(serde_json::json!({
+                "id": r.get::<_, Option<String>>(0).unwrap_or_default(),
+                "color": r.get::<_, Option<String>>(1).unwrap_or_default(),
+                "content": r.get::<_, Option<String>>(2).unwrap_or_default(),
+                "pinned": r.get::<_, Option<i64>>(3).unwrap_or(None).unwrap_or(0) != 0,
+                "left": r.get::<_, Option<f64>>(4).unwrap_or(None).unwrap_or(0.0),
+                "top": r.get::<_, Option<f64>>(5).unwrap_or(None).unwrap_or(0.0),
+                "width": r.get::<_, Option<f64>>(6).unwrap_or(None).unwrap_or(260.0),
+                "height": r.get::<_, Option<f64>>(7).unwrap_or(None).unwrap_or(200.0),
+            }))
+        })
+        .map_err(|e| e.to_string())?;
+    let items: Vec<serde_json::Value> = rows.filter_map(|r| r.ok()).collect();
+    Ok(serde_json::json!({ "count": items.len(), "items": items }))
+}
+
+/// 便签窗口移动/缩放后回写位置（桌面便签的唯一状态）。
+pub fn notes_set_pos(id: &str, left: f64, top: f64, width: f64, height: f64) -> Result<(), String> {
+    let conn = open_write()?;
+    let n = conn
+        .execute(
+            "UPDATE StickyNotes SET WindowLeft = ?2, WindowTop = ?3, WindowWidth = ?4, \
+             WindowHeight = ?5 WHERE Id = ?1 AND IsDeleted = 0",
+            rusqlite::params![id, left, top, width, height],
+        )
+        .map_err(|e| format!("回写便签位置失败：{e}"))?;
+    if n == 0 {
+        return Err(format!("便签不存在或已删除：{id}"));
+    }
+    Ok(())
+}
+
+/// 是否放在桌面上（`IsOnDesktop`）。
+pub fn notes_set_desktop(id: &str, on: bool) -> Result<(), String> {
+    let conn = open_write()?;
+    let n = conn
+        .execute(
+            "UPDATE StickyNotes SET IsOnDesktop = ?2, UpdatedAt = ?3 WHERE Id = ?1 AND IsDeleted = 0",
+            rusqlite::params![id, if on { 1 } else { 0 }, now_stamp()],
+        )
+        .map_err(|e| format!("设置桌面便签失败：{e}"))?;
+    if n == 0 {
+        return Err(format!("便签不存在或已删除：{id}"));
+    }
+    Ok(())
+}
+
 /// `yyyy-MM-dd HH:mm:ss.fffffff`（本地时间，固定 UTC+8）
 fn now_stamp() -> String {
     let ms = std::time::SystemTime::now()

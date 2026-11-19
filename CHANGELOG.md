@@ -2,6 +2,28 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.0] - 2026-11-19
+
+### 迁到纯 Rust：C# 层整树删除（5.4 万行），建表与桌面便签补齐
+
+这是一次「不再双轨」的断点：仓库里从此只有 Rust，没有 .NET。
+
+- **建表搬到 Rust**：`rust/pchabit-collect/src/schema.sql` 是从生产库 `sqlite_master` 导出的原样 DDL
+  （29 张表 + 43 个索引）。`Store::open` 会逐句执行并忽略「已存在」，所以老库照常、空库也能自建。
+  实测空库跑 6 秒后 `sqlite_master` 里正好 29 张表，与生产库同名同序。
+- **桌面便签搬进壳**：新增 `pages/note-desktop.html` + 四个命令（`notes_desktop / note_get / note_pos / note_desktop_set`）。
+  无边框、不进任务栏、钉住置顶；拖标题栏移动、缩放后自动回写 `StickyNotes.WindowLeft/Top/Width/Height`；
+  便签页每条多一个「放到桌面」按钮。实测（副本库）→ `[便签] 桌面窗口已建 a6c6586f…`、
+  `[便签] 桌面便签 1 张`、`页面加载完成 [note-a6c6586f…]`。
+- **删掉的代码**：`src/`（PChabit.App / Application / Core / HardwareMonitor / Infrastructure / Tests，
+  306 个文件、54,606 行）、`PChabit.sln`、`Directory.Build.props`、`global.json`、`audit_baseline.*`。
+- **发布形态**：`publish\` 只剩 4 个 exe + `Assets\`（约 20 MB）。`PChabit.exe` 与全部 .NET DLL 从
+  `D:\Tool\PChabit` 一并清走，`.WebView2` 缓存目录保留（壳自己也要用 WebView2）。
+- **图表资产归档**：原本从 `src\PChabit.App\Assets` 复制的 5 个 echarts 资产挪进 `rust/pchabit-shell/assets/`，
+  `build.rs` 首选项改为该目录（`publish\Assets`、`D:\Tool\PChabit\Assets` 作为回退）。
+- **验证**：四个 crate `cargo build --release` 全过；壳按计划任务启动后 `采集宿主启动 / netd 已拉起 /
+  键鼠钩子安装 / 浏览器同步就绪 豆包浏览器 v2.2.4`，`dashboard 已渲染`。
+
 ## [4.11.1] - 2026-11-19
 
 ### 删除 CPU 温度采样（HVCI 环境下注定读不到，留着只会显示空值）

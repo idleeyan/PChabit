@@ -1,31 +1,25 @@
 {
 	"folders": [
 		{
-			"name": "PChabit",
+			"name": "PChabit（纯 Rust）",
 			"path": "."
 		},
 		{
-			"name": "Tai.App",
-			"path": "src/Tai.App"
+			"name": "pchabit-shell（Tauri 2 壳）",
+			"path": "rust/pchabit-shell"
 		},
 		{
-			"name": "Tai.Application",
-			"path": "src/Tai.Application"
+			"name": "pchabit-collect（采集宿主）",
+			"path": "rust/pchabit-collect"
 		},
 		{
-			"name": "Tai.Core",
-			"path": "src/Tai.Core"
+			"name": "pchabit-datad（只读数据面）",
+			"path": "rust/pchabit-datad"
 		},
 		{
-			"name": "Tai.Infrastructure",
-			"path": "src/Tai.Infrastructure"
-		},
-		{
-			"name": "Tai.Tests",
-			"path": "src/Tai.Tests"
+			"name": "pchabit-netd（内核采样）",
+			"path": "rust/pchabit-netd"
 		}
 	],
-	"settings": {
-		"dotnet.defaultSolution": "Tai.sln"
-	}
+	"settings": {}
 }

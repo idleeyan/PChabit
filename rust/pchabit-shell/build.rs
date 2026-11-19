@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 fn main() {
     let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let assets = [
-        crate_root.join(r"..\..\src\PChabit.App\Assets"),
+        crate_root.join("assets"),
         crate_root.join(r"..\..\publish\Assets"),
         PathBuf::from(r"D:\Tool\PChabit\Assets"),
     ];

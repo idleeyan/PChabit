@@ -130,9 +130,10 @@
       var bSave = mkBtn('保存', 'act pri');
       bSave.style.display = 'none';
       var bPin = mkBtn(n.pinned ? '取消置顶' : '置顶', 'act');
+      var bDesk = mkBtn('放到桌面', 'act');
       var bDel = mkBtn('删除', 'act');
       acts.appendChild(bEdit); acts.appendChild(bSave);
-      acts.appendChild(bPin); acts.appendChild(bDel);
+      acts.appendChild(bPin); acts.appendChild(bDesk); acts.appendChild(bDel);
       box.appendChild(acts);
 
       var msg = document.createElement('span');
@@ -150,6 +151,12 @@
       };
       bPin.onclick = function () {
         call('notes_pin', { id: n.id, pinned: !n.pinned }, msg, n.pinned ? '已取消置顶' : '已置顶');
+      };
+      bDesk.onclick = function () {
+        msg.textContent = '执行中…';
+        window.__TAURI__.core.invoke('note_desktop_set', { id: n.id, on: true })
+          .then(function () { msg.textContent = '已放到桌面（拖它的标题栏可移动，位置会自动记住）'; })
+          .catch(function (e) { msg.textContent = '失败：' + e; });
       };
       bDel.onclick = function () {
         if (!confirm('删除这条便签？（软删除，可从 WPF 恢复）')) return;
