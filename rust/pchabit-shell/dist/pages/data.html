@@ -50,7 +50,14 @@
     <h2>数据表 <em id="tn"></em></h2>
     <table><thead><tr><th>表</th><th class="r">行数</th></tr></thead>
       <tbody id="tables"></tbody></table>
-    <div class="note">只读统计 · 备份与清理请在 PChabit 主程序里做</div>
+    <div class="note">只读统计 · 下方「立即备份 / 清理旧数据」由壳直接执行（写库，等价 WPF 的同名操作）</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <button id="btnBackup" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
+        background:#1d4ed8;color:#fff;cursor:pointer">立即备份</button>
+      <button id="btnClean" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
+        background:#7c2d12;color:#fff;cursor:pointer">清理旧数据</button>
+      <span class="hint" id="actMsg"></span>
+    </div>
   </section>
 
   <section>
@@ -150,6 +157,29 @@
   }
 
   window.renderData = renderData;
+
+  // 立即备份 / 清理旧数据：由壳直接写库（VACUUM INTO / 按保留天数 DELETE）
+  function act(kind) {
+    var msg = document.getElementById('actMsg');
+    if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC，无法执行'; return; }
+    msg.textContent = '执行中…';
+    var call = kind === 'backup'
+      ? window.__TAURI__.core.invoke('backup_db', {})
+      : window.__TAURI__.core.invoke('cleanup_data', { days: 180 });
+    call.then(function (r) {
+      msg.textContent = String(r);
+      window.__DATA_RESULT__ = 'action: ' + r;
+    }).catch(function (e) {
+      msg.textContent = '失败：' + e;
+      window.__DATA_RESULT__ = 'action-error: ' + e;
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function () {
+    var b = document.getElementById('btnBackup');
+    var c = document.getElementById('btnClean');
+    if (b) b.addEventListener('click', function () { act('backup'); });
+    if (c) c.addEventListener('click', function () { act('clean'); });
+  });
   document.addEventListener('DOMContentLoaded', function () {
     if (window.__DATA_DATA__) {
       try { window.__DATA_RESULT__ = renderData(window.__DATA_DATA__); }

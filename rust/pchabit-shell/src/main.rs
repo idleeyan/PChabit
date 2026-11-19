@@ -316,6 +316,20 @@ fn note(msg: String) {
     log_line(&format!("[页面] {msg}"));
 }
 
+#[tauri::command]
+fn cleanup_data(days: i64) -> Result<String, String> {
+    let (cutoff, deleted) = pchabit_datad::cleanup_old(days)?;
+    log_line(&format!("[壳] 手动清理：删除 {deleted} 条（截止 {cutoff}，保留 {days} 天）"));
+    Ok(format!("已删除 {deleted} 条 {days} 天前的记录（截止 {cutoff}）"))
+}
+
+#[tauri::command]
+fn backup_db() -> Result<String, String> {
+    let (path, size) = pchabit_datad::backup_now()?;
+    log_line(&format!("[壳] 手动备份：{path}（{} MB）", (size as f64 / 1048576.0).round()));
+    Ok(format!("备份完成：{path}（{} MB）", (size as f64 / 1048576.0).round()))
+}
+
 /// 前端要数据：一次同步查库 + 聚合，返回该页面需要的那份 JSON。
 #[tauri::command]
 fn page_data(page: String) -> Result<serde_json::Value, String> {
@@ -337,12 +351,11 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "data" => "data.html",
         other => return Err(format!("未知页面：{other}")),
     };
+    // 发布版把 dist 打进了 exe（tauri asset protocol），磁盘上没有 dist 目录也能工作；
+    // 这里只在开发目录下做一次存在性提示，绝不因此拒绝返回数据。
     let asset = dist_dir().join("pages").join(file);
-    if !asset.exists() {
-        return Err(format!(
-            "缺少页面资产：{}（构建时 build.rs 会从 WPF 工程复制）",
-            asset.display()
-        ));
+    if !asset.exists() && cfg!(debug_assertions) {
+        log_line(&format!("[壳] 提示：{} 不在磁盘 dist 里（发布版走内嵌资源）", asset.display()));
     }
 
     let t0 = std::time::Instant::now();
@@ -781,7 +794,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.10.3";
+const VERSION: &str = "4.10.4";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -910,7 +923,9 @@ fn main() {
             set_category_active,
             app_detail,
             categories,
-            timeline_day
+            timeline_day,
+            cleanup_data,
+            backup_db
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {

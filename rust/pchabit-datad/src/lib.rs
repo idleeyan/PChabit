@@ -125,6 +125,72 @@ pub fn analytics_json(db: &Path, req: &serde_json::Value) -> Result<serde_json::
 }
 
 /// 默认数据库路径（%LOCALAPPDATA%\PChabit\Data\pchabit.db）。
+pub fn default_db_path_public() -> PathBuf {
+    default_db_path()
+}
+
+/// 数据保留清理（与采集宿主 `cleanup_before` 同一套判据，供壳的数据管理页手动触发）。
+/// `DailySummaries` 不删；返回删除行数。
+pub fn cleanup_old(retention_days: i64) -> Result<(String, i64), String> {
+    let path = default_db();
+    let conn = Connection::open(&path).map_err(|e| format!("打开库失败：{e}"))?;
+    let days = retention_days.clamp(1, 3650);
+    let cutoff = date_shift(&today_local(), -days);
+    let sample_cutoff = format!("{cutoff} 00:00");
+    let mut deleted = 0i64;
+    for (sql, arg) in [
+        ("DELETE FROM KeyboardSessions WHERE Date < ?1", cutoff.as_str()),
+        ("DELETE FROM MouseSessions WHERE Date < ?1", cutoff.as_str()),
+        ("DELETE FROM WebSessions WHERE StartTime < ?1", cutoff.as_str()),
+        ("DELETE FROM AppSessions WHERE StartTime < ?1", cutoff.as_str()),
+        ("DELETE FROM AppDailyStats WHERE Date < ?1", cutoff.as_str()),
+        ("DELETE FROM HardwareSamples WHERE Timestamp < ?1", sample_cutoff.as_str()),
+    ] {
+        if let Ok(n) = conn.execute(sql, rusqlite::params![arg]) {
+            deleted += n as i64;
+        }
+    }
+    Ok((cutoff, deleted))
+}
+
+/// 立即备份：`VACUUM INTO` 生成一致性快照到 `Backups\pchabit_backup_<时间戳>.db`。
+pub fn backup_now() -> Result<(String, u64), String> {
+    let src = default_db();
+    // 备份目录跟着实际库走：`PCHABIT_DB` 指向副本时不会往生产备份目录写。
+    let dir = src
+        .parent()
+        .map(|p| p.join("Backups"))
+        .unwrap_or_else(|| PathBuf::from("."));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("建备份目录失败：{e}"))?;
+    let stamp = {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let (y, m, d) = civil_parts(((secs + 8 * 3600) / 86_400) as i64);
+        let hh = ((secs + 8 * 3600) % 86_400) / 3600;
+        let mm = ((secs + 8 * 3600) % 3600) / 60;
+        let ss = (secs + 8 * 3600) % 60;
+        format!("{y:04}{m:02}{d:02}_{hh:02}{mm:02}{ss:02}")
+    };
+    let dst = dir.join(format!("pchabit_backup_{stamp}.db"));
+    let conn = Connection::open(&src).map_err(|e| format!("打开库失败：{e}"))?;
+    conn.execute("VACUUM INTO ?1", rusqlite::params![dst.to_string_lossy()])
+        .map_err(|e| format!("备份失败：{e}"))?;
+    let size = std::fs::metadata(&dst).map(|m| m.len()).unwrap_or(0);
+    Ok((dst.to_string_lossy().to_string(), size))
+}
+
+/// `civil_from_days` 的年月日分量，供时间戳拼名用。
+fn civil_parts(z: i64) -> (i64, i64, i64) {
+    let date = civil_from_days(z);
+    let y: i64 = date.get(0..4).and_then(|s| s.parse().ok()).unwrap_or(1970);
+    let m: i64 = date.get(5..7).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let d: i64 = date.get(8..10).and_then(|s| s.parse().ok()).unwrap_or(1);
+    (y, m, d)
+}
+
+/// 默认数据库路径（%LOCALAPPDATA%\PChabit\Data\pchabit.db）。
 ///
 /// 可用 `PCHABIT_DB` 环境变量覆盖——自测写库时指向库副本，避免碰真实数据。
 pub fn default_db() -> PathBuf {

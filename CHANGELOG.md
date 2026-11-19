@@ -2,6 +2,41 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.10.4] - 2026-11-19
+
+### 修掉「发布版壳翻页必失败」的真 bug
+
+`page_data()` 之前会先检查 `dist\pages\<页面>.html` 是否在磁盘上，不存在就返回
+`缺少页面资产`。开发目录（`rust\pchabit-shell`）下 `dist` 在，自测一直正常；
+但发布目录 `D:\Tool\PChabit\Shell` 只有 exe（页面已经内嵌进 exe），于是**发布版从
+托盘打开窗口后一切换页面就报缺资产**——这正是「图表组件不可用」体感的来源之一。
+
+- 去掉磁盘存在性检查，页面名非法才报错；磁盘缺文件仅在 debug 构建里打一行提示；
+- 从 `publish\Shell`（无 `dist`）实测：`data 已渲染` → `page_data data: 18.8 ms` →
+  重读正常，翻页链路通过。
+
+### 壳的数据管理页能给库做备份和清理了
+
+WPF 的「备份/清理」是换壳剩下的硬骨头之一，先把它变成壳的直接写库能力：
+
+- `pchabit-datad::cleanup_old(days)`：判据与采集宿主 `cleanup_before` 逐表一致
+  （`KeyboardSessions/MouseSessions.WebSessions/AppSessions/AppDailyStats` 按日期，
+  `HardwareSamples.Timestamp` 用 `"yyyy-MM-dd 00:00"`，`DailySummaries` 不删），
+  单表失败不中断；返回 `(截止日, 删除行数)`。
+- `pchabit-datad::backup_now()`：`VACUUM INTO` 生成一致性快照到
+  **实际库所在目录**的 `Backups\pchabit_backup_YYYYMMDD_HHMMSS.db`
+  （跟着 `PCHABIT_DB` 走，自测不会污染生产备份目录）。
+- 壳新增两个命令 `cleanup_data(days)`、`backup_db()`，日志
+  `[壳] 手动清理：删除 N 条（截止 X，保留 D 天）` / `[壳] 手动备份：path（N MB）`。
+- `dist\pages\data.html`：加「立即备份」「清理旧数据」按钮 + 状态行，
+  结果同时写 `__DATA_RESULT__`，壳日志可见。
+
+实测（副本库 199 MB）：
+- `备份完成：…\Temp\Backups\pchabit_backup_20261119_164329.db（190 MB）`；
+- 保留 180 天 → 删除 0 条（库内最早数据 2026-06-20，晚于截止 2026-05-23，正确）；
+- 保留 60 天 → **删除 180,029 条**（截止 2026-09-20），六表 `min(date)` 全部 ≥ 截止日，
+  `DailySummaries` 未受影响。
+
 ## [4.10.3] - 2026-11-19
 
 ### 仪表盘图表不再「静默为空」

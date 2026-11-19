@@ -349,6 +349,25 @@
         .catch(function (e) { note('wtest 失败：' + e); });
       }
 
+      // 自测钩子：?dtest=1 验证数据管理写库（备份 + 清理），配合 PCHABIT_DB 指向库副本
+      var dtest = new URLSearchParams(location.search).get('dtest');
+      if (page === 'data' && dtest) {
+        window.__TAURI__.core.invoke('backup_db', {})
+          .then(function (r) {
+            note('dtest 备份 ' + r);
+            return window.__TAURI__.core.invoke('cleanup_data', { days: parseInt(dtest, 10) || 3650 });
+          })
+          .then(function (r) {
+            note('dtest 清理 ' + r);
+            return window.__TAURI__.core.invoke('page_data', { page: 'data' });
+          })
+          .then(function (d) {
+            note('dtest 重读 data: ' + (d.sizeText || '') + ' / ' +
+              ((d.tables || []).length) + ' 表 / ' + ((d.backups || []).length) + ' 备份');
+          })
+          .catch(function (e) { note('dtest 失败：' + e); });
+      }
+
       // 自测钩子：?tltest=-1 验证换天命令（时间线页专用）
       var tltest = new URLSearchParams(location.search).get('tltest');
       if (page === 'timeline' && tltest) {
