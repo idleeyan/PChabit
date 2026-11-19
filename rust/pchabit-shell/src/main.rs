@@ -516,9 +516,20 @@ fn payload_notes() -> serde_json::Value {
 
 /// 网页访问（只读）：近 7 天会话聚合、域名排行、小时/日分布、最近记录、流量归因。
 fn payload_web() -> serde_json::Value {
+    web_payload(0)
+}
+
+/// 网页访问数据：`days <= 0` 表示全部历史（从库里最早一条到昨天/今天），否则最近 N 天。
+fn web_payload(days: i64) -> serde_json::Value {
     let today = pchabit_datad::today_local();
-    let start = pchabit_datad::date_shift(&today, -6);
-    match pchabit_datad::web_json(&pchabit_datad::default_db(), &start, &today) {
+    let db = pchabit_datad::default_db();
+    let start = if days <= 0 {
+        // 全部历史：直接从 WebSessions 取最早一天；一条都没有就退化成近 30 天
+        pchabit_datad::web_earliest_date(&db).unwrap_or_else(|| pchabit_datad::date_shift(&today, -29))
+    } else {
+        pchabit_datad::date_shift(&today, -(days - 1))
+    };
+    match pchabit_datad::web_json(&db, &start, &today) {
         Ok(v) => {
             log_line(&format!(
                 "web: {start}~{today} / {} 次访问 / {} 个域名 / {:.1} ms",
@@ -535,6 +546,17 @@ fn payload_web() -> serde_json::Value {
                 "daily": [], "recent": []
             })
         }
+    }
+}
+
+/// 网页页切换时间范围：`days = 0` 全部，7 / 30 / 90 为最近 N 天。
+#[tauri::command]
+fn web_data(days: i64) -> Result<serde_json::Value, String> {
+    let v = web_payload(days);
+    if v["ok"].as_bool().unwrap_or(false) {
+        Ok(v)
+    } else {
+        Err(v["error"].as_str().unwrap_or("读取失败").to_string())
     }
 }
 
@@ -1099,7 +1121,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.15";
+const VERSION: &str = "4.12.16";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1475,6 +1497,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             page_data,
             pages_data,
+            web_data,
             note,
             set_category,
             create_category,

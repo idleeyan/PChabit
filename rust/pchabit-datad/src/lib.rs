@@ -3373,6 +3373,21 @@ fn bytes_text(bytes: f64) -> String {
 }
 
 /// 网页访问详情：近 N 天会话聚合 + 域名排行 + 小时/日分布 + 最近记录 + 流量归因。
+/// 网页记录最早一天（`YYYY-MM-DD`）：网页页「全部历史」的起点。
+pub fn web_earliest_date(db: &Path) -> Option<String> {
+    if !db.exists() {
+        return None;
+    }
+    let conn = open_readonly(db).ok()?;
+    let mut stmt = conn
+        .prepare("SELECT MIN(StartTime) FROM WebSessions")
+        .ok()?;
+    let mut rows = stmt.query([]).ok()?;
+    let row = rows.next().ok()??;
+    let min: Option<String> = row.get(0).ok()?;
+    min.filter(|s| s.len() >= 10).map(|s| s[..10].to_string())
+}
+
 pub fn web_json(
     db: &Path,
     start_date: &str,
@@ -3632,7 +3647,7 @@ pub fn web_json(
     // ---------- 最近访问 ----------
     let recent_json: Vec<serde_json::Value> = rows
         .iter()
-        .take(50)
+        .take(300)
         .map(|r| {
             let mins = (r.eff_seconds() / 60.0).floor();
             let secs = (r.eff_seconds() % 60.0).floor();

@@ -10,6 +10,11 @@
   header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
   h1 { font-size:15px; font-weight:600; margin:0; }
   .hint { color:#94a3b8; font-size:11px; }
+  .ranges { display:flex; gap:6px; margin:-4px 0 12px; }
+  .ranges button { background:#182234; border:1px solid #263349; color:#94a3b8; border-radius:6px;
+    padding:3px 10px; font-size:11px; cursor:pointer; font-family:inherit; }
+  .ranges button:hover { border-color:#3b82f6; color:#cbd5e1; }
+  .ranges button.on { background:#1d3a63; border-color:#3b82f6; color:#e2e8f0; }
 
   .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(122px,1fr)); gap:8px; margin-bottom:14px; }
   .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
@@ -59,6 +64,13 @@
   <h1>网页访问</h1>
   <span class="hint" id="meta">加载中…</span>
 </header>
+
+<div class="ranges" id="ranges">
+  <button data-days="0" class="on">全部历史</button>
+  <button data-days="7">近 7 天</button>
+  <button data-days="30">近 30 天</button>
+  <button data-days="90">近 90 天</button>
+</div>
 
 <div class="kpis" id="kpis"></div>
 
@@ -112,12 +124,44 @@
   }
 
   var LEVEL = ['#182234', '#1e3a5f', '#1d4d7a', '#2563a8', '#3b82f6'];
+  var chosenDays = 0;   // 0 = 全部历史
+
+  function pickRange(days, btn) {
+    chosenDays = days;
+    var bar = document.getElementById('ranges');
+    if (bar) {
+      Array.prototype.forEach.call(bar.children, function (b) {
+        b.className = (b === btn) ? 'on' : '';
+      });
+    }
+    document.getElementById('meta').textContent = '读取中…';
+    window.__TAURI__.core.invoke('web_data', { days: days }).then(function (d) {
+      d.__explicit = true;
+      window.__WEB_RESULT__ = renderWeb(d);
+      window.__WEB_DATA__ = d;
+    }).catch(function (e) {
+      document.getElementById('meta').textContent = '读取失败：' + e;
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    var bar = document.getElementById('ranges');
+    if (bar) {
+      Array.prototype.forEach.call(bar.children, function (b) {
+        b.addEventListener('click', function () {
+          pickRange(Number(b.getAttribute('data-days')) || 0, b);
+        });
+      });
+    }
+  });
 
   function renderWeb(d) {
     if (!d || d.ok === false) {
       document.getElementById('meta').textContent = '读取失败：' + ((d && d.error) || '未知错误');
       return 'error';
     }
+    // 用户手动选过时间范围时，忽略外壳每分钟推过来的「全部历史」旧数据（否则选择会被刷掉）
+    if (chosenDays !== 0 && !d.__explicit) return 'skip: 保持用户选择的范围';
     var s = d.summary || {};
     document.getElementById('meta').textContent =
       ((d.range && d.range.start) || '') + ' ~ ' + ((d.range && d.range.end) || '') +
