@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **4.10.2**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
+| 当前版本 | **4.10.3**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核、`rust/pchabit-datad` 数据面、`rust/pchabit-shell` Tauri 2 壳预览） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，**16 个页面**：仪表盘 + 五图表/分析页 + 时间线 + 网页访问 + 网络流量 + 键鼠活动 + 历史报告 + 分类管理 + 应用详情 + 设置概览 + 便签 + 数据管理），默认入口仍是 WPF 版 |
@@ -79,6 +79,7 @@
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
 | 2026-11-18 | 3.95.0 | **前台窗口采样 1 Hz → 500 ms（P2 尾巴）**。内核采样（netd）与宿主读取（AppMonitor 定时器）同频提到 500 ms，避免短于 1 秒的切换被整段合并；每拍仍只一次 GetForegroundWindow，开销可忽略 |
+| 2026-11-19 | 4.10.3 | **仪表盘图表补自检**：dashboard.html 对 hourly（长度≠24 / 全 0 但总时长>0）与 	rend（长度≠7）加警告串，拼进渲染结果，壳日志可见。副本库实测 [页面] dashboard 已渲染 ok: 1h59m / 12 应用 / 475 键（无警告），activity/timeline/category/sankey 同轮渲染成功——数据链路正常，之前的「每小时图表不可用」属显示层观感。发布 4.10.3.0 部署 D:\Tool\PChabit |
 | 2026-11-19 | 4.10.2 | **网络分钟行脏增量防护**：sample_loop 对网卡单拍增量设 200 MB/s 上界，超界丢弃并留日志（不进分钟行、不喂 netd SYS），修掉「一行 51 GB 下行」把今日下行抬到 98 GB 的问题；同时删除 13:50–14:51 的 6 条无法还原的异常行（删前有自动备份），今日下行回到 2.76 GB。实测 16:15 行  .96 MB/12.4 MB，无异常日志；collect 单测 13 通过。发布 4.10.2.0 部署 D:\Tool\PChabit |
 | 2026-11-19 | 4.10.1 | **只读模式恢复任务栏小窗点击拦截**：StartUiOnlyMode 里只装一个鼠标低级钩子（复用 InputHookThread 消息泵线程），ClickInterceptor 仍走 TaskbarWidget.HitTestScreenPoint，命中即吞点击并弹进程网速浮窗；OnMouseClick 无订阅者，键鼠统计仍只由 Rust 宿主写库（不双计）；App.Shutdown 收钩子与线程。实测：日志「任务栏小窗点击拦截已启用（只读模式专用鼠标钩子，不采集键鼠）」+ 8 个命中区就绪；采集侧 HardwareSamples 8189/AppSessions 切段/WebSessions 抖音入库照常。WPF 单测 186 通过。发布 4.10.1.0 部署 D:\Tool\PChabit |
 | 2026-11-19 | 4.10.0 | **采集宿主接管 WPF 的三件每日维护**：旧数据清理（store::cleanup_before，逐表照抄 CleanupOldDataAsync，DailySummaries 不删，保留天数读 DataRetentionDays，启动一次 + 每天一次）、当日搜索计数落库（websync 按「会话在场 + query 非空」计数 → store::search_count_set，每 30 s 随网页兜底写）、两个 30 天回填（AppDailyStats 全空时按天补；DailySummaries 缺硬件列的日期用 HardwareSamples 重算五列）。实测副本库（PCHABIT_RETENTION_DAYS=30）：清理 312214 条、六表无早于截止日期残留；WS 两条 search → SearchCount=2；清零 11-18 硬件列后回填 35.91/69.94/28.36/70.0/43.84；生产库保留 180 天启动日志「无过期数据需要清理」。cargo test 13 通过。发布 4.10.0.0 部署 D:\Tool\PChabit | 

@@ -160,7 +160,14 @@
     var hours = document.getElementById('hours');
     var hlbl = document.getElementById('hlbl');
     hours.innerHTML = ''; hlbl.innerHTML = '';
-    var arr = d.hourly || [];
+    var arr = Array.isArray(d.hourly) ? d.hourly : [];
+    // 图表画不出来时不再静默：把「数据缺失 / 全 0 / 长度不对」写进结果串，壳的日志能看到
+    var hourWarn = '';
+    if (arr.length !== 24) {
+      hourWarn += ' [hourly 长度 ' + arr.length + ']';
+    } else if (arr.every(function (h) { return !h; }) && (d.totalMinutes || 0) > 0) {
+      hourWarn += ' [hourly 全 0 但总时长 ' + Math.round(d.totalMinutes) + ' 分]';
+    }
     var maxV = arr.reduce(function (m, h) { return Math.max(m, h || 0); }, 1) || 1;
     arr.forEach(function (h, i) {
       var bar = el('i');
@@ -175,7 +182,10 @@
     // 7 天趋势
     var tr2 = document.getElementById('trend');
     tr2.innerHTML = '';
-    var trend = d.trend || [];
+    var trend = Array.isArray(d.trend) ? d.trend : [];
+    if (trend.length !== 7) {
+      hourWarn += ' [trend 长度 ' + trend.length + ']';
+    }
     var maxD = trend.reduce(function (m, x) { return Math.max(m, x.minutes || 0); }, 1) || 1;
     trend.forEach(function (x) {
       var box = el('div');
@@ -209,7 +219,7 @@
     });
 
     return 'ok: ' + fmtM(d.totalMinutes) + ' / ' + d.appCount + ' 应用 / ' +
-      (d.keys || 0) + ' 键';
+      (d.keys || 0) + ' 键' + hourWarn;
   }
 
   window.renderDashboard = renderDashboard;
