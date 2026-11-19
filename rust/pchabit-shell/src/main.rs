@@ -781,7 +781,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.5.0";
+const VERSION: &str = "4.6.0";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -797,9 +797,11 @@ impl HostState {
 }
 
 fn main() {
-    // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1] [--host]
+    // 命令行：pchabit-shell.exe [页面] [额外 query，如 auto=1] [--host] [--headless]
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let host_mode = raw_args.iter().any(|a| a == "--host");
+    // --headless：不建窗口，只跑采集宿主（开机自启/后台常驻用）
+    let headless = raw_args.iter().any(|a| a == "--headless");
     let positional: Vec<String> = raw_args
         .iter()
         .filter(|a| !a.starts_with("--"))
@@ -815,7 +817,7 @@ fn main() {
         "window.__PAGES__ = {pages};window.__VER__ = '{VERSION}';"
     );
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             page_data,
             pages_data,
@@ -835,25 +837,35 @@ fn main() {
             log_line(&format!("{stage} [{}]", webview.label()));
         })
         .setup(move |app| {
-            let url = if start_page.is_empty() {
-                "app.html".to_string()
-            } else if extra.is_empty() {
-                format!("app.html?p={start_page}")
-            } else {
-                format!("app.html?p={start_page}&{extra}")
-            };
-
-            let window =
-                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("PChabit（P5 采集宿主）")
-                    .inner_size(1180.0, 720.0)
-                    .min_inner_size(900.0, 560.0)
-                    .center()
-                    .initialization_script(&inject)
-                    .build()?;
-
             // 采集宿主随壳启动：单写者约束在 Host 内部（WPF 在跑就拒绝）
             app.manage(HostState(std::sync::Mutex::new(None)));
+
+            // headless 不建窗口：只在后台跑采集采集宿主
+            let window = if headless {
+                log_line(&format!(
+                    "[壳] headless 模式：不建窗口，{}",
+                    if host_mode { "只跑采集宿主" } else { "但没有 --host，等于什么都不做" }
+                ));
+                None
+            } else {
+                let url = if start_page.is_empty() {
+                    "app.html".to_string()
+                } else if extra.is_empty() {
+                    format!("app.html?p={start_page}")
+                } else {
+                    format!("app.html?p={start_page}&{extra}")
+                };
+                Some(
+                    tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
+                        .title("PChabit（P5 采集宿主）")
+                        .inner_size(1180.0, 720.0)
+                        .min_inner_size(900.0, 560.0)
+                        .center()
+                        .initialization_script(&inject)
+                        .build()?,
+                )
+            };
+
             if host_mode {
                 let db = pchabit_collect::default_db();
                 let log: pchabit_collect::host::LogFn = std::sync::Arc::new(|m: String| {
@@ -883,19 +895,32 @@ fn main() {
                 log_line("[collect] 未带 --host，本次只做只读展示");
             }
 
-            window.on_window_event({
-                let handle = app.handle().clone();
-                move |e| {
-                    if let tauri::WindowEvent::CloseRequested { .. } = e {
-                        if let Some(state) = handle.try_state::<HostState>() {
-                            state.stop();
+            if let Some(window) = window {
+                window.on_window_event({
+                    let handle = app.handle().clone();
+                    move |e| {
+                        if let tauri::WindowEvent::CloseRequested { .. } = e {
+                            if let Some(state) = handle.try_state::<HostState>() {
+                                state.stop();
+                            }
                         }
                     }
-                }
-            });
+                });
+            }
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("Tauri 启动失败");
+        .build(tauri::generate_context!())
+        .expect("Tauri 构建失败");
+
+    // headless 没有窗口，默认会因「最后一个窗口关闭」直接退出；这里挡掉，
+    // 让它一直当后台采集宿主，直到进程被结束。
+    let app = app;
+    app.run(move |_handle, event| {
+        if headless {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                api.prevent_exit();
+            }
+        }
+    });
 }

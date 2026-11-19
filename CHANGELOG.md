@@ -2,6 +2,33 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.6.0] - 2026-11-19
+
+### 采集宿主可以无窗口常驻：`PChabitShell.exe --host --headless`
+
+切默认入口（P5-4）差的是「谁来当常驻采集进程」。这个版本补上无界面形态：
+
+- 新增 `--headless`：壳**不建窗口**，只启动采集宿主（netd 托管、分钟桶、应用会话、键鼠钩子、
+  网页会话、日汇总）；
+- Tauri 在没有窗口时会因「最后一个窗口关闭」直接退出，headless 下用
+  `RunEvent::ExitRequested → api.prevent_exit()` 挡掉，进程一直常驻到被结束；
+- 后台形态日志仍写 `%TEMP%\pchabit-shell.log`（`[collect]` 前缀），便于无窗口验收。
+
+实测（副本库、WPF 停掉后跑 2 分钟）：
+
+| 项 | 结果 |
+| --- | --- |
+| 进程 | `pchabit-shell` 常驻，`pchabit-netd` 由其拉起（无窗口、无控制台） |
+| 硬件分钟 | `14:08` 起每分钟一行，`SampleCount` 60、`SensorFlags` 8189（差 CPU 温度） |
+| 网络分钟 | `14:08`、`14:09` 行，`BytesUp/Down` 与网卡读数一致 |
+| 应用会话 | 前台切换按进程/标题正常切段（Marvis 81.0s、Doubao 4.5s…） |
+| 网页会话 | 真实扩展（豆包浏览器 v2.2.4）自动连上并开出 14:08:42 的抖音会话 |
+| 日汇总线程 | 昨日已完整，按 `incomplete` 判定跳过（未重复写） |
+
+切换时的已知代价（写进 `docs/P5-collect-migration.md` §9）：WPF 的**任务栏小窗点击拦截**
+依赖 WPF 自己的鼠标低级钩子，纯 Rust 采集后这条链路断（托盘、开机自启也还在 WPF 侧）。
+所以默认入口仍是 WPF，`--headless` 是给「切过去」准备好的形态。
+
 ## [4.5.0] - 2026-11-19
 
 ### 采集面收口：日汇总（`DailySummaries` / `AppDailyStats`）也进 Rust
