@@ -1066,7 +1066,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.3";
+const VERSION: &str = "4.12.5";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1566,7 +1566,8 @@ fn main() {
             }
 
             if with_taskbar {
-                let light = read_theme_is_light();
+                // 深浅跟 Windows 任务栏走，不跟应用内主题走
+                let light = taskbar::system_uses_light_theme();
                 taskbar::start(app.handle().clone(), light);
                 log_line(&format!(
                     "[小窗] 启动 Rust 任务栏小窗（{} 主题）",

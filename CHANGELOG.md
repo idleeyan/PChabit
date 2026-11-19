@@ -2,6 +2,29 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.5] - 2026-11-19
+
+### 任务栏小窗透明色键改为「从任务栏实际背景采样」
+
+- 上一版把配色换成浅色后，底色仍用写死的 `#D2D2D3` 当色键。Win11 任务栏是亚克力、
+  会随壁纸和透明度变色，写死的值对不上就会在小窗周围留一块灰底。
+- 现在建窗时先用 `GetDC(Shell_TrayWnd)` + `GetPixel` 在任务栏左端垂直居中取一个像素，
+  把它当色键（挂上父窗口之前取，否则取到的是小窗自己）；取不到才退回按主题写死值。
+
+## [4.12.4] - 2026-11-19
+
+### 修「任务栏小窗字看不清」：配色跟错了主题，字号也太小
+
+- **根因**：小窗的深浅取的是应用内 `settings.json` 的 `CurrentTheme`（你的设置是 dark），
+  但 Windows 任务栏是浅色（`SystemUsesLightTheme=1`）。于是深色配色的近白色文字
+  （标签 #C8C8C8、数值 #F8F8F8、网速 #85B7EB）画在浅灰任务栏上，肉眼几乎读不出来。
+- **改法**：新增 `taskbar::system_uses_light_theme()`，直接读
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize\SystemUsesLightTheme`
+  （原生 `RegOpenKeyExW/RegQueryValueExW`，不引依赖），并且**每次重绘都重新读**，
+  用户在系统里切换深/浅色后小窗不用重启就会跟着变，日志记一行「任务栏主题切换：浅色/深色」。
+- **字号**：标签 11pt→12pt、数值 15pt→16pt（量宽度和绘制共用 `LABEL_PT/VALUE_PT` 常量）。
+- **实测**：重启后日志 `[小窗] 启动 Rust 任务栏小窗（浅色 主题）`。
+
 ## [4.12.3] - 2026-11-19
 
 ### 修「桌面上挂着 pchabit-netd.exe 黑窗」+ 任务栏小窗改由设置决定

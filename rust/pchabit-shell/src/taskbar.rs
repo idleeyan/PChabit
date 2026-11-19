@@ -207,6 +207,50 @@ const PADDING: i32 = 10;
 const ITEM_GAP: i32 = 12;
 const LABEL_GAP: i32 = 3;
 const MIN_WIDTH: i32 = 72;
+/// 字号（pt）：11/15 贴到任务栏上偏小，抬到 12/16
+const LABEL_PT: i32 = 12;
+const VALUE_PT: i32 = 16;
+
+/// 任务栏是深是浅，只能问 Windows 的个性化设置（`SystemUsesLightTheme`），
+/// 不能看应用内主题：应用深色 + 任务栏浅色时会用近白色字画在浅灰底上，糊成一片。
+pub fn system_uses_light_theme() -> bool {
+    const HKEY_CURRENT_USER: usize = 0x8000_0001;
+    const KEY_READ: u32 = 0x2_0019;
+    const REG_DWORD: u32 = 4;
+    extern "system" {
+        fn RegOpenKeyExW(hkey: usize, sub: *const u16, opt: u32, rights: u32, out: *mut usize) -> i32;
+        fn RegQueryValueExW(
+            key: usize,
+            name: *const u16,
+            reserved: *mut u32,
+            ty: *mut u32,
+            data: *mut u8,
+            cb: *mut u32,
+        ) -> i32;
+        fn RegCloseKey(key: usize) -> i32;
+    }
+    unsafe {
+        let sub = w("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+        let mut key: usize = 0;
+        if RegOpenKeyExW(HKEY_CURRENT_USER, sub.as_ptr(), 0, KEY_READ, &mut key) != 0 {
+            return false;
+        }
+        let mut val: u32 = 0;
+        let mut ty: u32 = 0;
+        let mut cb: u32 = 4;
+        let name = w("SystemUsesLightTheme");
+        let rc = RegQueryValueExW(
+            key,
+            name.as_ptr(),
+            std::ptr::null_mut(),
+            &mut ty,
+            &mut val as *mut u32 as *mut u8,
+            &mut cb,
+        );
+        RegCloseKey(key);
+        rc == 0 && ty == REG_DWORD && val != 0
+    }
+}
 
 fn w(text: &str) -> Vec<u16> {
     let mut v: Vec<u16> = text.encode_utf16().collect();
@@ -240,6 +284,10 @@ struct State {
     segments: Vec<Segment>,
     width: i32,
     light: bool,
+    /// 从任务栏实际背景取的色键（0 表示没取到，退回按主题写死值）。
+    /// Win11 任务栏是亚克力/随壁纸变色的，写死的 #D2D2D3 很容易对不上，
+    /// 对不上就会在小窗周围留一块灰底。
+    bg_key: u32,
     mouse_down: bool,
 }
 
@@ -260,6 +308,7 @@ pub fn start(app: tauri::AppHandle, light: bool) {
             segments: Vec::new(),
             width: MIN_WIDTH,
             light,
+            bg_key: 0,
             mouse_down: false,
         })
     });
@@ -319,16 +368,57 @@ unsafe fn create_window() {
         return;
     }
     with_state(|s| s.hwnd = hwnd);
+    // 先取任务栏真实底色再挂上去（挂上去以后这个位置就是小窗自己了，取不到原色）
+    let sampled = taskbar_bg_color();
+    with_state(|s| s.bg_key = sampled);
     attach();
 
     let light = with_state(|s| s.light).unwrap_or(false);
-    let key = if light { BG_KEY_LIGHT } else { BG_KEY_DARK };
-    SetLayeredWindowAttributes(hwnd, key, 0, LWA_COLORKEY);
+    let bg = with_state(|s| s.bg_key).unwrap_or(0);
+    SetLayeredWindowAttributes(hwnd, pick_key(light, bg), 0, LWA_COLORKEY);
     crate::log_line("[小窗] 已创建并挂载任务栏（Rust）");
 }
 
-unsafe fn attach() {
-    let hwnd = match with_state(|s| s.hwnd) {
+/// 色键：优先用从任务栏采样到的真实底色，取不到才退回按主题写死的值。
+fn pick_key(light: bool, bg: u32) -> u32 {
+    if bg != 0 {
+        bg
+    } else if light {
+        BG_KEY_LIGHT
+    } else {
+        BG_KEY_DARK
+    }
+}
+
+/// 在任务栏左端取一个像素当透明色键。
+unsafe fn taskbar_bg_color() -> u32 {
+    extern "system" {
+        fn GetPixel(hdc: HDC, x: i32, y: i32) -> u32;
+    }
+    let tb = FindWindowW(w("Shell_TrayWnd").as_ptr(), std::ptr::null());
+    if tb == 0 {
+        return 0;
+    }
+    let hdc = GetDC(tb);
+    if hdc == 0 {
+        return 0;
+    }
+    let mut rc = Rect::default();
+    if GetWindowRect(tb, &mut rc) == 0 || rc.h() <= 0 {
+        ReleaseDC(tb, hdc);
+        return 0;
+    }
+    // 采样点选在左端、垂直居中：Win11 图标居中排列，这里通常是纯任务栏底色；
+    // 万一落到图标上（很深的颜色）就只取一次，交给下面按亮度兜底。
+    let px = GetPixel(hdc, rc.left + 6, rc.top + rc.h() / 2);
+    ReleaseDC(tb, hdc);
+    if px == 0xFFFF_FFFF {
+        return 0;
+    }
+    px
+}
+
+unsafe fn attach() {    let hwnd = match with_state(|s| s.hwnd) {
         Some(h) if h != 0 => h,
         _ => return,
     };
@@ -399,19 +489,31 @@ unsafe fn paint(hwnd: HWND) {
         return;
     }
     let (w_, h_) = (rc.w(), rc.h());
-    let (segments, light) = match with_state(|s| (s.segments.clone(), s.light)) {
+    // 每帧都按 Windows 当前个性化设置定深浅：任务栏切主题后不必重启小窗
+    let mut theme_light = system_uses_light_theme();
+    let (segments, prev_light) = match with_state(|s| (s.segments.clone(), s.light)) {
         Some(v) => v,
         None => {
             EndPaint(hwnd, &ps);
             return;
         }
     };
+    if prev_light != theme_light {
+        with_state(|s| s.light = theme_light);
+        let bg = with_state(|s| s.bg_key).unwrap_or(0);
+        SetLayeredWindowAttributes(hwnd, pick_key(theme_light, bg), 0, LWA_COLORKEY);
+        log_theme_switch(theme_light);
+    } else {
+        theme_light = prev_light;
+    }
+    let light = theme_light;
 
     let mem_dc = CreateCompatibleDC(hdc);
     let bmp = CreateCompatibleBitmap(hdc, w_, h_);
     let old = SelectObject(mem_dc, bmp);
 
-    let key = if light { BG_KEY_LIGHT } else { BG_KEY_DARK };
+    let bg = with_state(|s| s.bg_key).unwrap_or(0);
+    let key = pick_key(light, bg);
     let brush = CreateSolidBrush(key);
     let full = Rect { left: 0, top: 0, right: w_, bottom: h_ };
     let _ = fill_rect(mem_dc, &full, brush);
@@ -423,8 +525,8 @@ unsafe fn paint(hwnd: HWND) {
         let d = GetDpiForWindow(hwnd);
         if d == 0 { 96 } else { d }
     };
-    let font_label = make_font(11, 400, dpi);
-    let font_value = make_font(15, 700, dpi);
+    let font_label = make_font(LABEL_PT, 400, dpi);
+    let font_value = make_font(VALUE_PT, 700, dpi);
 
     let mut x = PADDING;
     for seg in &segments {
@@ -489,6 +591,13 @@ unsafe fn make_font(pt: i32, weight: i32, dpi: u32) -> HFONT {
 
 fn label_color(light: bool) -> u32 {
     if light { LABEL_LIGHT } else { LABEL_DARK }
+}
+
+fn log_theme_switch(light: bool) {
+    crate::log_line(&format!(
+        "[小窗] 任务栏主题切换：{}",
+        if light { "浅色" } else { "深色" }
+    ));
 }
 
 fn tone_color(tone: Tone, light: bool) -> u32 {
@@ -651,8 +760,8 @@ fn remeasure() {
             let d = GetDpiForWindow(hwnd);
             if d == 0 { 96 } else { d }
         };
-        let font_label = make_font(11, 400, dpi);
-        let font_value = make_font(15, 700, dpi);
+        let font_label = make_font(LABEL_PT, 400, dpi);
+        let font_value = make_font(VALUE_PT, 700, dpi);
 
         let mut width = PADDING;
         for seg in &segments {
