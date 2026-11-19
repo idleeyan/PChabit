@@ -463,14 +463,22 @@ fn sample_loop(ctx: Arc<Ctx>) {
         if let Some(m) = meter.as_mut() {
             let elapsed = last_net_tick.elapsed().as_secs_f64();
             if let Some((up, down)) = m.sample(elapsed) {
-                if up > 0 || down > 0 {
+                // 网卡计数器回绕/驱动重载会让单拍增量变成天文数字（实测出现过 51 GB/分钟的行）。
+                // 以 200 MB/s（约 1.6 Gbps）为上界，超界视为脏增量、本拍丢弃，也不喂 netd 的 SYS。
+                let sec = elapsed.clamp(0.05, 10.0);
+                let cap = (200_000_000.0 * sec + 1024.0) as i64;
+                let plausible = up.abs() <= cap && down.abs() <= cap;
+                if plausible && (up > 0 || down > 0) {
                     let _ = ctx.netd_cmd(&format!("SYS {up} {down}"));
                     let mut net = ctx.net.lock().unwrap();
                     net.up += up;
                     net.down += down;
-                    let sec = elapsed.clamp(0.05, 10.0);
                     net.peak_up = net.peak_up.max(up as f64 / sec);
                     net.peak_down = net.peak_down.max(down as f64 / sec);
+                } else if !plausible {
+                    ctx.say(format!(
+                        "网卡增量异常（上 {up} / 下 {down}，上界 {cap} 字节），本拍丢弃"
+                    ));
                 }
                 *ctx.last_sys.lock().unwrap() = (up, down);
             }
