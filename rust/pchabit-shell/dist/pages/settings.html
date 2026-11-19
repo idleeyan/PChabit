@@ -141,18 +141,22 @@
   var LIVE = {
     TaskbarEnabled: 1, TaskbarShowCpu: 1, TaskbarShowMemory: 1, TaskbarShowNet: 1,
     TaskbarShowGpu: 1, TaskbarShowVram: 1,
-    DataRetentionDays: 1
+    DataRetentionDays: 1,
+    // 采集侧每秒/每分钟重读 settings.json，改了立刻生效
+    TrackKeyboard: 1, TrackMouse: 1, TrackWebBrowsing: 1, BrowserHistoryIngestEnabled: 1,
+    AnonymizeData: 1,
+    // 壳侧：关窗行为、开机自启都即时改
+    MinimizeToTray: 1, StartWithWindows: 1
   };
 
   // Rust 侧还没接线的键：能改、会写进 settings.json，但当前壳/采集不读它（旧 WPF 功能尚未迁移）
   var INACTIVE = {
-    StartWithWindows: 1, MinimizeToTray: 1, ShowNotifications: 1,
+    ShowNotifications: 1,
     AutoStartMonitoring: 1, CollectInShell: 1, CurrentLanguage: 1, DailyUsageGoalHours: 1,
     MonitoringInterval: 1, IdleThreshold: 1,
-    TrackKeyboard: 1, TrackMouse: 1, TrackWebBrowsing: 1, AnonymizeData: 1,
     RetentionDays: 1, WebSocketPort: 1,
     WebDAVEnabled: 1, WebDAVUrl: 1, WebDAVUsername: 1, WebDAVPassword: 1,
-    BrowserSyncEnabled: 1, BrowserHistoryIngestEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1,
+    BrowserSyncEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1,
     BackupPath: 1, AutoBackupEnabled: 1, AutoBackupIntervalHours: 1, MaxBackupCount: 1, MaxCloudBackupCount: 1,
     ArchiveBeforeCleanup: 1,
     TaskbarShowDisk: 1, TaskbarShowTemp: 1, TaskbarShowUsage: 1,

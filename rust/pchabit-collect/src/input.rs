@@ -402,13 +402,16 @@ pub fn flush(shared: &InputShared, store: &Store) -> Result<(i64, i64), String> 
     let mut keys = 0i64;
     let mut clicks = 0i64;
     if !date.is_empty() {
-        if kd.total != 0 || kd.repeat != 0 {
+        // 设置页的「记录键盘 / 记录鼠标」在这里生效：关掉就不再落库（增量照常丢弃）
+        if crate::settings::bool_of("TrackKeyboard", true) && (kd.total != 0 || kd.repeat != 0) {
             keys = kd.total;
             store.kb_add(&date, hour, &proc, &kd)?;
         }
-        if let Some((md, mh, mp, delta)) = mouse {
-            clicks = delta.left + delta.right + delta.middle;
-            store.mouse_add(&md, mh, &norm_proc(&mp), &delta)?;
+        if crate::settings::bool_of("TrackMouse", true) {
+            if let Some((md, mh, mp, delta)) = mouse {
+                clicks = delta.left + delta.right + delta.middle;
+                store.mouse_add(&md, mh, &norm_proc(&mp), &delta)?;
+            }
         }
     }
     Ok((keys, clicks))

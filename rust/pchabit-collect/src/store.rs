@@ -281,6 +281,12 @@ impl Store {
     }
 
     pub fn app_insert(&self, r: &AppRow) -> Result<(), String> {
+        // 「数据匿名化」：窗口标题不入库（对已写入的旧行不追溯）
+        let title = if crate::settings::bool_of("AnonymizeData", false) {
+            ""
+        } else {
+            r.title.as_str()
+        };
         self.conn
             .execute(
                 "INSERT INTO AppSessions \
@@ -296,7 +302,7 @@ impl Store {
                     r.process,
                     r.path,
                     r.app_name,
-                    r.title,
+                    title,
                     r.cls(),
                     r.x,
                     r.y,

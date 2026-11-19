@@ -49,6 +49,20 @@ pub(crate) fn log_line(msg: &str) {
     }
 }
 
+/// 读 `settings.json` 里的布尔开关（缺文件/缺键用 `default`）。
+fn setting_bool_default(key: &str, default: bool) -> bool {
+    let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let Ok(text) = std::fs::read_to_string(p) else {
+        return default;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return default;
+    };
+    v.get(key).and_then(|x| x.as_bool()).unwrap_or(default)
+}
+
 /// 读 `settings.json` 里的布尔开关（缺文件/缺键一律 false）。
 fn setting_bool(key: &str) -> bool {
     let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
@@ -1014,9 +1028,51 @@ fn set_setting(
                 taskbar::stop();
             }
         }
+        "StartWithWindows" => {
+            let on = value.as_bool().unwrap_or(false);
+            match apply_start_with_windows(on) {
+                Ok(msg) => log_line(&format!("[壳] 开机自启：{msg}")),
+                Err(e) => log_line(&format!("[壳] 开机自启设置失败：{e}")),
+            }
+        }
         _ => {}
     }
     Ok(format!("{key} = {value}"))
+}
+
+/// 「开机自启」落到 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `PChabit` 项。
+///
+/// 走 `reg.exe` 而不是引 winreg：只为一次写注册表再加一个依赖不划算，
+/// 用 `CREATE_NO_WINDOW` 起子进程，界面上不会闪黑框。
+fn apply_start_with_windows(on: bool) -> Result<String, String> {
+    use std::os::windows::process::CommandExt;
+    const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run";
+    if on {
+        let exe = std::env::current_exe().map_err(|e| format!("取自身路径失败：{e}"))?;
+        let value = format!("\"{}\"", exe.display());
+        let out = std::process::Command::new("reg")
+            .args(["add", KEY, "/v", "PChabit", "/t", "REG_SZ", "/d", &value, "/f"])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| format!("调 reg 失败：{e}"))?;
+        if out.status.success() {
+            Ok(format!("已写入 Run（{}）", exe.display()))
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    } else {
+        let out = std::process::Command::new("reg")
+            .args(["delete", KEY, "/v", "PChabit", "/f"])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| format!("调 reg 失败：{e}"))?;
+        // 本来就没有这一项也算成功（reg 会返回 1）
+        Ok(if out.status.success() {
+            "已从 Run 删除".to_string()
+        } else {
+            "Run 里本来就没有，无需删除".to_string()
+        })
+    }
 }
 
 fn json_type_name(v: &serde_json::Value) -> &'static str {
@@ -1139,7 +1195,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.17";
+const VERSION: &str = "4.12.18";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1700,15 +1756,21 @@ fn main() {
                     let handle = app.handle().clone();
                     move |e| {
                         if let tauri::WindowEvent::CloseRequested { api, .. } = e {
-                            if window_tray {
+                            // 「关闭窗口时最小化到托盘」关掉后，点× 就是真退出（连带采集宿主）
+                            let to_tray = window_tray && setting_bool_default("MinimizeToTray", true);
+                            if to_tray {
                                 // 托盘在，关窗只是收起来：采集继续，托盘可再打开
                                 api.prevent_close();
                                 if let Some(w) = handle.get_webview_window("main") {
                                     let _ = w.hide();
                                     log_line("[壳] 关窗→隐到托盘（采集继续，托盘「退出」才真退）");
                                 }
-                            } else if let Some(state) = handle.try_state::<HostState>() {
-                                state.stop();
+                            } else {
+                                if let Some(state) = handle.try_state::<HostState>() {
+                                    state.stop();
+                                }
+                                log_line("[壳] 关窗→按设置直接退出");
+                                handle.exit(0);
                             }
                         }
                     }

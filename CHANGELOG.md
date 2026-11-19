@@ -2,6 +2,32 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.18] - 2026-11-19
+
+### 设置页的「Rust 未接入」开关开始真正接线（第一批 7 项）
+
+以前这些开关只是写进 settings.json，Rust 侧根本不读，所以页面上被标成「Rust 未接入」。
+这一批接的都是**已有管线、只缺读取开关**的项：
+
+- **采集侧新增 `settings.rs`**：按文件 mtime 缓存读 `%LOCALAPPDATA%\PChabit\settings.json`
+  （mtime 不变就复用上次解析结果，变了才重读），提供 `bool_of / i64_of / str_of`，
+  支持 `PCHABIT_SETTINGS` 指向测试文件。
+- **记录键盘 `TrackKeyboard`**：关掉后 `input::flush` 不再写 `KeyboardSessions`（增量照常丢弃）。
+- **记录鼠标 `TrackMouse`**：同上，不再写 `MouseSessions`。
+- **记录网页访问 `TrackWebBrowsing`**：关掉后 `websync::dispatch` 直接丢 `pageview/tabactivate/tabswitch/idle/focus`
+  消息，不再开新的网页会话（**已经在场的会话会照常收尾写一次**，不会凭空消失）。
+- **读取浏览器历史 `BrowserHistoryIngestEnabled`**：关掉后 `history` 消息直接丢弃。
+- **数据匿名化 `AnonymizeData`**：新数据里 `AppSessions.WindowTitle` 写空，
+  网页会话的 URL 只留 `https://<域名>/`、标题置空（对已入库的旧数据不追溯）。
+- **关闭窗口时最小化到托盘 `MinimizeToTray`**：关掉后点窗口× 就真退出（连带停采集宿主），
+  原来是固定「隐到托盘」。
+- **开机自启 `StartWithWindows`**：改了立刻生效，写/删 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+  的 `PChabit` 项（值 = 自身 exe 路径），走 `reg.exe` + `CREATE_NO_WINDOW`，不闪黑框。
+- 设置页对应的 7 项标签从「Rust 未接入」改为「立即生效」。
+
+实测：4.12.18 已部署运行（PID 见日志），把 `TrackWebBrowsing` 临时置 false 后新会话不再开，
+恢复 true 后照常入库；`settings.rs` 的缺文件兜底单测通过。
+
 ## [4.12.17] - 2026-11-19
 
 ### 应用详情页同样改成「全部历史 + 可切范围」，顺手修掉长范围趋势图糊成一片

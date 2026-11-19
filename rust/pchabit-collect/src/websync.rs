@@ -175,6 +175,25 @@ impl Engine {
             }
         };
 
+        // 设置页开关（每条消息读一次，改了立刻生效）：
+        //   TrackWebBrowsing        -> 关掉就不记网页会话（页面访问、标签切换）
+        //   BrowserHistoryIngestEnabled -> 关掉就不收浏览器历史
+        if ty == "history" && !crate::settings::bool_of("BrowserHistoryIngestEnabled", true) {
+            return;
+        }
+        if matches!(ty.as_str(), "pageview" | "tabactivate" | "tabswitch" | "idle" | "focus")
+            && !crate::settings::bool_of("TrackWebBrowsing", true)
+        {
+            return;
+        }
+        // 匿名化：只留域名，不存标题与完整 URL（对已入库的旧数据不追溯）
+        let anonymize = crate::settings::bool_of("AnonymizeData", false);
+        let (url, title) = if anonymize {
+            (format!("https://{}/", domain_of(&url)), String::new())
+        } else {
+            (url, title)
+        };
+
         match ty.as_str() {
             "connection" => {
                 log(format!("浏览器扩展已连接：{browser}（{client}）"));

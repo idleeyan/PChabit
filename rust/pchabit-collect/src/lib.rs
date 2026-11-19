@@ -13,6 +13,7 @@ pub mod input;
 pub mod netd;
 pub mod netif;
 pub mod sampler;
+pub mod settings;
 pub mod sha1;
 pub mod store;
 pub mod timefmt;
