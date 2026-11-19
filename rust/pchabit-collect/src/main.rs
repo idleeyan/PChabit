@@ -19,6 +19,7 @@ fn main() {
     let mut ws_port: u16 = 8765;
     let mut check = false;
     let mut daily: Option<String> = None;
+    let mut compare: Option<String> = None;
 
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -39,6 +40,7 @@ fn main() {
             }
             "--check" => check = true,
             "--daily" => daily = args.next(),
+            "--compare" => compare = args.next(),
             _ => {}
         }
     }
@@ -46,6 +48,85 @@ fn main() {
     let log = Arc::new(|msg: String| {
         println!("[{}] {msg}", pchabit_collect::timefmt::stamp7(&pchabit_collect::timefmt::now()));
     });
+
+    // 对账：把库复制一份，在副本上重算该日汇总，再和生产库里已存的日汇总比字段。
+    if let Some(date) = compare {
+        let copy = std::env::temp_dir().join(format!(
+            "pchabit_compare_{}.db",
+            pchabit_collect::timefmt::stamp7(&pchabit_collect::timefmt::now()).replace([':', '.', ' '], "-")
+        ));
+        if let Err(e) = std::fs::copy(&db, &copy) {
+            eprintln!("复制库失败：{e}");
+            std::process::exit(1);
+        }
+        for suffix in ["-wal", "-shm"] {
+            let src = std::path::PathBuf::from(format!("{}{suffix}", db.display()));
+            let dst = std::path::PathBuf::from(format!("{}{suffix}", copy.display()));
+            if src.exists() {
+                let _ = std::fs::copy(&src, &dst);
+            }
+        }
+
+        let now = pchabit_collect::timefmt::stamp7(&pchabit_collect::timefmt::now());
+        let log_fn: pchabit_collect::host::LogFn = log.clone();
+        let store_copy = match pchabit_collect::Store::open(&copy) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("打开副本失败：{e}");
+                std::process::exit(1);
+            }
+        };
+        let recomputed = match pchabit_collect::daily::aggregate_day(&store_copy, &date, &now, &log_fn) {
+            Ok(_) => store_copy.daily_existing(&date),
+            Err(e) => {
+                eprintln!("副本重算失败：{e}");
+                std::process::exit(1);
+            }
+        };
+
+        let store_prod = match pchabit_collect::Store::open(&db) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("打开生产库失败：{e}");
+                std::process::exit(1);
+            }
+        };
+        let stored = store_prod.daily_existing(&date);
+
+        println!("对账 {date}：");
+        match (stored, recomputed) {
+            (Some(a), Some(b)) => {
+                let d_keys = b.total_keys - a.total_keys;
+                let d_clicks = b.clicks - a.clicks;
+                let d_active = b.active_minutes - a.active_minutes;
+                println!(
+                    "  键数      已存 {:>8} / 重算 {:>8} / 差 {:>+8}",
+                    a.total_keys, b.total_keys, d_keys
+                );
+                println!(
+                    "  点击数    已存 {:>8} / 重算 {:>8} / 差 {:>+8}",
+                    a.clicks, b.clicks, d_clicks
+                );
+                println!(
+                    "  活跃分钟  已存 {:>8.1} / 重算 {:>8.1} / 差 {:+8.1}",
+                    a.active_minutes, b.active_minutes, d_active
+                );
+                let oh = a.top_apps.matches("\"process\"").count();
+                let rh = b.top_apps.matches("\"process\"").count();
+                println!("  应用条目  已存 {:>8} / 重算 {:>8}", oh, rh);
+                let same = d_keys == 0 && d_clicks == 0 && d_active.abs() < 0.05 && oh == rh;
+                println!("  结论：{}", if same { "一致" } else { "有差异（原始表与日汇总不同步，可能当天还没汇总）" });
+            }
+            (None, Some(_)) => println!("  生产库没有这天的日汇总行（重算已生成）"),
+            (Some(_), None) => println!("  副本重算没有产出日汇总行"),
+            (None, None) => println!("  两边都没有这天的日汇总行"),
+        }
+        let _ = std::fs::remove_file(&copy);
+        for suffix in ["-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", copy.display()));
+        }
+        return;
+    }
 
     if let Some(date) = daily {
         let store = match pchabit_collect::Store::open(&db) {
