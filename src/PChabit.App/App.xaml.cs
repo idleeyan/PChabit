@@ -38,6 +38,9 @@ public partial class App : Microsoft.UI.Xaml.Application
     /// <summary>F2（3.83.0）：托盘 5s Tick 重入防护标志（Interlocked，陷阱 27）。</summary>
     private int _trayTickBusy;
     private TaskbarWidget? _taskbarWidget;
+    /// <summary>P5-4 只读模式：只为「任务栏小窗点击拦截」启用的鼠标钩子与其钩子线程（退出时要收）。</summary>
+    private Core.Interfaces.IMouseMonitor? _uiOnlyMouseMonitor;
+    private InputHookThread? _uiOnlyHookThread;
     // 桌面悬浮插件字段/驱动见 App.DesktopWidget.cs（3.23.0 分部类拆分）
     private double _todayActiveMinutes;
     private DateTime _todayUsageCacheTime = DateTime.MinValue;

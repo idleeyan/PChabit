@@ -70,6 +70,20 @@ public partial class App : Microsoft.UI.Xaml.Application
             }
             Log.Information("监控器已停止");
 
+            // 只读模式：这里收掉只为小窗点击拦截装的鼠标钩子与钩子线程
+            try
+            {
+                _uiOnlyMouseMonitor?.Stop();
+                _uiOnlyHookThread?.Stop();
+                _uiOnlyMouseMonitor = null;
+                _uiOnlyHookThread = null;
+                Log.Information("只读模式鼠标钩子已停止");
+            }
+            catch (Exception ex)
+            {
+                Log.Debug(ex, "停止只读模式鼠标钩子失败（关机期）");
+            }
+
             try
             {
                 // 先停样本写入器（提交残余分钟桶），再停硬件采集

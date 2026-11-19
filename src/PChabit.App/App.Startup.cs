@@ -191,7 +191,28 @@ public partial class App : Microsoft.UI.Xaml.Application
             // 只读模式没有心跳 → Rust 宿主看到「PChabit 在跑但没心跳」会放行
             ClearCollectHeartbeat();
             Log.Information("采集已交给 Rust 宿主（PCHABIT_COLLECT=shell）：本进程只做界面与内存采样");
-            Log.Information("注意：任务栏小窗的点击拦截来自 WPF 鼠标钩子，只读模式下该功能不可用");
+
+            // 任务栏小窗点击拦截是纯 UI 交互（吞掉命中区域的点击再弹网速浮窗），不算采集：
+            // 只装一个鼠标低级钩子，复用与正常模式同一条输入钩子线程，键鼠统计仍归 Rust 宿主。
+            try
+            {
+                var hookThread = _serviceProvider!.GetRequiredService<InputHookThread>();
+                hookThread.Start();
+                _uiOnlyHookThread = hookThread;
+
+                var mouseMonitor = _serviceProvider!.GetRequiredService<Core.Interfaces.IMouseMonitor>();
+                mouseMonitor.ClickInterceptor = (x, y) =>
+                    _taskbarWidget != null
+                    && _taskbarWidget.HitTestScreenPoint(x, y)
+                    && OnTaskbarWidgetClicked();
+                _uiOnlyMouseMonitor = mouseMonitor;
+                hookThread.Post(() => mouseMonitor.Start());
+                Log.Information("任务栏小窗点击拦截已启用（只读模式专用鼠标钩子，不采集键鼠）");
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "只读模式下注册任务栏小窗点击拦截失败");
+            }
 
             _hardwareMonitorService = _serviceProvider!.GetRequiredService<HardwareMonitorService>();
             _hardwareMonitorService.Start();
