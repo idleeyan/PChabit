@@ -14,7 +14,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish` |
 | 安装运行目录 | `D:\Tool\PChabit`（用户实际运行的程序在此，非 publish 目录） |
-| 当前版本 | **4.9.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
+| 当前版本 | **4.10.0**（`src\PChabit.App\PChabit.App.csproj` 的 `<Version>`；壳与 `pchabit-collect` 同步） |
 | 技术栈 | .NET 10.0 / WinUI 3 / Windows App SDK 2.5.1 / EF Core 10.0.0 / Serilog 4.x / **Rust 1.98**（`rust/pchabit-netd` 采样内核、`rust/pchabit-datad` 数据面、`rust/pchabit-shell` Tauri 2 壳预览） |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 壳预览 | 发布包内 `Shell\PChabitShell.exe`（Tauri 2，**16 个页面**：仪表盘 + 五图表/分析页 + 时间线 + 网页访问 + 网络流量 + 键鼠活动 + 历史报告 + 分类管理 + 应用详情 + 设置概览 + 便签 + 数据管理），默认入口仍是 WPF 版 |
@@ -79,6 +79,7 @@
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
 | 2026-11-18 | 3.95.0 | **前台窗口采样 1 Hz → 500 ms（P2 尾巴）**。内核采样（netd）与宿主读取（AppMonitor 定时器）同频提到 500 ms，避免短于 1 秒的切换被整段合并；每拍仍只一次 GetForegroundWindow，开销可忽略 |
+| 2026-11-19 | 4.10.0 | **采集宿主接管 WPF 的三件每日维护**：旧数据清理（store::cleanup_before，逐表照抄 CleanupOldDataAsync，DailySummaries 不删，保留天数读 DataRetentionDays，启动一次 + 每天一次）、当日搜索计数落库（websync 按「会话在场 + query 非空」计数 → store::search_count_set，每 30 s 随网页兜底写）、两个 30 天回填（AppDailyStats 全空时按天补；DailySummaries 缺硬件列的日期用 HardwareSamples 重算五列）。实测副本库（PCHABIT_RETENTION_DAYS=30）：清理 312214 条、六表无早于截止日期残留；WS 两条 search → SearchCount=2；清零 11-18 硬件列后回填 35.91/69.94/28.36/70.0/43.84；生产库保留 180 天启动日志「无过期数据需要清理」。cargo test 13 通过。发布 4.10.0.0 部署 D:\Tool\PChabit | 
 | 2026-11-19 | 4.9.0 | **默认入口切换（P5-4 落地）**：WPF 只读 UI + Rust 采集宿主并行。`settings.json` 的 `CollectInShell=true` 时 WPF 只保留界面/托盘/小部件内存采样，采集表全部由 `PChabitShell.exe --host --headless` 写；单写者判断改为心跳文件 `.wpf-collecting`（WPF 采集时每 60 s 刷新，只读模式不写，宿主凭它放行）；netd 改多客户端（每条连接一线程，`STOP` 结束进程），解决 `ERROR_PIPE_BUSY`；应用会话忽略 `pchabit*` 自家进程与无标题矮工具窗；壳加单实例锁（`127.0.0.1:18765`）；开机自启新增计划任务「PChabit 采集宿主」（登录触发、最高权限，与 WPF 同权限才能共享 admin netd）。实测 15:15 后：`HardwareSamples` 全 8189、`NetworkTrafficSamples` 每分钟、`AppSessions` 真实切段、键鼠照写、`WebSessions` 抖音/steam/百度分类正常；WPF 日志 `采集已交给 Rust 宿主` + 小窗命中区就绪。代价：小窗点击拦截（依赖 WPF 鼠标钩子）暂不可用。发布 4.9.0.0 部署 `D:\Tool\PChabit` |
 | 2026-11-19 | 4.8.0 | **关窗=隐到托盘**：窗口模式默认建托盘（`--no-tray` 可关），`CloseRequested` → `api.prevent_close()` + `hide()`，采集继续；任何退出路径走 `RunEvent::Exit → HostState::stop()` 收口。自检开关 `PCHABIT_CLOSE_TEST=1`（10 秒后自发关窗）。实测副本库 + `--host dashboard`：`dashboard 已渲染 1h3m / 9 应用 / 306 键` → 关窗 → 进程 26016 与 netd 11528 仍在 → `14:47` 起分钟行照写（8189）、应用会话照切段。发布 4.8.0.0 部署 `D:\Tool\PChabit` |
 | 2026-11-19 | 4.7.0 | **托盘（headless 单进程成形）**：壳启用 `tray-icon` + `image-ico`，`--headless` 下建托盘「打开仪表盘 / 退出采集」；无窗口时点「打开仪表盘」现建窗口（载荷与注入现算），退出走 `HostState::stop()` 收口再 `app.exit(0)`；托盘 `mem::forget` 保活。自检开关 `PCHABIT_OPEN_WIN=1`（8 秒后走同一条建窗代码）。实测副本库：托盘建立 → 现建窗口 → `页面加载完成 [main]` → `dashboard 已渲染 54 分钟 / 9 应用 / 217 键`，同时 `[collect] 会话入库 WindowsTerminal.exe / 7.2s`；16 页载荷 645.6 ms。发布 4.7.0.0 部署 `D:\Tool\PChabit` |

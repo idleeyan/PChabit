@@ -810,6 +810,98 @@ impl Store {
             .map(|_| ())
             .map_err(|e| format!("写 AppDailyStats 失败: {e}"))
     }
+
+    /// 数据保留清理：逐条照抄 WPF `CleanupOldDataAsync`（DailySummaries 不删，只删原始表）。
+    /// 返回删除行数；单条失败不影响其它表。
+    pub fn cleanup_before(&self, cutoff_date: &str, sample_cutoff: &str) -> i64 {
+        let mut deleted = 0i64;
+        for (sql, arg) in [
+            ("DELETE FROM KeyboardSessions WHERE Date < ?1", cutoff_date),
+            ("DELETE FROM MouseSessions WHERE Date < ?1", cutoff_date),
+            ("DELETE FROM WebSessions WHERE StartTime < ?1", cutoff_date),
+            ("DELETE FROM AppSessions WHERE StartTime < ?1", cutoff_date),
+            ("DELETE FROM AppDailyStats WHERE Date < ?1", cutoff_date),
+            ("DELETE FROM HardwareSamples WHERE Timestamp < ?1", sample_cutoff),
+        ] {
+            if let Ok(n) = self.conn.execute(sql, params![arg]) {
+                deleted += n as i64;
+            }
+        }
+        deleted
+    }
+
+    /// 把当日搜索计数写进 `DailySummaries.SearchCount`（保留行内其它字段；没有行就建一条）。
+    pub fn search_count_set(&self, date: &str, count: i64, now: &str) -> Result<(), String> {
+        if count <= 0 {
+            return Ok(());
+        }
+        self.conn
+            .execute(
+                "INSERT INTO DailySummaries (Id, Date, SearchCount, LastUpdated) \
+                 VALUES (?1, ?2, ?3, ?4) \
+                 ON CONFLICT(Date) DO UPDATE SET SearchCount=excluded.SearchCount, LastUpdated=excluded.LastUpdated",
+                params![uuid_like(), date, count, now],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("写 SearchCount 失败: {e}"))
+    }
+
+    /// AppDailyStats 是否有任何行（首次迁移回填的判据）。
+    pub fn app_daily_rows(&self) -> i64 {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM AppDailyStats", [], |r| r.get::<_, i64>(0))
+            .unwrap_or(0)
+    }
+
+    /// 有应用会话的日期（按日期升序，供回填用）。
+    pub fn app_session_dates(&self, limit: i64) -> Vec<String> {
+        let mut stmt = match self
+            .conn
+            .prepare("SELECT DISTINCT substr(StartTime, 1, 10) AS d FROM AppSessions ORDER BY d DESC LIMIT ?1")
+        {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        stmt.query_map(params![limit], |r| r.get::<_, String>(0))
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default()
+    }
+
+    /// 最近 N 天里 `DailySummaries` 缺硬件列的日期（硬件日指标回填用）。
+    pub fn daily_missing_hardware(&self, limit: i64) -> Vec<String> {
+        let mut stmt = match self.conn.prepare(
+            "SELECT Date FROM DailySummaries \
+             WHERE (CpuLoadAvg IS NULL OR CpuLoadAvg = 0) \
+             ORDER BY Date DESC LIMIT ?1",
+        ) {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        stmt.query_map(params![limit], |r| r.get::<_, String>(0))
+            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+            .unwrap_or_default()
+    }
+
+    /// 只更新某天的硬件日指标（回填用；不动其它列，也不动 SearchCount）。
+    pub fn daily_hardware_set(
+        &self,
+        date: &str,
+        cpu_avg: f64,
+        cpu_p95: f64,
+        gpu_avg: f64,
+        gpu_temp_max: f64,
+        mem_avg: f64,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE DailySummaries SET CpuLoadAvg=?2, CpuLoadP95=?3, GpuLoadAvg=?4, \
+                 GpuTempMax=?5, MemLoadAvg=?6, MetricsVersion=3 \
+                 WHERE Date=?1",
+                params![date, cpu_avg, cpu_p95, gpu_avg, gpu_temp_max, mem_avg],
+            )
+            .map(|_| ())
+            .map_err(|e| format!("回填硬件日指标失败: {e}"))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -929,4 +1021,126 @@ fn uuid_like() -> String {
 }
 
 static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn tmp_store(name: &str) -> (Store, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("pchabit_store_{name}_{}", uuid_like()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.db");
+        let store = Store::open(&path).unwrap();
+        // 库结构平时由 WPF 的 EF 迁移建，测试里只建用到的几张表
+        store
+            .conn
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS KeyboardSessions (Id TEXT PRIMARY KEY, Date TEXT, Hour INTEGER, TotalKeyPresses INTEGER);\
+                 CREATE TABLE IF NOT EXISTS MouseSessions (Id TEXT PRIMARY KEY, Date TEXT, Hour INTEGER);\
+                 CREATE TABLE IF NOT EXISTS WebSessions (Id TEXT PRIMARY KEY, StartTime TEXT);\
+                 CREATE TABLE IF NOT EXISTS AppSessions (Id TEXT PRIMARY KEY, StartTime TEXT);\
+                 CREATE TABLE IF NOT EXISTS AppDailyStats (Date TEXT, ProcessName TEXT, Minutes REAL, Sessions INTEGER, \
+                     FocusMinutes REAL, HourlyJson TEXT, LastUpdated TEXT, PRIMARY KEY (Date, ProcessName));\
+                 CREATE TABLE IF NOT EXISTS HardwareSamples (Id INTEGER PRIMARY KEY AUTOINCREMENT, Timestamp TEXT, CpuLoad REAL, SampleCount INTEGER);\
+                 CREATE TABLE IF NOT EXISTS DailySummaries (Id TEXT PRIMARY KEY, Date TEXT UNIQUE, TotalKeys INTEGER, SearchCount INTEGER, LastUpdated TEXT);\
+                 CREATE UNIQUE INDEX IF NOT EXISTS IX_DailySummaries_Date ON DailySummaries(Date);",
+            )
+            .unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn cleanup_deletes_old_raw_rows_and_keeps_summaries() {
+        let (store, dir) = tmp_store("cleanup");
+        // 造两条键盘会话（新/旧）、一条旧硬件样本、一条旧 AppDailyStats、一条旧日汇总
+        store
+            .conn
+            .execute(
+                "INSERT INTO KeyboardSessions (Id, Date, Hour, TotalKeyPresses) VALUES \
+                 ('k-old','2020-01-01 00:00:00', 9, 100), ('k-new','2026-11-18 00:00:00', 9, 50)",
+                params![],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO HardwareSamples (Timestamp, CpuLoad, SampleCount) VALUES \
+                 ('2020-01-01 09:00', 10.0, 60), ('2026-11-18 09:00', 10.0, 60)",
+                params![],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO AppDailyStats (Date, ProcessName, Minutes, Sessions, FocusMinutes, HourlyJson, LastUpdated) \
+                 VALUES ('2020-01-01','a.exe',1.0,1,0.0,'[]','2020-01-01 00:00:00')",
+                params![],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO DailySummaries (Id, Date, TotalKeys) VALUES ('d-old','2020-01-01', 10)",
+                params![],
+            )
+            .unwrap();
+
+        let n = store.cleanup_before("2025-01-01", "2025-01-01 00:00");
+        assert_eq!(n, 3, "键盘/硬件/AppDailyStats 各一条应被删");
+
+        let left_keys: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM KeyboardSessions WHERE Id='k-old'",
+                params![],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left_keys, 0);
+        assert_eq!(store.app_daily_rows(), 0);
+        let summaries: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM DailySummaries WHERE Id='d-old'",
+                params![],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(summaries, 1, "日汇总不删");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn search_count_upsert_keeps_other_columns() {
+        let (store, dir) = tmp_store("searchcount");
+        store
+            .conn
+            .execute(
+                "INSERT INTO DailySummaries (Id, Date, TotalKeys, SearchCount) VALUES ('x1','2026-11-19', 77, 0)",
+                params![],
+            )
+            .unwrap();
+        store.search_count_set("2026-11-19", 5, "2026-11-19 23:59:59").unwrap();
+        let (keys, search): (i64, i64) = store
+            .conn
+            .query_row(
+                "SELECT TotalKeys, SearchCount FROM DailySummaries WHERE Date='2026-11-19'",
+                params![],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(keys, 77, "其它列不能被覆盖");
+        assert_eq!(search, 5);
+
+        // count<=0 不建行、不改行
+        store.search_count_set("2026-11-20", 0, "2026-11-20 23:59:59").unwrap();
+        let rows: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM DailySummaries", params![], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
 

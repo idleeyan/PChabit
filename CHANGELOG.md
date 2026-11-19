@@ -2,6 +2,40 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.10.0] - 2026-11-19
+
+### 采集宿主接管 WPF 的三件「每日维护」
+
+4.9.0 把采集切到 Rust 之后，WPF 只读模式不再跑 `DataCollectionService` 的 15 s 定时任务，
+连带三件原本只在那里发生的事一起停了：**旧数据清理**、**当日搜索计数落库**、**30 天回填**。
+这个版本把它们搬进 Rust 的 `daily_loop`，库不会再只增不减。
+
+- **数据保留清理**（`store::cleanup_before`）：逐表照抄 WPF `CleanupOldDataAsync` 的判据——
+  `KeyboardSessions/MouseSessions.Date`、`WebSessions/AppSessions.StartTime`、`AppDailyStats.Date`
+  按 `yyyy-MM-dd` 比，`HardwareSamples.Timestamp` 按 `"yyyy-MM-dd 00:00"` 比；
+  **`DailySummaries` 不删**（汇总要长期留着看趋势）。保留天数读 `settings.json` 的 `DataRetentionDays`，
+  钳到 1–3650；自测可用 `PCHABIT_RETENTION_DAYS` 覆盖。宿主启动时先清一次，之后每天过零点清一次；
+- **`DailySummaries.SearchCount` 有来源了**（`websync::Engine` 内计数 + `store::search_count_set`）：
+  口径与 WPF `HandleSearch` 一致——**会话在场且 `query` 非空**才 +1，不存搜索词原文；
+  每 30 s 随网页兜底落库一次，`count<=0` 不建行、不覆盖其它列；
+- **两个 30 天回填**（`daily::backfill_app_daily` / `daily::backfill_hardware`）：
+  `AppDailyStats` 全空而历史 `AppSessions` 还在时按天补（专注仍带 25 分钟门槛）；
+  `DailySummaries` 里 `CpuLoadAvg` 为空/0 的日期用 `HardwareSamples` 重算那五列，
+  不动其它列、不动 `SearchCount`。
+
+实测（副本库 `%TEMP%\pchabit_test11.db`，`PCHABIT_RETENTION_DAYS=30`）：
+
+| 观察点 | 结果 |
+| --- | --- |
+| 清理 | `数据清理完成：删除 312214 条 30 天前的记录（截止 2026-10-20）`；六张表早于截止日期的行全部为 0，`DailySummaries` 2026-11-17/18 行仍在 |
+| SearchCount | WS 探针发两条带 `query` 的 `search` → `DailySummaries` 今日行 `SearchCount=2`（其余列 0，未被覆盖） |
+| 硬件回填 | 把 11-18 的硬件列清零后重启 → `硬件日指标回填完成：1 天`，值恢复 `35.91 / 69.94 / 28.36 / 70.0 / 43.84`（与 4.5.0 对账一致） |
+| 无过期数据 | 生产库（保留 180 天）启动日志 `无过期数据需要清理（保留 180 天）`，不误删 |
+| 单测 | `cargo test --release` **13 通过**（新增 search 计数口径、清理只删原始表、SearchCount 不覆盖其它列三条） |
+
+部署后 `PChabit`（只读 UI）+ `PChabitShell --host --headless`（计划任务）+ 共享 netd 形态不变，
+扩展 v2.2.4 双浏览器照常连上。
+
 ## [4.9.0] - 2026-11-19
 
 ### 默认入口切换：WPF 只读 UI + Rust 采集宿主并行

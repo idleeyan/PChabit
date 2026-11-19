@@ -666,6 +666,118 @@ fn overlap_night(st: i64, en: i64) -> f64 {
     night_minutes_between(st, en)
 }
 
+/// 硬件日指标回填：`DailySummaries` 里 `CpuLoadAvg` 为空/0 的最近 `days` 天，用 `HardwareSamples`
+/// 重算那五列（与 `aggregate_day` 同一套取值：均值、P95、GPU 均值、温度峰值、内存均值）。
+pub fn backfill_hardware(store: &Store, days: i64, log: &LogFn) -> usize {
+    let dates = store.daily_missing_hardware(days);
+    let mut filled = 0usize;
+    for date in dates {
+        let hw = store.hardware_day(&date);
+        if hw.is_empty() {
+            continue; // 那天本来就没有样本，留空比写 0 更诚实
+        }
+        let cpu_avg = mean(hw.iter().filter_map(|r| r.0)).unwrap_or(0.0);
+        let cpu_p95 = percentile95(hw.iter().filter_map(|r| r.0).collect()).unwrap_or(0.0);
+        let gpu_avg = mean(hw.iter().filter_map(|r| r.1)).unwrap_or(0.0);
+        let gpu_temp_max = max_of(hw.iter().filter_map(|r| r.2)).unwrap_or(0.0);
+        let mem_avg = mean(hw.iter().filter_map(|r| r.3)).unwrap_or(0.0);
+        match store.daily_hardware_set(&date, cpu_avg, cpu_p95, gpu_avg, gpu_temp_max, mem_avg) {
+            Ok(()) => filled += 1,
+            Err(e) => log(format!("回填硬件日指标失败（{date}）：{e}")),
+        }
+    }
+    filled
+}
+
+/// 首次迁移回填：`AppDailyStats` 全空但历史 `AppSessions` 还在时，按天补最近 `days` 天。
+/// 只算 AppDailyStats 需要的三样（分钟/会话数/专注/小时分布），走与 `aggregate_day` 同一套口径。
+pub fn backfill_app_daily(store: &Store, days: i64, log: &LogFn) -> usize {
+    if store.app_daily_rows() > 0 {
+        return 0;
+    }
+    let dates = store.app_session_dates(days);
+    let mut filled = 0usize;
+    for date in dates {
+        let Ok(next) = next_day(&date) else { continue };
+        let from = format!("{date} 00:00:00");
+        let to = format!("{next} 00:00:00");
+        let apps = store.app_sessions_in(&from, &to);
+        if apps.is_empty() {
+            continue;
+        }
+        let cat_map: Vec<(String, String)> = store
+            .prog_cat_map()
+            .into_iter()
+            .map(|(p, c)| (normalize_process(&p), c))
+            .filter(|(p, _)| !p.is_empty())
+            .collect();
+        let cat_of = |s: &AppSessRow| -> String {
+            let key = normalize_process(&s.process);
+            if let Some((_, c)) = cat_map.iter().find(|(p, _)| p == &key) {
+                return c.clone();
+            }
+            s.category.clone().unwrap_or_else(|| "未分类".to_string())
+        };
+
+        let mut per_proc: Vec<(String, f64, f64, Vec<f64>, i64)> = Vec::new();
+        for s in &apps {
+            let m = active_minutes(s);
+            let productive = is_productive_category(&cat_of(s));
+            let focus_for_app = if m >= 25.0 && productive { m } else { 0.0 };
+            let mut hourly = vec![0.0f64; 24];
+            if let (Some(st), Some(en)) = (dt::parse_stamp(&s.start), s.end.as_deref().and_then(dt::parse_stamp)) {
+                if en > st {
+                    let day_start = dt::parse_stamp(&from).unwrap_or(0);
+                    for h in 0..24 {
+                        let hs = day_start + h as i64 * 3_600_000;
+                        let he = hs + 3_600_000;
+                        if st < he && en > hs {
+                            hourly[h] += overlap_min(st, en, hs, he);
+                        }
+                    }
+                }
+            }
+            let key = normalize_process(&s.process);
+            if key.is_empty() {
+                continue;
+            }
+            if let Some(row) = per_proc.iter_mut().find(|(p, _, _, _, _)| p == &key) {
+                row.1 += m;
+                row.2 += focus_for_app;
+                row.4 += 1;
+                for h in 0..24 {
+                    row.3[h] += hourly[h];
+                }
+            } else {
+                per_proc.push((key, m, focus_for_app, hourly, 1));
+            }
+        }
+        let now = crate::timefmt::stamp7(&crate::timefmt::now());
+        for (proc_name, minutes, focus, hourly, sessions) in &per_proc {
+            let hourly_json = format!(
+                "[{}]",
+                hourly
+                    .iter()
+                    .map(|m| format!("{}", round1(*m)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            );
+            let row = AppDailyOut {
+                process: proc_name.clone(),
+                minutes: *minutes,
+                sessions: *sessions,
+                focus: *focus,
+                hourly_json,
+            };
+            if let Err(e) = store.app_daily_upsert(&date, &row, &now) {
+                log(format!("回填 AppDailyStats 失败（{date}/{proc_name}）：{e}"));
+            }
+        }
+        filled += 1;
+    }
+    filled
+}
+
 pub fn next_day(date: &str) -> Result<String, String> {
     let ms = dt::parse_stamp(&format!("{date} 00:00:00")).ok_or_else(|| format!("日期解析失败：{date}"))?;
     Ok(dt::date_ms(ms + 86_400_000))

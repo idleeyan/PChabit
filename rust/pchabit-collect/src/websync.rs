@@ -58,6 +58,9 @@ pub struct Engine {
     cats: Vec<(i64, String, bool)>,
     maps: Vec<(String, i64)>,
     cat_at: Option<Instant>,
+    /// 当日搜索次数（与 WPF 的 `_todaySearchCount` 同口径：只数「有 query 的 search 事件」）
+    searches: i64,
+    search_date: String,
 }
 
 impl Default for Engine {
@@ -67,6 +70,8 @@ impl Default for Engine {
             cats: Vec::new(),
             maps: Vec::new(),
             cat_at: None,
+            searches: 0,
+            search_date: String::new(),
         }
     }
 }
@@ -74,6 +79,15 @@ impl Default for Engine {
 impl Engine {
     pub fn new() -> Engine {
         Engine::default()
+    }
+
+    /// 当日搜索次数（`date` 是 `yyyy-MM-dd`；跨日自动归零，与 WPF 一致）。
+    pub fn search_count(&self, date: &str) -> i64 {
+        if self.search_date == date {
+            self.searches
+        } else {
+            0
+        }
     }
 
     fn ensure_catalog(&mut self, store: &Store) {
@@ -311,8 +325,22 @@ impl Engine {
                     a.form = true;
                 }
             }
-            // search 只影响 WPF 侧的内存计数（SearchCount 不落库），这里不处理
-            "search" | "pong" | "status" => {}
+            // search：WPF 口径是「会话在场 + 带 query」才计数（不存词原文）
+            "search" => {
+                if self.sessions.contains_key(&key) {
+                    let q = v["query"].as_str().unwrap_or("").trim();
+                    let q = if q.is_empty() { v["data"]["query"].as_str().unwrap_or("").trim() } else { q };
+                    if !q.is_empty() {
+                        let today = dt::date_ms(now);
+                        if self.search_date != today {
+                            self.search_date = today;
+                            self.searches = 0;
+                        }
+                        self.searches += 1;
+                    }
+                }
+            }
+            "pong" | "status" => {}
             t if t.starts_with("bookmarks") || t.starts_with("browser_sync") => {}
             _ => {}
         }
@@ -832,5 +860,50 @@ mod tests {
         assert_eq!(default_category("github.com"), "开发");
         assert_eq!(default_category("www.bilibili.com"), "视频");
         assert_eq!(default_category("unknown.example"), "浏览");
+    }
+
+    #[test]
+    fn search_counter_needs_active_session_and_query() {
+        let dir = std::env::temp_dir().join(format!("pchabit_ws_{}", uuid()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = crate::store::Store::open(&dir.join("t.db")).unwrap();
+        let log: crate::host::LogFn = std::sync::Arc::new(|_m: String| {});
+        let mut eng = Engine::new();
+        let now = crate::dt::local_ms_now();
+        let today = crate::dt::date_ms(now);
+
+        // 没会话时 search 不计数
+        eng.on_message(
+            &store,
+            "c1",
+            r#"{"type":"search","tabId":5,"query":"rust","browser":"b"}"#,
+            &log,
+        );
+        assert_eq!(eng.search_count(&today), 0);
+
+        // 开会话 + 带 query 才计数
+        eng.on_message(
+            &store,
+            "c1",
+            r#"{"type":"pageView","tabId":5,"url":"https://www.bing.com/search?q=rust","browser":"b"}"#,
+            &log,
+        );
+        eng.on_message(
+            &store,
+            "c1",
+            r#"{"type":"search","tabId":5,"query":"rust","browser":"b"}"#,
+            &log,
+        );
+        assert_eq!(eng.search_count(&today), 1);
+        // 无 query 的不计数
+        eng.on_message(
+            &store,
+            "c1",
+            r#"{"type":"search","tabId":5,"browser":"b"}"#,
+            &log,
+        );
+        assert_eq!(eng.search_count(&today), 1);
+        assert_eq!(eng.search_count("2020-01-01"), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

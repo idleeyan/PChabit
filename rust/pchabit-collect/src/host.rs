@@ -811,9 +811,29 @@ fn flush_loop(ctx: Arc<Ctx>, shared: Option<Arc<InputShared>>) {
 
 /// 日汇总：每小时检查一次「昨天」要不要重算（口径照抄 WPF 的 incomplete 判定）。
 /// 今日行不写（今日 KPI 一直是现算，与 4.2.0 起的做法一致）。
+///
+/// 另外接管三件原本只在 WPF 采集服务里跑的事（WPF 只读后没人做）：
+/// 启动时补一次 AppDailyStats / 硬件日指标回填；每天过零点后按 `DataRetentionDays` 清一次旧数据。
 fn daily_loop(ctx: Arc<Ctx>) {
     // 先等 10 s，让分钟桶与前台会话先落一点数据再判
     std::thread::sleep(Duration::from_secs(10));
+
+    // 启动时的一次性回填（AppDailyStats 全空才补；硬件列缺的补最近 30 天）
+    {
+        let store = ctx.store.lock().unwrap();
+        let n = crate::daily::backfill_app_daily(&store, 30, &ctx.log);
+        if n > 0 {
+            ctx.say(format!("AppDailyStats 回填完成：{n} 天"));
+        }
+        let h = crate::daily::backfill_hardware(&store, 30, &ctx.log);
+        if h > 0 {
+            ctx.say(format!("硬件日指标回填完成：{h} 天"));
+        }
+    }
+
+    let retention = read_retention_days();
+    let mut last_cleanup_day = String::new();
+
     loop {
         if !ctx.running.load(Ordering::SeqCst) {
             break;
@@ -830,6 +850,21 @@ fn daily_loop(ctx: Arc<Ctx>) {
                     Err(e) => ctx.say(format!("日汇总失败（{yesterday}）：{e}")),
                 }
             }
+
+            // 每天清一次旧数据（今天第一次进循环时执行）
+            let today = crate::dt::date_ms(crate::dt::local_ms_now());
+            if last_cleanup_day != today {
+                last_cleanup_day = today.clone();
+                // WPF 的 cutoff：Today.AddDays(-retention) 的 yyyy-MM-dd；硬件分钟样本再拼 " 00:00"
+                let cutoff = crate::dt::date_ms(crate::dt::local_ms_now() - retention * 86_400_000);
+                let sample_cutoff = format!("{cutoff} 00:00");
+                let n = store.cleanup_before(&cutoff, &sample_cutoff);
+                if n > 0 {
+                    ctx.say(format!("数据清理完成：删除 {n} 条 {retention} 天前的记录（截止 {cutoff}）"));
+                } else {
+                    ctx.say(format!("无过期数据需要清理（保留 {retention} 天）"));
+                }
+            }
         }
         // 睡一小时，期间每 5 秒看一次停止标志
         for _ in 0..720 {
@@ -839,6 +874,24 @@ fn daily_loop(ctx: Arc<Ctx>) {
             std::thread::sleep(Duration::from_secs(5));
         }
     }
+}
+
+/// 保留天数：读 `%LOCALAPPDATA%\PChabit\settings.json` 的 `DataRetentionDays`（默认 90，钳到 1..=3650）。
+fn read_retention_days() -> i64 {
+    // 自测用覆盖（不写进设置，也不影响生产）
+    if let Ok(v) = std::env::var("PCHABIT_RETENTION_DAYS") {
+        if let Ok(n) = v.trim().parse::<i64>() {
+            return n.clamp(1, 3650);
+        }
+    }
+    let Some(base) = std::env::var("LOCALAPPDATA").ok().map(PathBuf::from) else {
+        return 90;
+    };
+    let path = base.join("PChabit").join("settings.json");
+    let raw = std::fs::read_to_string(&path).unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&raw).unwrap_or(serde_json::Value::Null);
+    let n = v["DataRetentionDays"].as_i64().unwrap_or(90);
+    n.clamp(1, 3650)
 }
 
 /// 网页会话兜底：每 30 s 把在场会话按「未结束」写一行，进程被强杀也不至于整段丢。
@@ -852,6 +905,15 @@ fn web_save_loop(ctx: Arc<Ctx>, web: Arc<Mutex<crate::websync::Engine>>) {
         let store = ctx.store.lock().unwrap();
         let mut eng = web.lock().unwrap();
         eng.save_active(&store, &ctx.log);
+        // 当日搜索计数落到 DailySummaries.SearchCount（WPF 只读后这条没人写了，改为这里兜）
+        let today = crate::dt::date_ms(crate::dt::local_ms_now());
+        let n = eng.search_count(&today);
+        if n > 0 {
+            let now = crate::timefmt::stamp7(&crate::timefmt::now());
+            if let Err(e) = store.search_count_set(&today, n, &now) {
+                ctx.say(format!("SearchCount 写入失败：{e}"));
+            }
+        }
         if last_report.elapsed().as_secs() >= 600 {
             last_report = Instant::now();
             let n = eng.active_count();
