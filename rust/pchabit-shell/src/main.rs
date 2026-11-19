@@ -1043,7 +1043,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.0";
+const VERSION: &str = "4.12.1";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1284,15 +1284,41 @@ pub(crate) fn open_window_at(app: &tauri::AppHandle, url: &str, what: &str) {
     }
 }
 
-/// 单实例锁：占一个本地端口当互斥量（第二实例绑不上就直接退）。
+/// 单实例锁：占一个本地端口当互斥量（第二实例绑不上就转给第一个实例）。
 /// 不引新依赖，进程死了端口自动释放。
 fn take_single_instance() -> Option<std::net::TcpListener> {
     std::net::TcpListener::bind("127.0.0.1:18765").ok()
 }
 
+/// 第二个实例被锁挡住时：让已经在跑的那个把窗口亮出来，然后自己退出。
+/// 桌面/任务栏快捷方式点一下就是这个路径，否则会「点了没反应」。
+fn signal_existing_instance() -> bool {
+    use std::io::{Read, Write};
+    match std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], 18765)),
+        std::time::Duration::from_millis(800),
+    ) {
+        Ok(mut s) => {
+            let _ = s.set_write_timeout(Some(std::time::Duration::from_millis(800)));
+            let _ = s.write_all(b"SHOW\n");
+            let _ = s.flush();
+            // 等一句 ACK，读不到也算发出去过
+            let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(800)));
+            let mut buf = [0u8; 16];
+            let _ = s.read(&mut buf);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 fn main() {
-    let Some(_instance_lock) = take_single_instance() else {
-        log_line("[壳] 已有实例在跑（127.0.0.1:18765 被占用），本次退出");
+    let Some(instance_lock) = take_single_instance() else {
+        let ok = signal_existing_instance();
+        log_line(&format!(
+            "[壳] 已有实例在跑（127.0.0.1:18765 被占用），{}",
+            if ok { "已请求它把窗口亮出来，本次退出" } else { "本次退出" }
+        ));
         return;
     };
 
@@ -1357,6 +1383,42 @@ fn main() {
         .setup(move |app| {
             // 采集宿主随壳启动：单写者约束在 Host 内部（WPF 在跑就拒绝）
             app.manage(HostState(std::sync::Mutex::new(None)));
+
+            // 单实例端口的服务端：第二个进程点快捷方式时发 "SHOW"，这里把窗口亮出来
+            {
+                use std::io::{Read, Write};
+                let h = app.handle().clone();
+                std::thread::spawn(move || {
+                    for stream in instance_lock.incoming() {
+                        let Ok(mut s) = stream else { continue };
+                        let mut buf = Vec::new();
+                        let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(500)));
+                        let _ = s.read_to_end(&mut buf);
+                        let cmd = String::from_utf8_lossy(&buf).trim().to_uppercase();
+                        if cmd.starts_with("SHOW") {
+                            let _ = s.write_all(b"OK\n");
+                            let h2 = h.clone();
+                            let _ = h.run_on_main_thread(move || {
+                                match h2.get_webview_window("main") {
+                                    Some(w) => {
+                                        let _ = w.show();
+                                        let _ = w.unminimize();
+                                        let _ = w.set_focus();
+                                        log_line("[壳] 第二实例请求：已有窗口已亮出来");
+                                    }
+                                    None => match make_window(&h2, &inject_script(), "app.html") {
+                                        Ok(_) => log_line("[壳] 第二实例请求：已新开窗口"),
+                                        Err(e) => log_line(&format!("[壳] 第二实例开窗失败：{e}")),
+                                    },
+                                }
+                            });
+                        } else if !cmd.is_empty() {
+                            let _ = s.write_all(b"OK\n");
+                            log_line(&format!("[壳] 单实例通道收到：{cmd}"));
+                        }
+                    }
+                });
+            }
 
             // headless 不建窗口：只在后台跑采集宿主，托盘负责开窗与退出
             let window = if headless {
