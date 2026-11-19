@@ -58,6 +58,21 @@ WPF 的「备份/清理」是换壳剩下的硬骨头之一，先把它变成壳
 - 实测：`dashboard 已渲染 ok: 2h15m / 15 应用 / 516 键` → 60 s 后
   `dashboard: … 135.2 分钟 / 15 应用 / 22.6 ms` + `[页面] dashboard 已自动刷新（16:59）`。
 
+### 设置页从「只读概览」变成可写
+
+换壳剩下的硬骨头之一是设置：WPF 能改、壳只能看。现在壳也能改**白名单内**的项。
+
+- 新命令 `set_setting(key, value)`：先写 `settings.json.bak` 备份，再整份重写
+  `settings.json`，日志 `[壳] 设置写入 <key>：旧 -> 新（备份 …）`；
+  白名单只有 17 项（保留天数 / 采集间隔 / 空闲阈值 / 各项采集开关 / 任务栏开关等），
+  含 `password/apikey/token` 的敏感项一律拒绝写入。
+- `settings.html` 顶部加「可编辑项」：保留天数、采集间隔（秒）、空闲阈值（分）、
+  任务栏小窗开关 + 保存按钮，结果写 `__SET_RESULT__`。
+- 顺带修 `page_data('settings')` 之前返回 `{settings:{…}}` 包裹层（页面需要的是扁平
+  `items/count`），并把 `settings` 补进页面映射表——之前翻到设置页会报「未知页面」。
+- 实测：`设置写入 DataRetentionDays：180 -> 180（备份 …settings.json.bak）` →
+  `stest 重读 DataRetentionDays=180 共 66 项`。
+
 ## [4.10.3] - 2026-11-19
 
 ### 仪表盘图表不再「静默为空」

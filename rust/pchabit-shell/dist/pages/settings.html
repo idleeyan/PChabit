@@ -30,7 +30,22 @@
 <div id="wrap">
   <h1>设置概览</h1>
   <div class="sub" id="path"></div>
-  <div class="hint">这里只读。设置文件由 WPF 版读写，壳不去碰，避免两边互相覆盖。</div>
+  <div class="hint">下方概览只读；顶部「可编辑项」直接写回 settings.json（写前自动备份 .bak），与 WPF 版共用同一个文件。</div>
+  <section id="edit" style="margin-bottom:12px">
+    <h2>可编辑项 <em style="font-style:normal;color:#64748b;font-size:10px">（写回 settings.json，改前自动备份 .bak）</em></h2>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+      <label class="k">保留天数 <input id="edRetention" type="number" min="1" max="3650"
+        style="width:70px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
+      <label class="k">采集间隔(秒) <input id="edInterval" type="number" min="1" max="60"
+        style="width:60px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
+      <label class="k">空闲阈值(分) <input id="edIdle" type="number" min="1" max="60"
+        style="width:60px;margin-left:4px;background:#0f172a;color:#e2e8f0;border:1px solid #223049;border-radius:5px;padding:2px 6px"></label>
+      <label class="k"><input id="edTaskbar" type="checkbox" style="margin-right:4px">任务栏小窗</label>
+      <button id="edSave" style="padding:4px 12px;border-radius:6px;border:1px solid #223049;
+        background:#1d4ed8;color:#fff;cursor:pointer">保存</button>
+      <span class="hint" id="edMsg" style="margin:0;background:none;border:0;padding:0"></span>
+    </div>
+  </section>
   <div class="grid" id="grid"></div>
 </div>
 <script>
@@ -75,6 +90,17 @@
     var byKey = {};
     (d.items || []).forEach(function (i) { byKey[i.key] = i; });
 
+    // 把当前值填进可编辑区（只在第一次或数据变化时覆盖，免得抹掉用户正在输的内容）
+    var ed = document.getElementById('edit');
+    if (ed && !ed.__painted) {
+      function num(k) { return byKey[k] && byKey[k].value != null ? byKey[k].value : ''; }
+      document.getElementById('edRetention').value = num('DataRetentionDays') || num('RetentionDays');
+      document.getElementById('edInterval').value = num('MonitoringInterval');
+      document.getElementById('edIdle').value = num('IdleThreshold');
+      document.getElementById('edTaskbar').checked = !!(byKey['TaskbarEnabled'] && byKey['TaskbarEnabled'].value);
+      ed.__painted = true;
+    }
+
     var grid = document.getElementById('grid');
     grid.innerHTML = '';
     var used = {};
@@ -118,6 +144,33 @@
       try { window.__SET_RESULT__ = render(window.__SET_DATA__); }
       catch (e) { window.__SET_RESULT__ = 'error: ' + e.message; }
     }
+    var save = document.getElementById('edSave');
+    if (save) save.addEventListener('click', function () {
+      var msg = document.getElementById('edMsg');
+      if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC'; return; }
+      var jobs = [
+        ['DataRetentionDays', parseInt(document.getElementById('edRetention').value, 10)],
+        ['MonitoringInterval', parseInt(document.getElementById('edInterval').value, 10)],
+        ['IdleThreshold', parseInt(document.getElementById('edIdle').value, 10)],
+        ['TaskbarEnabled', document.getElementById('edTaskbar').checked]
+      ];
+      msg.textContent = '保存中…';
+      var chain = Promise.resolve([]);
+      jobs.forEach(function (j) {
+        if (typeof j[1] === 'number' && isNaN(j[1])) return;
+        chain = chain.then(function (done) {
+          return window.__TAURI__.core.invoke('set_setting', { key: j[0], value: j[1] })
+            .then(function (r) { done.push(r); return done; });
+        });
+      });
+      chain.then(function (done) {
+        msg.textContent = done.join('；');
+        window.__SET_RESULT__ = 'save: ' + done.join('；');
+      }).catch(function (e) {
+        msg.textContent = '失败：' + e;
+        window.__SET_RESULT__ = 'save-error: ' + e;
+      });
+    });
   });
 
   window.renderSettings = function (d) {

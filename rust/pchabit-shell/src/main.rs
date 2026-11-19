@@ -349,6 +349,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "input" => "input.html",
         "reports" => "reports.html",
         "data" => "data.html",
+        "settings" => "settings.html",
         other => return Err(format!("未知页面：{other}")),
     };
     // 发布版把 dist 打进了 exe（tauri asset protocol），磁盘上没有 dist 目录也能工作；
@@ -367,7 +368,7 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
                 .unwrap_or_else(|_| serde_json::json!({ "days": 7, "items": [] }));
             payload_admin(apps)
         }
-        "settings" => serde_json::json!({ "settings": payload_settings() }),
+        "settings" => payload_settings(),
         "notes" => payload_notes(),
         "web" => payload_web(),
         "timeline" => payload_timeline(&pchabit_datad::today_local(), 0),
@@ -718,6 +719,55 @@ fn categories() -> Result<serde_json::Value, String> {
 /// 设置概览（只读）：读 `%LOCALAPPDATA%\PChabit\settings.json`，敏感项打码。
 ///
 /// 设置写成两份会互相覆盖，所以壳只显示不改；真正的写入仍归 WPF 版。
+/// 壳里可直接改的设置项白名单：只放「改错了也不会出事、且改完立即生效」的开关与数值。
+const SETTING_WHITELIST: &[&str] = &[
+    "DataRetentionDays",
+    "RetentionDays",
+    "MonitoringInterval",
+    "IdleThreshold",
+    "TaskbarEnabled",
+    "TaskbarShowCpu",
+    "TaskbarShowMemory",
+    "TaskbarShowGpu",
+    "TaskbarShowNet",
+    "TaskbarShowDisk",
+    "AutoCleanupEnabled",
+    "StartWithWindows",
+    "MinimizeToTray",
+    "ShowNotifications",
+    "TrackKeyboard",
+    "TrackMouse",
+    "TrackWebBrowsing",
+];
+
+/// 写回 `%LOCALAPPDATA%\PChabit\settings.json`：先备份 `settings.json.bak`，再整份重写。
+#[tauri::command]
+fn set_setting(key: String, value: serde_json::Value) -> Result<String, String> {
+    if !SETTING_WHITELIST.contains(&key.as_str()) {
+        return Err(format!("不允许修改的设置项：{key}"));
+    }
+    let path = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("读取设置失败：{e}"))?;
+    let mut v: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("解析设置失败：{e}"))?;
+    let obj = v
+        .as_object_mut()
+        .ok_or_else(|| "设置文件不是对象".to_string())?;
+    let old = obj.get(&key).cloned().unwrap_or(serde_json::Value::Null);
+    obj.insert(key.clone(), value.clone());
+    let bak = path.with_extension("json.bak");
+    let _ = std::fs::write(&bak, &text);
+    let pretty = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+    std::fs::write(&path, pretty).map_err(|e| format!("写入设置失败：{e}"))?;
+    log_line(&format!(
+        "[壳] 设置写入 {key}：{old} -> {value}（备份 {}）",
+        bak.display()
+    ));
+    Ok(format!("{key} = {value}"))
+}
+
 fn payload_settings() -> serde_json::Value {
     let path = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
         .join("PChabit")
@@ -925,7 +975,8 @@ fn main() {
             categories,
             timeline_day,
             cleanup_data,
-            backup_db
+            backup_db,
+            set_setting
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {

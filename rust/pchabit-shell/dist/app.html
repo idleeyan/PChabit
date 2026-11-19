@@ -368,6 +368,20 @@
           .catch(function (e) { note('dtest 失败：' + e); });
       }
 
+      // 自测钩子：?stest=1 验证设置写回（写入与当前相同的值，不改行为）
+      if (page === 'settings' && new URLSearchParams(location.search).get('stest') === '1') {
+        window.__TAURI__.core.invoke('set_setting', { key: 'DataRetentionDays', value: 180 })
+          .then(function (r) {
+            note('stest 写入 ' + r);
+            return window.__TAURI__.core.invoke('page_data', { page: 'settings' });
+          })
+          .then(function (d) {
+            var it = (d.items || []).filter(function (x) { return x.key === 'DataRetentionDays'; })[0];
+            note('stest 重读 DataRetentionDays=' + (it ? it.value : '?') + ' 共 ' + (d.count || 0) + ' 项');
+          })
+          .catch(function (e) { note('stest 失败：' + e); });
+      }
+
       // 自测钩子：?tltest=-1 验证换天命令（时间线页专用）
       var tltest = new URLSearchParams(location.search).get('tltest');
       if (page === 'timeline' && tltest) {
