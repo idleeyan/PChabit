@@ -2,6 +2,21 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.3] - 2026-11-19
+
+### 修「桌面上挂着 pchabit-netd.exe 黑窗」+ 任务栏小窗改由设置决定
+
+- **黑窗**：壳用 `Command::new("pchabit-netd.exe").spawn()` 拉起 netd 时没给
+  `CREATE_NO_WINDOW`，控制台子系统的 netd 就会带出一个黑窗口（标题是它自己的路径）。
+  现在 spawn 时加 `creation_flags(0x0800_0000)`；`datad xlsx`（导周报）子进程同样加上，
+  导出时不再闪窗。
+- **任务栏小窗**：以前只有显式 `--taskbar` 才启动，`settings.json` 里的 `TaskbarEnabled`
+  被忽略，所以设置页开着「任务栏小窗」却看不到东西。改为
+  `--taskbar` **或** `TaskbarEnabled=true` 任一成立就启动；`--desktop` / `DesktopWidgetEnabled`
+  同口径。
+- **实测**：重启后日志 `[小窗] 启动 Rust 任务栏小窗（深色 主题）` +
+  `[小窗] 已创建并挂载任务栏（Rust）`；`Get-Process pchabit-netd` 的 `MainWindowTitle` 为空。
+
 ## [4.12.2] - 2026-11-19
 
 ### 修「图标是空白」：根因是 icon.ico 本身几乎全透明

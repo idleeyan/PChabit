@@ -46,6 +46,20 @@ pub(crate) fn log_line(msg: &str) {
     }
 }
 
+/// 读 `settings.json` 里的布尔开关（缺文件/缺键一律 false）。
+fn setting_bool(key: &str) -> bool {
+    let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let Ok(text) = std::fs::read_to_string(p) else {
+        return false;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    v.get(key).and_then(|x| x.as_bool()).unwrap_or(false)
+}
+
 /// 小窗跟随当前主题：`settings.json` 的 `CurrentTheme` 为 light 时用浅色配色。
 fn read_theme_is_light() -> bool {
     let p = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
@@ -893,11 +907,20 @@ fn export_weekly() -> Result<String, String> {
         .ok_or_else(|| "找不到 pchabit-datad.exe（壳目录或上一级）".to_string())?;
 
     use std::io::Write;
-    let mut child = std::process::Command::new(&datad)
-        .arg("xlsx")
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new(&datad);
+    cmd.arg("xlsx")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    // datad 也是控制台程序：不指定 CREATE_NO_WINDOW，导出时会闪一个黑窗
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("启动 datad 失败：{e}"))?;
     if let Some(stdin) = child.stdin.as_mut() {
@@ -1043,7 +1066,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.2";
+const VERSION: &str = "4.12.3";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1329,10 +1352,13 @@ fn main() {
     let host_mode = raw_args.iter().any(|a| a == "--host");
     // --headless：不建窗口，只跑采集宿主（开机自启/后台常驻用）
     let headless = raw_args.iter().any(|a| a == "--headless");
-    // --taskbar：额外在任务栏左侧画 Rust 小窗（默认关，避免与 WPF 小窗重复）
-    let with_taskbar = raw_args.iter().any(|a| a == "--taskbar");
-    // --desktop：额外画 Rust 桌面硬件悬浮窗（同上，默认关）
-    let with_desktop = raw_args.iter().any(|a| a == "--desktop");
+    // --taskbar：额外在任务栏左侧画 Rust 小窗。
+    // 显式带参数、或 settings.json 里 TaskbarEnabled=true（用户在设置页开过）就启动。
+    let with_taskbar =
+        raw_args.iter().any(|a| a == "--taskbar") || setting_bool("TaskbarEnabled");
+    // --desktop：额外画 Rust 桌面硬件悬浮窗（设置页 DesktopWidgetEnabled 同样生效）
+    let with_desktop =
+        raw_args.iter().any(|a| a == "--desktop") || setting_bool("DesktopWidgetEnabled");
     // 窗口模式默认带托盘：关窗=隐到托盘，托盘「退出」才真退（--no-tray 关掉）
     let window_tray = !raw_args.iter().any(|a| a == "--no-tray");
     let positional: Vec<String> = raw_args

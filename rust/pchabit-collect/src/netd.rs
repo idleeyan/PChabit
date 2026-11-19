@@ -131,20 +131,27 @@ pub fn ensure_daemon() -> Option<(Pipe, bool)> {
         return Some((p, false));
     }
     let exe = find_netd()?;
-    let _ = Command::new(&exe)
-        .args([
-            "daemon",
-            "--exclude-name",
-            "PChabit",
-            "--exclude-name",
-            "PChabitShell",
-            "--exclude-name",
-            "pchabit-collect",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .ok()?;
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(&exe);
+    cmd.args([
+        "daemon",
+        "--exclude-name",
+        "PChabit",
+        "--exclude-name",
+        "PChabitShell",
+        "--exclude-name",
+        "pchabit-collect",
+    ])
+    .stdout(Stdio::null())
+    .stderr(Stdio::null());
+    // netd 是控制台程序：不指定 CREATE_NO_WINDOW 会附带一个黑窗挂在桌面上
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let _ = cmd.spawn().ok()?;
     let p = Pipe::connect(30)?;
     Some((p, true))
 }
