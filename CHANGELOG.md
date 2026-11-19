@@ -2,6 +2,31 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.7.0] - 2026-11-19
+
+### 托盘：headless 形态能独立当产品壳了
+
+4.6.0 的 `--headless` 只能后台跑采集，开不了界面、也退不干净。这版补上托盘，把「采集与壳合一」
+需要的最后一环装上：
+
+- 壳启用 Tauri 的 `tray-icon` + `image-ico`（图标复用 `icons/icon.ico`）；
+- `--headless` 时建托盘，菜单两项：「打开仪表盘」「退出采集」；
+- 「打开仪表盘」：没有窗口就**现建**（载荷与注入脚本现算），已有窗口则 `show` + `unminimize` + `set_focus`；
+- 「退出采集」：先 `HostState::stop()`（落最后一分钟、收尾会话、刷键鼠、收尾网页会话、给 netd 发 `STOP`），再 `app.exit(0)`；
+- 托盘对象 `std::mem::forget` 保活（否则 Drop 会立刻把图标摘掉）；
+- 无 GUI 环境下点不到托盘菜单，所以留了自检开关 `PCHABIT_OPEN_WIN=1`：8 秒后走**同一条建窗代码**，
+  用 `页面加载完成 [main]` + `[页面] dashboard 已渲染` 两条日志当验收证据。
+
+实测（副本库、WPF 停掉、`--host --headless` + `PCHABIT_OPEN_WIN=1`）：
+
+| 观察点 | 结果 |
+| --- | --- |
+| 托盘 | `[壳] 托盘已建立：打开仪表盘 / 退出采集` |
+| 现建窗口 | `[壳] 自检：headless 下窗口已打开` → `页面开始加载 / 页面加载完成 [main]` |
+| 页面真的画出来 | `[页面] dashboard 已渲染 ok: 54 分钟 / 9 应用 / 217 键` |
+| 采集并行不冲突 | 同时刻 `[collect] 会话入库 WindowsTerminal.exe / 7.2s` |
+| 全部载荷 | 16 页 645.6 ms（dashboard 5.5 ms、timeline 0.9 ms、data 17.4 ms） |
+
 ## [4.6.0] - 2026-11-19
 
 ### 采集宿主可以无窗口常驻：`PChabitShell.exe --host --headless`

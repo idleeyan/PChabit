@@ -781,7 +781,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.6.0";
+const VERSION: &str = "4.7.0";
 
 /// 壳里托管的采集宿主（`--host` 时才有值）
 struct HostState(std::sync::Mutex<Option<pchabit_collect::Host>>);
@@ -794,6 +794,76 @@ impl HostState {
             }
         }
     }
+}
+
+/// 建主窗口（headless 下由托盘按需调用，所以抽成函数）。
+fn make_window(
+    app: &tauri::AppHandle,
+    inject: &str,
+    url: &str,
+) -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
+    let w = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
+        .title("PChabit（P5 采集宿主）")
+        .inner_size(1180.0, 720.0)
+        .min_inner_size(900.0, 560.0)
+        .center()
+        .initialization_script(inject)
+        .build()?;
+    Ok(w)
+}
+
+/// 注入脚本（窗口创建时才需要，故做成函数，托盘开窗时现算）。
+fn inject_script() -> String {
+    format!(
+        "window.__PAGES__ = {};window.__VER__ = '{}';",
+        all_pages(),
+        VERSION
+    )
+}
+
+/// headless 的托盘：左键菜单「打开仪表盘 / 退出采集」。
+/// 托盘必须活到进程结束，否则 Drop 会把图标摘掉，所以在这里 forget。
+fn add_tray(app: tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{Menu, MenuItem};
+    use tauri::tray::TrayIconBuilder;
+
+    let show = MenuItem::with_id(&app, "show", "打开仪表盘", true, None::<&str>)?;
+    let quit = MenuItem::with_id(&app, "quit", "退出采集", true, None::<&str>)?;
+    let menu = Menu::with_items(&app, &[&show, &quit])?;
+    let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.ico"))?;
+
+    let tray = TrayIconBuilder::with_id("pchabit")
+        .icon(icon)
+        .tooltip("PChabit 采集宿主（后台运行中）")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "show" => {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.show();
+                    let _ = w.unminimize();
+                    let _ = w.set_focus();
+                    log_line("[壳] 托盘：显示已有窗口");
+                } else {
+                    match make_window(app, &inject_script(), "app.html") {
+                        Ok(_) => log_line("[壳] 托盘：已打开仪表盘窗口"),
+                        Err(e) => log_line(&format!("[壳] 托盘开窗失败：{e}")),
+                    }
+                }
+            }
+            "quit" => {
+                if let Some(state) = app.try_state::<HostState>() {
+                    state.stop();
+                }
+                log_line("[壳] 托盘：退出采集宿主");
+                app.exit(0);
+            }
+            _ => {}
+        })
+        .build(&app)?;
+
+    std::mem::forget(tray);
+    Ok(())
 }
 
 fn main() {
@@ -840,12 +910,36 @@ fn main() {
             // 采集宿主随壳启动：单写者约束在 Host 内部（WPF 在跑就拒绝）
             app.manage(HostState(std::sync::Mutex::new(None)));
 
-            // headless 不建窗口：只在后台跑采集采集宿主
+            // headless 不建窗口：只在后台跑采集宿主，托盘负责开窗与退出
             let window = if headless {
                 log_line(&format!(
                     "[壳] headless 模式：不建窗口，{}",
                     if host_mode { "只跑采集宿主" } else { "但没有 --host，等于什么都不做" }
                 ));
+                match add_tray(app.handle().clone()) {
+                    Ok(_) => log_line("[壳] 托盘已建立：打开仪表盘 / 退出采集"),
+                    Err(e) => log_line(&format!("[壳] 托盘建立失败：{e}")),
+                }
+
+                // 自检（无 GUI 环境下点不到托盘菜单）：PCHABIT_OPEN_WIN=1 时 8 秒后
+                // 走托盘「打开仪表盘」同一条建窗代码，用页加载日志证明它能画出来。
+                if std::env::var("PCHABIT_OPEN_WIN").as_deref() == Ok("1") {
+                    let h = app.handle().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_secs(8));
+                        let h2 = h.clone();
+                        let r = h.run_on_main_thread(move || {
+                            match make_window(&h2, &inject_script(), "app.html") {
+                                Ok(_) => log_line("[壳] 自检：headless 下窗口已打开"),
+                                Err(e) => log_line(&format!("[壳] 自检开窗失败：{e}")),
+                            }
+                        });
+                        if let Err(e) = r {
+                            log_line(&format!("[壳] 自检调度失败：{e}"));
+                        }
+                    });
+                }
+
                 None
             } else {
                 let url = if start_page.is_empty() {
@@ -855,15 +949,7 @@ fn main() {
                 } else {
                     format!("app.html?p={start_page}&{extra}")
                 };
-                Some(
-                    tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                        .title("PChabit（P5 采集宿主）")
-                        .inner_size(1180.0, 720.0)
-                        .min_inner_size(900.0, 560.0)
-                        .center()
-                        .initialization_script(&inject)
-                        .build()?,
-                )
+                Some(make_window(app.handle(), &inject, &url)?)
             };
 
             if host_mode {
