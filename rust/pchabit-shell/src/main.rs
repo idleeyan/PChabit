@@ -311,12 +311,20 @@ fn recent_logs(lines: usize) -> serde_json::Value {
 
 /// 打开/收起「进程网速」浮窗（旧版 `NetworkProcessWindow`）。
 /// 无边框、置顶、不进任务栏，失焦自动收起；位置贴主屏右下（任务栏小窗附近）。
-pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("netprocs") {
-        let _ = w.show();
-        let _ = w.set_focus();
-        return Ok(());
-    }
+/// 浮窗最近一次「显示」的时刻（毫秒）。失焦自动收起必须按本次显示计时，
+/// 不能按窗口创建时刻——否则预创建/建窗 800ms 之后再唤起，一失焦就立刻收起，看起来像唤不起来。
+static NETPROCS_SHOWN_AT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 构建网速浮窗。`visible = false` 用于启动时预创建：先把 WebView2 实例与页面起好并藏起来，
+/// 用户点任务栏小窗时只需 `show()`，省掉首次唤起等待 WebView 初始化（实测 0.5–1.5 s）。
+fn build_netprocs(app: &tauri::AppHandle, visible: bool) -> Result<tauri::WebviewWindow, String> {
     let (w, h) = (430.0_f64, 560.0_f64);
     let (mut x, mut y) = (900.0_f64, 240.0_f64);
     if let Ok(Some(m)) = app.primary_monitor() {
@@ -326,6 +334,13 @@ pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
         x = pos.x as f64 / scale + size.width as f64 / scale - w - 18.0;
         y = pos.y as f64 / scale + size.height as f64 / scale - h - 72.0;
     }
+    // 浮窗只用 IPC 与主题，不需要 __PAGES__。注入全量载荷会在这里查库算 14 页数据，
+    // 预创建时跑在主线程上就是一次可见的卡顿，所以只给版本与配色。
+    let (theme, accent) = read_theme_preset();
+    let light_script = format!(
+        "window.__VER__='{}';window.__THEME__={{theme:'{}',accent:'{}'}};",
+        VERSION, theme, accent
+    );
     let win = tauri::WebviewWindowBuilder::new(
         app,
         "netprocs",
@@ -338,23 +353,63 @@ pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
     .always_on_top(true)
     .skip_taskbar(true)
     .resizable(false)
-    .initialization_script(&inject_script())
+    .visible(visible)
+    .focused(visible)
+    .initialization_script(&light_script)
     .build()
     .map_err(|e| format!("创建浮窗失败：{e}"))?;
 
-    let _ = win.set_focus();
     let w2 = win.clone();
-    let created = std::time::Instant::now();
     win.on_window_event(move |ev| {
         if let tauri::WindowEvent::Focused(false) = ev {
-            // 新窗口刚建好时可能先收到一次失焦，800ms 内不响应，否则会「一闪就没」
-            if created.elapsed().as_millis() > 800 {
+            // 刚显示出来的头 600 ms 忽略失焦：任务栏小窗/主窗口可能在这一瞬抢回焦点
+            let since = now_ms().saturating_sub(
+                NETPROCS_SHOWN_AT.load(std::sync::atomic::Ordering::Relaxed),
+            );
+            if since > 600 {
                 let _ = w2.hide();
             }
         }
     });
-    log_line("[浮窗] 进程网速排行已打开");
+    Ok(win)
+}
+
+/// 显示网速浮窗（旧版 `NetworkProcessWindow`）。窗口不存在时先构建，存在则直接 show。
+pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
+    let win = match app.get_webview_window("netprocs") {
+        Some(w) => w,
+        None => build_netprocs(app, false)?,
+    };
+    // 每次显示都刷新时间戳，失焦保护按本次显示算
+    NETPROCS_SHOWN_AT.store(now_ms(), std::sync::atomic::Ordering::Relaxed);
+
+    // 浮窗常驻内存，主题可能已经被切过；显示前同步一次，避免它停留在旧配色
+    let (theme, accent) = read_theme_preset();
+    let js = format!(
+        "document.documentElement.setAttribute('data-theme','{theme}');\
+         (function(){{var a='{accent}';if(a&&a!=='auto'){{document.documentElement.setAttribute('data-accent',a);}}\
+         else{{document.documentElement.removeAttribute('data-accent');}}}})();"
+    );
+    let _ = win.eval(&js);
+
+    win.show().map_err(|e| format!("显示浮窗失败：{e}"))?;
+    let _ = win.set_focus();
+    log_line("[浮窗] 已显示");
     Ok(())
+}
+
+/// 收起浮窗。走自定义命令而不是前端的 window 插件 API：
+/// `core:window:default` 不含 allow-hide，依赖插件权限时按钮会静默失效（4.12.47 修的正是这个）。
+#[tauri::command]
+fn netprocs_hide(app: tauri::AppHandle) -> Result<(), String> {
+    match app.get_webview_window("netprocs") {
+        Some(w) => {
+            w.hide().map_err(|e| format!("收起浮窗失败：{e}"))?;
+            log_line("[浮窗] 已收起");
+            Ok(())
+        }
+        None => Ok(()),
+    }
 }
 
 /// 用系统默认浏览器打开链接（旧版 `UrlLauncher` 的等价实现）。
@@ -1753,7 +1808,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.46";
+const VERSION: &str = "4.12.47";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -2201,6 +2256,7 @@ fn main() {
             app_icons,
             open_url,
             net_procs,
+            netprocs_hide,
             recent_logs
         ])
         .on_page_load(|webview, payload| {
@@ -2260,6 +2316,27 @@ fn main() {
                     Err(e) => log_line(&format!("[自检] netd 并发查询失败：{e}")),
                 }
             });
+
+            // 预创建网速浮窗（隐藏）。首次点击才建窗时，用户要等 WebView2 初始化 + 页面首帧
+            // （实测 0.5–1.5 s），表现为「点一下卡一阵才出来」；提前建好，点击只是 show()。
+            {
+                let ah = app.handle().clone();
+                std::thread::spawn(move || {
+                    // 启动阶段图标预热、netd 自检还在跑，等它们收尾再建窗，避免抢主线程
+                    std::thread::sleep(std::time::Duration::from_secs(6));
+                    let ah2 = ah.clone();
+                    let _ = ah.run_on_main_thread(move || {
+                        if ah2.get_webview_window("netprocs").is_none() {
+                            match build_netprocs(&ah2, false) {
+                                Ok(_) => {
+                                    log_line("[浮窗] 已预创建（隐藏），点任务栏小窗可秒开")
+                                }
+                                Err(e) => log_line(&format!("[浮窗] 预创建失败：{e}")),
+                            }
+                        }
+                    });
+                });
+            }
 
             // 单实例端口的服务端：第二个进程点快捷方式时发 "SHOW"，这里把窗口亮出来
             {

@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"主窗口与网速浮窗需要的最小窗口控制权限。Tauri 2 的 core:window:default 只含只读项，hide/show/setFocus/startDragging 必须显式声明，否则浮窗关闭按钮会被静默拒绝。","local":true,"windows":["*"],"permissions":["core:default","core:window:allow-hide","core:window:allow-show","core:window:allow-set-focus","core:window:allow-close","core:window:allow-start-dragging","core:window:allow-set-position","core:window:allow-set-size"]}}

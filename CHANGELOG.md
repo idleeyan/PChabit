@@ -2,6 +2,35 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.47] - 2026-11-20
+
+**网速浮窗：关闭按钮失效 + 唤起卡顿**
+
+关闭按钮失效的根因是权限：Tauri 2 的 `core:window:default` **只含只读项**（`is-visible`、`title` 等），
+`hide` / `show` / `set-focus` / `start-dragging` 必须显式声明。项目此前没有 `capabilities/` 目录，
+所以 `getCurrentWindow().hide()` 走到 IPC 就被拒绝，而前端没挂 `.catch`，表现为「点了没反应」。
+
+修复做两层：
+
+1. 新增 `rust/pchabit-shell/capabilities/default.json`，声明 `core:window:allow-hide` / `allow-show` /
+   `allow-set-focus` / `allow-close` / `allow-start-dragging`。顺带修好浮窗标题栏拖动
+   （`data-tauri-drag-region` 同样需要 `allow-start-dragging`）。
+2. 关闭动作改走自定义命令 `netprocs_hide`（`#[tauri::command]` 不受 capability 限制），
+   前端保留 window API 作兜底，并记录失败原因。这样即使权限配置再出问题，按钮也不会再哑掉。
+
+唤起卡顿的原因与改法：
+
+- 原实现**首次点击才创建窗口**，要等 WebView2 初始化 + 页面首帧（0.5–1.5 s），点下去就是一段空白等待。
+  改为启动后 6 s 在后台**预创建**（`visible(false)`），点击时只调 `show()`。日志确认预创建后
+  `页面加载完成 [netprocs]`，说明页面已就绪。
+- 预创建用的注入脚本从 `inject_script()` 换成轻量版：原版会查库算全部 14 页载荷，在主线程上
+  就是一次可见卡顿；浮窗只需要版本与配色。
+- 失焦自动收起的保护期原来从**窗口创建时刻**起算（800 ms），预创建之后等于失效——窗口早就建好，
+  一唤起就满足「超过 800 ms」，任何失焦立刻收起。改为记录**每次显示**的时刻，显示后 600 ms 内忽略失焦。
+- 浮窗页面在 `document.hidden` 时停掉每秒轮询（浮窗常驻内存，隐藏后还每秒建一条 netd 连接没有意义），
+  重新可见时恢复。
+- 显示前用 `eval` 同步一次主题：浮窗常驻内存，切过配色后不会自己更新。
+
 ## [4.12.46] - 2026-11-20
 
 **应用切换关系图：可选日期范围**

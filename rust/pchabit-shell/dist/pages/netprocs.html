@@ -100,6 +100,17 @@
   }
 
   var timer = null;
+
+  // 窗口隐藏时停掉轮询：浮窗常驻内存，隐藏后还每秒建一条 netd 连接没有意义
+  function startPoll() {
+    if (timer) return;
+    pull();
+    timer = setInterval(pull, 1000);
+  }
+  function stopPoll() {
+    if (timer) { clearInterval(timer); timer = null; }
+  }
+
   function pull() {
     if (!window.__TAURI__) return;
     window.__TAURI__.core.invoke('net_procs', { top: 30 }).then(function (d) {
@@ -156,21 +167,36 @@
     });
   }
 
-  document.getElementById('btnClose').addEventListener('click', function () {
-    if (window.__TAURI__ && window.__TAURI__.window) {
-      window.__TAURI__.window.getCurrentWindow().hide();
+  /// 收起浮窗。优先调壳里的 netprocs_hide 命令：前端的 window.hide() 依赖
+  /// core:window:allow-hide 权限，缺权限时 Promise 被拒且没有回调，按钮表现为「点了没反应」。
+  function hideWin() {
+    if (!window.__TAURI__) return;
+    if (window.__TAURI__.core) {
+      window.__TAURI__.core.invoke('netprocs_hide').catch(function (e) {
+        window.__NP_HIDE_ERR__ = String(e);
+        // 兜底：命令不可用时退回窗口 API（权限已补时同样有效）
+        if (window.__TAURI__.window) {
+          window.__TAURI__.window.getCurrentWindow().hide().catch(function () { });
+        }
+      });
+      return;
     }
-  });
+    if (window.__TAURI__.window) {
+      window.__TAURI__.window.getCurrentWindow().hide().catch(function () { });
+    }
+  }
+
+  document.getElementById('btnClose').addEventListener('click', hideWin);
   // 空格 / Esc 收起
   document.addEventListener('keydown', function (ev) {
-    if ((ev.key === 'Escape' || ev.key === ' ') && window.__TAURI__ && window.__TAURI__.window) {
-      window.__TAURI__.window.getCurrentWindow().hide();
-    }
+    if (ev.key === 'Escape' || ev.key === ' ') hideWin();
   });
 
-  pull();
-  timer = setInterval(pull, 1000);
-  window.addEventListener('beforeunload', function () { if (timer) clearInterval(timer); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) stopPoll(); else startPoll();
+  });
+  startPoll();
+  window.addEventListener('beforeunload', stopPoll);
 </script>
 </body>
 </html>
