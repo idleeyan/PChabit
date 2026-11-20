@@ -28,30 +28,27 @@
   --cyan: #5fb3c4;
 
   /* ---------- 默认主题：鎏金暗夜 ---------- */
-  --bg: #0a0907;
-  --bg-image:
-    radial-gradient(1100px 480px at 50% -12%, rgba(217, 180, 90, 0.17), transparent 64%),
-    radial-gradient(700px 300px at 88% -6%, rgba(157, 122, 46, 0.10), transparent 62%),
-    linear-gradient(180deg, #0e0c08 0%, var(--bg) 60%);
-  --surface: #16120c;
-  --surface-2: #1d1810;
-  --surface-3: #241e14;
-  --border: #3a301d;
-  --border-hi: #604d28;
-  --text: #f4efe4;
-  --dim: #b7ad9b;
-  --mute: #8d8272;
+  --bg: #060504;
+  --bg-image: none;
+  --surface: #1e1810;
+  --surface-2: #241d12;
+  --surface-3: #2b2316;
+  --border: #5f4b2b;
+  --border-hi: #8a6f3f;
+  --text: #f6f1e7;
+  --dim: #c3b8a5;
+  --mute: #a3977f;
 
-  --card-bg: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
-  --kpi-bg: linear-gradient(180deg, var(--surface-3) 0%, var(--surface) 100%);
-  --card-line: linear-gradient(90deg, transparent, rgba(247, 230, 180, 0.55), transparent);
+  --card-bg: var(--surface);
+  --kpi-bg: var(--surface-2);
+  --card-line: linear-gradient(90deg, transparent, rgba(247, 230, 180, 0.50), transparent);
   --title-glow: drop-shadow(0 2px 12px rgba(217, 180, 90, 0.30));
-  --shadow: 0 18px 42px rgba(0, 0, 0, 0.58);
-  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.42);
-  --ring: inset 0 1px 0 rgba(247, 230, 180, 0.06);
-  --table-head: #b09a6b;
-  --name-color: #e8cf8f;
-  --nav-bg: linear-gradient(180deg, #12100b 0%, #0c0a07 100%);
+  --shadow: 0 18px 42px rgba(0, 0, 0, 0.70);
+  --shadow-sm: 0 6px 16px rgba(0, 0, 0, 0.55);
+  --ring: inset 0 1px 0 rgba(247, 230, 180, 0.08);
+  --table-head: #c0a878;
+  --name-color: #f0d69a;
+  --nav-bg: #131009;
 
   /* ---------- 强调色：默认金 ---------- */
   --gold: #d9b45a;
@@ -71,27 +68,27 @@
 
 /* 石墨灰蓝：中性灰底 + 淡蓝，去光晕去渐变，长时间看最省眼 */
 :root[data-theme="graphite"] {
-  --bg: #14161a;
+  --bg: #0e1013;
   --bg-image: none;
-  --surface: #1a1d22;
-  --surface-2: #1f232a;
-  --surface-3: #242932;
-  --border: #2e343d;
-  --border-hi: #454e5a;
-  --text: #e7eaee;
-  --dim: #a9b2be;
-  --mute: #8b95a3;
+  --surface: #1c222a;
+  --surface-2: #222933;
+  --surface-3: #282f3a;
+  --border: #4b5563;
+  --border-hi: #6f7d8e;
+  --text: #eef1f4;
+  --dim: #b7c0ca;
+  --mute: #9ea8b6;
 
-  --card-bg: #1a1d22;
-  --kpi-bg: #1f232a;
-  --card-line: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+  --card-bg: var(--surface);
+  --kpi-bg: var(--surface-2);
+  --card-line: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
   --title-glow: none;
-  --shadow: 0 14px 32px rgba(0, 0, 0, 0.46);
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.34);
-  --ring: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --table-head: #9aa5b2;
-  --name-color: #a8c6e2;
-  --nav-bg: linear-gradient(180deg, #171a1e 0%, #131519 100%);
+  --shadow: 0 14px 32px rgba(0, 0, 0, 0.60);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --ring: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --table-head: #a9b4c1;
+  --name-color: #b6d0e8;
+  --nav-bg: #121519;
 
   --gold: #7fa8cc;
   --gold-hi: #a8c6e2;
@@ -102,27 +99,27 @@
 
 /* 暖棕纸墨：暖褐底 + 赭色，最低对比，接近纸质阅读 */
 :root[data-theme="warm"] {
-  --bg: #16120e;
+  --bg: #100d0a;
   --bg-image: none;
-  --surface: #1d1814;
-  --surface-2: #241e18;
-  --surface-3: #2b241c;
-  --border: #383026;
-  --border-hi: #57493a;
-  --text: #eee6d8;
-  --dim: #b3a794;
-  --mute: #918676;
+  --surface: #221b14;
+  --surface-2: #282019;
+  --surface-3: #2f261d;
+  --border: #6a563c;
+  --border-hi: #8a7050;
+  --text: #f2ebde;
+  --dim: #c0b5a3;
+  --mute: #a89c89;
 
-  --card-bg: #1d1814;
-  --kpi-bg: #241e18;
-  --card-line: linear-gradient(90deg, transparent, rgba(238, 230, 216, 0.12), transparent);
+  --card-bg: var(--surface);
+  --kpi-bg: var(--surface-2);
+  --card-line: linear-gradient(90deg, transparent, rgba(238, 230, 216, 0.14), transparent);
   --title-glow: none;
-  --shadow: 0 14px 30px rgba(0, 0, 0, 0.44);
-  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.32);
-  --ring: inset 0 1px 0 rgba(238, 230, 216, 0.05);
-  --table-head: #ab9c86;
-  --name-color: #d8ab74;
-  --nav-bg: linear-gradient(180deg, #1a1511 0%, #15110d 100%);
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.58);
+  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.42);
+  --ring: inset 0 1px 0 rgba(238, 230, 216, 0.06);
+  --table-head: #bfae95;
+  --name-color: #e2bb85;
+  --nav-bg: #15110d;
 
   --gold: #b98a52;
   --gold-hi: #d8ab74;
@@ -133,27 +130,27 @@
 
 /* 青灰极简：冷灰底 + 青，冷调低饱和 */
 :root[data-theme="slate"] {
-  --bg: #12161a;
+  --bg: #0c0f12;
   --bg-image: none;
-  --surface: #181d22;
-  --surface-2: #1d232a;
-  --surface-3: #222931;
-  --border: #2b333c;
-  --border-hi: #414c58;
-  --text: #e6eaee;
-  --dim: #a4aeb8;
-  --mute: #87919d;
+  --surface: #1a2129;
+  --surface-2: #202730;
+  --surface-3: #262e38;
+  --border: #45505c;
+  --border-hi: #66747f;
+  --text: #ecf0f4;
+  --dim: #b3bdc7;
+  --mute: #9ba6b2;
 
-  --card-bg: #181d22;
-  --kpi-bg: #1d232a;
-  --card-line: linear-gradient(90deg, transparent, rgba(230, 234, 238, 0.10), transparent);
+  --card-bg: var(--surface);
+  --kpi-bg: var(--surface-2);
+  --card-line: linear-gradient(90deg, transparent, rgba(230, 234, 238, 0.14), transparent);
   --title-glow: none;
-  --shadow: 0 14px 30px rgba(0, 0, 0, 0.44);
-  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.32);
-  --ring: inset 0 1px 0 rgba(230, 234, 238, 0.05);
-  --table-head: #95a0ab;
-  --name-color: #93cfd3;
-  --nav-bg: linear-gradient(180deg, #151a1f 0%, #11161a 100%);
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.58);
+  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.42);
+  --ring: inset 0 1px 0 rgba(230, 234, 238, 0.06);
+  --table-head: #a6b2be;
+  --name-color: #a5d8dc;
+  --nav-bg: #101418;
 
   --gold: #6fb3b8;
   --gold-hi: #93cfd3;

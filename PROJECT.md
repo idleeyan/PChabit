@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.35**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
+| 当前版本 | **4.12.36**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.36 | 修「界面发灰」：卡片/底色 1.07→1.16、边框/卡片 1.33→2.2（靠描边分层而非提亮卡片）、底色压近纯黑、卡片改纯色、去掉鎏金顶部光晕、正文 13px/行高 1.6、小字与表头同步提亮 |
 | 2026-11-20 | 4.12.35 | 配色可切换：4 套底色方案（鎏金/石墨/暖棕/青灰）+ 8 色强调 + 「跟随方案」；新增 tokens.css 与 theme-boot.js，导航壳顶部加配色面板，设置页加两个下拉；图表页改读 CSS 变量跟随主题；修 `data-accent` 默认覆盖主题自带的缺陷；**坑**：改 dist/*.html 后普通 cargo build 可能沿用旧资源快照，需 touch build.rs |
 | 2026-11-20 | 4.12.34 | 视觉升级为鎏金暗夜：theme.css 重写（暖黑底 + 金色渐变 + 轻动效，兼容旧类名）、12 页全部接入、导航壳金色化、图表配色统一（含桑基图由白底改深底）、清掉散落蓝绿橙、分类管理补卡片、应用详情修 100vh 溢出 |
 | 2026-11-20 | 4.12.33 | 页面样式收敛到 `dist/pages/theme.css`（仪表盘 / 数据管理先接入）；仪表盘硬件曲线改 CPU 渐变面积 + GPU 折线 + 温度虚线；补回被 `dist/pages/*` 忽略规则挡住的 `theme.css` 与 `note-desktop.html` |
