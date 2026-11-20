@@ -158,7 +158,7 @@ input:focus { outline:none; border-color:var(--gold); }
   };
 
   // 已决定不做的项：温度受 HVCI 限制（4.11.1 删除）、CollectInShell 是旧架构
-  var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1, StickyNotesRetentionDays: 1 };
+  var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1, StickyNotesRetentionDays: 1, CurrentTheme: 1 };
 
   // Rust 侧还没接线的键：能改、会写进 settings.json，但当前壳/采集不读它（旧 WPF 功能尚未迁移）
   var INACTIVE = {
@@ -169,7 +169,8 @@ input:focus { outline:none; border-color:var(--gold); }
 
   // 废弃项各自的说明（不写就用默认文案）
   var DEPRECATED_TXT = {
-    StickyNotesRetentionDays: '已废弃（便签永久保存）'
+    StickyNotesRetentionDays: '已废弃（便签永久保存）',
+    CurrentTheme: '已废弃（界面固定深色）'
   };
 
   var GROUPS = [
