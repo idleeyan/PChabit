@@ -376,6 +376,7 @@ fn build_netprocs(app: &tauri::AppHandle, visible: bool) -> Result<tauri::Webvie
 
 /// 显示网速浮窗（旧版 `NetworkProcessWindow`）。窗口不存在时先构建，存在则直接 show。
 pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
+    let t0 = std::time::Instant::now();
     let win = match app.get_webview_window("netprocs") {
         Some(w) => w,
         None => build_netprocs(app, false)?,
@@ -394,7 +395,20 @@ pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
 
     win.show().map_err(|e| format!("显示浮窗失败：{e}"))?;
     let _ = win.set_focus();
-    log_line("[浮窗] 已显示");
+    // 轮询在隐藏时是停的，不主动刷一次会先显示挂起前的旧数字，随后再跳变
+    let _ = win.eval("if (window.__NP_REFRESH__) window.__NP_REFRESH__();");
+
+    // 量真实延迟：点击（wndproc）→ 这里显示完成
+    let click_at = crate::taskbar::CLICK_AT.load(std::sync::atomic::Ordering::Relaxed);
+    let lag = if click_at == 0 {
+        "—".to_string()
+    } else {
+        format!("{} ms", now_ms().saturating_sub(click_at))
+    };
+    log_line(&format!(
+        "[浮窗] 已显示：点击→显示 {lag}，本函数 {:.1} ms",
+        t0.elapsed().as_secs_f64() * 1000.0
+    ));
     Ok(())
 }
 
@@ -1808,7 +1822,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.47";
+const VERSION: &str = "4.12.48";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 

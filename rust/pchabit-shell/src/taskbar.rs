@@ -3,7 +3,7 @@
 //!
 //! 只在显式开启时启动（`PChabitShell.exe --taskbar`），避免与 WPF 的小窗同时存在。
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 // ---------- Win32 ----------
@@ -344,10 +344,32 @@ struct State {
 }
 
 static STATE: OnceLock<Mutex<State>> = OnceLock::new();
-static CLICKED: AtomicBool = AtomicBool::new(false);
+/// 上一次点击的时刻（毫秒），用于在日志里量「点击 → 浮窗显示」的真实延迟
+pub(crate) static CLICK_AT: AtomicU64 = AtomicU64::new(0);
 /// 小窗是否在跑（设置页实时开关用）
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 点小窗 → 立刻在主线程弹浮窗（浮窗起不来就退回打开主窗口，保证点击有反应）。
+/// 必须在鼠标消息里直接调用：走 tick 标志消费会引入最多一个刷新周期的延迟。
+fn spawn_open_netprocs() {
+    let Some(app) = APP.get() else { return };
+    let app2 = app.clone();
+    let app3 = app.clone();
+    let _ = app2.run_on_main_thread(move || {
+        if let Err(e) = crate::open_netprocs(&app3) {
+            crate::log_line(&format!("[浮窗] 打开失败，退回主窗口：{e}"));
+            crate::open_window_at(&app3, "app.html", "任务栏小窗点击");
+        }
+    });
+}
 
 fn with_state<T>(f: impl FnOnce(&mut State) -> T) -> Option<T> {
     STATE.get().map(|m| f(&mut m.lock().unwrap()))
@@ -571,7 +593,10 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM)
         WM_LBUTTONUP => {
             let was_down = with_state(|s| std::mem::replace(&mut s.mouse_down, false)).unwrap_or(false);
             if was_down {
-                CLICKED.store(true, Ordering::SeqCst);
+                // 直接投递到主线程。原来只置 CLICKED 标志、等主循环每秒一拍去消费，
+                // 点击到弹出平均要 500 ms、最坏 1 s —— 主观就是「点了卡一阵才出来」。
+                CLICK_AT.store(now_ms(), Ordering::Relaxed);
+                spawn_open_netprocs();
             }
             0
         }
@@ -1007,20 +1032,6 @@ fn tick_loop() {
                         InvalidateRect(h, std::ptr::null(), 0);
                     }
                 }
-            }
-        }
-
-        if CLICKED.swap(false, Ordering::SeqCst) {
-            if let Some(app) = APP.get() {
-                let app2 = app.clone();
-                let app3 = app.clone();
-                let _ = app2.run_on_main_thread(move || {
-                    // 点击小窗 → 弹「实时网速 · 进程排行」浮窗（旧版 NetworkProcessWindow）；
-                    // 浮窗起不来时退回打开主窗口，保证点击有反应。
-                    if crate::open_netprocs(&app3).is_err() {
-                        crate::open_window_at(&app3, "app.html", "任务栏小窗点击");
-                    }
-                });
             }
         }
     }

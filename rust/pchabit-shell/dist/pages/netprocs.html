@@ -195,6 +195,14 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) stopPoll(); else startPoll();
   });
+
+  // 壳在 show() 之后会调这个：立刻拉一次数据并重启轮询。
+  // 只靠 visibilitychange 不够稳（WebView2 隐藏时不一定派发），而且不主动刷会先显示旧数字。
+  window.__NP_REFRESH__ = function () {
+    stopPoll();
+    startPoll();
+  };
+
   startPoll();
   window.addEventListener('beforeunload', stopPoll);
 </script>
