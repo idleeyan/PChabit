@@ -3,53 +3,26 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 键鼠活动</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
-  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
-  h1 { font-size:15px; font-weight:600; margin:0; }
-  .hint { color:#94a3b8; font-size:11px; }
-
-  .ranges { display:flex; gap:6px; margin:-4px 0 12px; }
-  .ranges button { background:#182234; border:1px solid #263349; color:#94a3b8; border-radius:6px;
+<style>.hint { color:var(--dim); font-size:11px; }
+.ranges { display:flex; gap:6px; margin:-4px 0 12px; }
+.ranges button { background:var(--surface-3); border:1px solid var(--border); color:var(--dim); border-radius:6px;
     padding:3px 10px; font-size:11px; cursor:pointer; font-family:inherit; }
-  .ranges button:hover { border-color:#3b82f6; color:#cbd5e1; }
-  .ranges button.on { background:#1d3a63; border-color:#3b82f6; color:#e2e8f0; }
-
-  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; margin-bottom:14px; }
-  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
-  .kpi .n { color:#94a3b8; font-size:10px; }
-  .kpi .v { font-size:15px; font-weight:600; }
-  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
-
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
-  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
-  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
-  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
-    display:flex; align-items:center; gap:8px; }
-  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
-
-  table { width:100%; border-collapse:collapse; }
-  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
-    border-bottom:1px solid #223049; white-space:nowrap; }
-  thead th.r, td.r { text-align:right; }
-  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
-  tbody tr:hover { background:#16233a; }
-  .nm { color:#93c5fd; }
-
-  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; align-items:end; height:70px; }
-  .hours .col { display:flex; flex-direction:column; justify-content:flex-end; gap:1px; height:70px; }
-  .hours .col i { display:block; border-radius:2px; min-height:1px; }
-  .kbar { background:#3b82f6; }
-  .cbar { background:#f59e0b; }
-  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; margin-top:2px;
-    font-size:9px; color:#475569; text-align:center; }
-  .legend { display:flex; gap:12px; font-size:10px; color:#94a3b8; margin-bottom:6px; }
-  .legend b { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
-  .empty { color:#64748b; padding:8px 0; }
-  .note { color:#64748b; font-size:10px; margin-top:6px; }
-</style>
+.ranges button:hover { border-color:var(--gold); color:var(--text); }
+.ranges button.on { background:var(--gold-soft); border-color:var(--gold); color:var(--text); }
+.row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
+@media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+thead th.r, td.r { text-align:right; }
+.hours { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; align-items:end; height:70px; }
+.hours .col { display:flex; flex-direction:column; justify-content:flex-end; gap:1px; height:70px; }
+.hours .col i { display:block; border-radius:2px; min-height:1px; }
+.kbar { background:var(--gold); }
+.cbar { background:var(--amber); }
+.hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; margin-top:2px;
+    font-size:9px; color:var(--mute); text-align:center; }
+.legend { display:flex; gap:12px; font-size:10px; color:var(--dim); margin-bottom:6px; }
+.legend b { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:4px; }
+.note { color:var(--mute); font-size:10px; margin-top:6px; }</style>
+<link rel="stylesheet" href="theme.css" />
 </head>
 <body>
 <header>
@@ -71,8 +44,8 @@
 <section style="margin-bottom:12px">
   <h2>24 小时分布 <em>键盘（蓝）/ 点击（橙）</em></h2>
   <div class="legend">
-    <span><b style="background:#3b82f6"></b>按键</span>
-    <span><b style="background:#f59e0b"></b>点击</span>
+    <span><b style="background:#d9b45a"></b>按键</span>
+    <span><b style="background:#c98b4b"></b>点击</span>
   </div>
   <div class="hours" id="hours"></div>
   <div class="hlbl" id="hlbl"></div>

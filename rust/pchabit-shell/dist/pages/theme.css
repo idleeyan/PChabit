@@ -1,31 +1,49 @@
-/* PChabit 页面统一样式（4.12.33）
+/* PChabit 页面统一样式 · 鎏金暗夜（4.12.34）
  * 所有 iframe 页面共用：颜色/字号/间距/圆角/阴影一次定义，改这里全站生效。
- * 用法：<link rel="stylesheet" href="theme.css"/>，页面里只留自己特有的布局。 */
+ * 用法：<link rel="stylesheet" href="theme.css"/>，页面里只留自己特有的布局。
+ *
+ * 设计基调：暖黑底 + 金色渐变（标题 / 关键数字 / 分割线）+ 细金边卡片。
+ * 华丽元素只放在框架层（页头、卡片框、KPI、图表）；表格行、设置项等
+ * 数据密集区不加渐变与发光，保证长列表可读。
+ *
+ * 兼容旧类名：section / header / .hint / .ranges / .pill.good / .bar / .legend / .dot，
+ * 老页面删掉内联 :root 与 .card 重复段后即可直接套用。
+ */
 
 :root {
-  /* 底色与层次：页面 → 卡片 → 卡片内浮层，逐级提亮 */
-  --bg: #0a1120;
-  --bg-glow: #16233c;
-  --surface: #101a2c;
-  --surface-2: #142035;
-  --surface-3: #182741;
-  --border: #1d2b45;
-  --border-hi: #2b3d5e;
+  /* 底色层次：页面 → 卡片 → 卡片内浮层，逐级提亮（暖调，不是冷灰） */
+  --bg: #0a0907;
+  --bg-glow: #2a1f0d;
+  --surface: #16120c;
+  --surface-2: #1d1810;
+  --surface-3: #241e14;
+  --border: #3a301d;
+  --border-hi: #604d28;
 
-  /* 文字三级 */
-  --text: #e9f0fb;
-  --dim: #a6b7d0;
-  --mute: #7086a6;
+  /* 文字三级（暖白） */
+  --text: #f4efe4;
+  --dim: #b7ad9b;
+  --mute: #7e7464;
 
-  /* 强调色：主蓝 + 语义色 */
-  --accent: #4f8cff;
-  --accent-hi: #79a8ff;
-  --accent-soft: rgba(79, 140, 255, 0.12);
-  --green: #34d399;
-  --amber: #fbbf24;
-  --red: #f87171;
-  --violet: #a78bfa;
-  --cyan: #22d3ee;
+  /* 金：主色 / 高光 / 暗边 / 罩色 / 渐变 */
+  --gold: #d9b45a;
+  --gold-hi: #f7e6b4;
+  --gold-deep: #9d7a2e;
+  --gold-soft: rgba(217, 180, 90, 0.12);
+  --grad-gold: linear-gradient(180deg, #fff4d2 0%, #f2d492 42%, #d3a54b 100%);
+  --grad-gold-line: linear-gradient(90deg, transparent, rgba(217, 180, 90, 0.7), transparent);
+
+  /* 语义色：整体降饱和，避免与金抢戏 */
+  --green: #5fb98a;
+  --amber: #e39a3d;
+  --red: #e0665f;
+  --violet: #a98bd6;
+  --cyan: #5fb3c4;
+
+  /* 兼容旧变量名（dashboard / data 已在使用） */
+  --accent: var(--gold);
+  --accent-hi: var(--gold-hi);
+  --accent-soft: var(--gold-soft);
 
   /* 尺度 */
   --r-xs: 6px;
@@ -34,11 +52,12 @@
   --r-lg: 18px;
   --gap: 12px;
   --pad: 16px;
-  --shadow: 0 12px 32px rgba(2, 6, 18, 0.45);
-  --shadow-sm: 0 4px 14px rgba(2, 6, 18, 0.3);
-  --ring: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --shadow: 0 18px 42px rgba(0, 0, 0, 0.58);
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.42);
+  --ring: inset 0 1px 0 rgba(247, 230, 180, 0.06);
 
   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-display: Georgia, "Songti SC", "STSong", "SimSun", serif;
   color-scheme: dark;
 }
 
@@ -49,67 +68,112 @@ body {
   padding: 18px 20px 26px;
   color: var(--text);
   font: 12.5px/1.55 var(--font);
-  background:
-    radial-gradient(1100px 520px at 12% -12%, var(--bg-glow) 0%, transparent 62%),
-    radial-gradient(900px 460px at 96% 0%, #12233f 0%, transparent 58%),
-    var(--bg);
+  /* 纯色打底：渐变只是叠加层，任何一层失效也不会露出透明底 */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 480px at 50% -12%, rgba(217, 180, 90, 0.17), transparent 64%),
+    radial-gradient(700px 300px at 88% -6%, rgba(157, 122, 46, 0.10), transparent 62%),
+    linear-gradient(180deg, #0e0c08 0%, var(--bg) 60%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
 }
 
+/* 金色渐变文字（页头标题与关键数字共用；裸 h1 与 header 内 h1 都覆盖） */
+h1,
+.page-head h1,
+header h1,
+.kpi .v,
+.gold-text {
+  background: var(--grad-gold);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
 /* ---------- 页头 ---------- */
-.page-head {
+.page-head,
+header {
   display: flex;
   align-items: flex-end;
   gap: 12px;
   margin-bottom: 16px;
 }
-.page-head h1 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
+h1,
+.page-head h1,
+header h1 {
+  margin: 0 0 10px;
+  font-family: var(--font);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  filter: drop-shadow(0 2px 12px rgba(217, 180, 90, 0.3));
 }
-.page-head .sub {
+.page-head h1,
+header h1 { margin: 0; }
+.page-head .sub,
+header .hint {
   color: var(--dim);
   font-size: 11.5px;
-  padding-bottom: 2px;
+  padding-bottom: 3px;
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
 }
 .page-head .grow { flex: 1; }
 
 /* ---------- 卡片 ---------- */
-.card {
+.card,
+section {
+  position: relative;
   background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 13px 16px 15px;
   box-shadow: var(--shadow-sm), var(--ring);
 }
-.card h2 {
+/* 卡片顶部一道极淡金线：华丽感来源，但不侵入内容区对比 */
+.card::before,
+section::before {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 0;
+  height: 1px;
+  background: var(--grad-gold-line);
+  pointer-events: none;
+}
+.card h2,
+section h2 {
   display: flex;
   align-items: center;
   gap: 8px;
   margin: 0 0 11px;
+  font-family: var(--font);
   font-size: 12.5px;
   font-weight: 600;
-  color: #d6e2f4;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.09em;
+  color: var(--gold-hi);
 }
-.card h2::before {
+.card h2::before,
+section h2::before {
   content: "";
   width: 3px;
-  height: 12px;
+  height: 13px;
   border-radius: 2px;
-  background: linear-gradient(180deg, var(--accent-hi), var(--accent));
+  background: var(--grad-gold);
   flex: none;
 }
-.card h2 em {
+.card h2 em,
+section h2 em {
+  font-family: var(--font);
   font-style: normal;
   font-weight: 400;
   font-size: 11px;
+  letter-spacing: 0.02em;
   color: var(--mute);
+  -webkit-text-fill-color: var(--mute);
 }
-.card h2 .spacer { flex: 1; }
+.card h2 .spacer, section h2 .spacer { flex: 1; }
 
 /* ---------- KPI ---------- */
 .kpis {
@@ -126,26 +190,32 @@ body {
   border-radius: var(--r-sm);
   padding: 11px 13px 12px;
   box-shadow: var(--ring);
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
-.kpi:hover { border-color: var(--border-hi); transform: translateY(-1px); }
+.kpi:hover {
+  border-color: var(--border-hi);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(217, 180, 90, 0.16);
+  transform: translateY(-1px);
+}
 .kpi::after {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
+  background: var(--grad-gold-line);
+  opacity: 0.75;
 }
 .kpi .n {
-  color: var(--dim);
+  color: var(--mute);
   font-size: 10.5px;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.06em;
 }
 .kpi .v {
-  font-size: 20px;
-  font-weight: 650;
-  line-height: 1.35;
-  margin-top: 3px;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin-top: 4px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
@@ -154,17 +224,17 @@ body {
 .kpi .s {
   color: var(--mute);
   font-size: 10.5px;
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
-/* ---------- 表格 ---------- */
+/* ---------- 表格（数据密集区：克制，无渐变无发光） ---------- */
 table { width: 100%; border-collapse: collapse; }
 thead th {
   text-align: left;
   font-weight: 500;
-  color: var(--mute);
+  color: #a08b5f;
   font-size: 10.5px;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.08em;
   padding: 4px 8px 7px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -173,13 +243,14 @@ thead th.r, td.r { text-align: right; }
 tbody td {
   padding: 6px 8px;
   font-size: 12px;
-  border-bottom: 1px solid rgba(45, 61, 90, 0.55);
+  border-bottom: 1px solid rgba(43, 36, 24, 0.75);
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
-tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.018); }
-tbody tr:hover { background: var(--accent-soft); }
+tbody tr:nth-child(even) { background: rgba(246, 228, 176, 0.014); }
+tbody tr:hover { background: rgba(217, 180, 90, 0.055); }
 tbody tr:last-child td { border-bottom: 0; }
-.nm { color: #9dc0ff; }
+.nm { color: #e8cf8f; }
 .empty { color: var(--mute); padding: 10px 2px; }
 
 /* ---------- 按钮 ---------- */
@@ -192,48 +263,94 @@ tbody tr:last-child td { border-bottom: 0; }
   font: 12px var(--font);
   padding: 6px 12px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
 }
-.btn:hover { background: #1d304e; border-color: var(--accent); color: var(--text); }
-.btn:disabled { opacity: 0.55; cursor: default; }
+.btn:hover { background: #241f15; border-color: var(--gold-deep); color: var(--gold-hi); }
+.btn:disabled { opacity: 0.5; cursor: default; }
 .btn-primary {
-  background: linear-gradient(180deg, #5c96ff, #3f7bf0);
-  border-color: #5c96ff;
-  color: #fff;
-  font-weight: 550;
+  background: var(--grad-gold);
+  border-color: #a9812f;
+  color: #241a06;
+  font-weight: 600;
 }
-.btn-primary:hover { background: linear-gradient(180deg, #6ea3ff, #4a86f7); color: #fff; }
-.btn-ghost { background: transparent; }
+.btn-primary:hover {
+  background: linear-gradient(180deg, #ffefc9 0%, #e6c47a 46%, #b98d34 100%);
+  color: #1d1505;
+  border-color: var(--gold);
+}
+.btn-primary:disabled { color: #241a06; }
+.btn-ghost { background: transparent; border-color: var(--border); color: var(--dim); }
+.btn-ghost:hover { border-color: var(--gold-deep); color: var(--gold-hi); background: transparent; }
+
+/* ---------- 分段范围条（.ranges 是旧页的类名） ---------- */
+.ranges { display: flex; gap: 6px; flex-wrap: wrap; }
+.ranges button,
+.seg button {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: var(--r-xs);
+  padding: 4px 11px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.16s, color 0.16s, background 0.16s;
+}
+.ranges button:hover,
+.seg button:hover { border-color: var(--gold-deep); color: var(--gold-hi); }
+.ranges button.on,
+.seg button.on {
+  background: var(--gold-soft);
+  border-color: var(--gold-deep);
+  color: var(--gold-hi);
+  font-weight: 600;
+}
 
 /* ---------- 状态胶囊 / 标签 ---------- */
 .pill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 8px;
+  gap: 6px;
+  padding: 2px 9px;
   border-radius: 999px;
   font-size: 10.5px;
+  letter-spacing: 0.04em;
   border: 1px solid var(--border-hi);
   background: var(--surface-3);
   color: var(--dim);
   white-space: nowrap;
 }
-.pill.good { border-color: rgba(52, 211, 153, 0.45); color: var(--green); background: rgba(52, 211, 153, 0.1); }
-.pill.bad { border-color: rgba(248, 113, 113, 0.45); color: var(--red); background: rgba(248, 113, 113, 0.1); }
-.pill.info { border-color: rgba(79, 140, 255, 0.45); color: var(--accent-hi); background: var(--accent-soft); }
+.pill.good,
+.pill.ok {
+  border-color: rgba(95, 185, 138, 0.42);
+  color: var(--green);
+  background: rgba(95, 185, 138, 0.08);
+}
+.pill.bad {
+  border-color: rgba(224, 102, 95, 0.42);
+  color: var(--red);
+  background: rgba(224, 102, 95, 0.08);
+}
+.pill.info {
+  border-color: rgba(217, 180, 90, 0.42);
+  color: var(--gold);
+  background: var(--gold-soft);
+}
 
 /* ---------- 进度条 ---------- */
 .bar {
+  display: block;
+  width: 100%;
   height: 4px;
   border-radius: 2px;
-  background: rgba(79, 140, 255, 0.14);
+  background: rgba(217, 180, 90, 0.14);
   overflow: hidden;
 }
 .bar > i {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, #3f7bf0, #79a8ff);
+  background: linear-gradient(90deg, #9d7a2e, #f7e6b4);
 }
 
 /* ---------- 提示 / 说明 ---------- */
@@ -243,7 +360,7 @@ tbody tr:last-child td { border-bottom: 0; }
   line-height: 1.6;
   margin-top: 9px;
 }
-.hint { color: var(--mute); font-size: 11px; }
+header .hint { color: var(--dim); }
 
 /* ---------- 图例 ---------- */
 .legend {
@@ -256,3 +373,45 @@ tbody tr:last-child td { border-bottom: 0; }
 }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+/* ---------- 表单 ---------- */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="search"],
+select,
+textarea {
+  background: #0d0b08;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  color: var(--text);
+  font: 12px var(--font);
+  padding: 5px 9px;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--gold-deep);
+  box-shadow: 0 0 0 3px rgba(217, 180, 90, 0.12);
+}
+input[type="checkbox"] { accent-color: var(--gold); }
+
+/* ---------- 轻动效：只做淡入，不碰 transform，避免与 hover 位移打架 ---------- */
+@keyframes gold-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.card,
+section,
+.kpi {
+  animation: gold-fade-in 0.2s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, section, .kpi { animation: none; }
+  .kpi { transition: none; }
+}
+
+/* ---------- 通用布局（页面可按需覆盖） ---------- */
+.row { display: grid; gap: var(--gap); align-items: start; }

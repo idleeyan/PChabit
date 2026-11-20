@@ -189,7 +189,7 @@
       var m = document.getElementById('davResult');
       if (m) {
         m.textContent = '[' + stamp() + '] ' + text;
-        m.style.color = tone === 'bad' ? '#f87171' : (tone === 'good' ? '#4ade80' : '#94a3b8');
+        m.style.color = tone === 'bad' ? 'var(--red)' : (tone === 'good' ? 'var(--green)' : 'var(--dim)');
         m.style.borderColor = tone === 'bad' ? '#7f1d1d' : (tone === 'good' ? '#166534' : '#1f2937');
       }
       window.__DATA_RESULT__ = 'dav: ' + text;
@@ -197,7 +197,7 @@
     function davRow(k, v) {
       var tr = document.createElement('tr');
       var td1 = el('td', null, k);
-      td1.style.cssText = 'color:#64748b;width:120px;white-space:nowrap';
+      td1.style.cssText = 'color:var(--mute);width:120px;white-space:nowrap';
       var td2 = el('td', null, v);
       td2.style.cssText = 'color:#e2e8f0;word-break:break-all';
       tr.appendChild(td1); tr.appendChild(td2);

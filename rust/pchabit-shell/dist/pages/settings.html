@@ -3,59 +3,44 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 设置</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
-  #wrap { padding:14px 16px 24px; }
-  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
-  .sub { color:#94a3b8; font-size:11px; margin-bottom:10px; word-break:break-all; }
-  .hint { background:#16233a; border-left:3px solid #3b82f6; border-radius:8px;
-    padding:8px 10px; color:#94a3b8; font-size:11px; margin-bottom:14px; line-height:1.7; }
-  .hint b { color:#cbd5e1; font-weight:600; }
-
-  /* 多列流式布局：各分组高度差别很大（桌面悬浮窗 17 项、便签 8 项），
-     用 grid 会让短分组下方留下大片空白，改成列流（masonry 效果）+ 分组不跨列断开。 */
-  .grid { column-width:380px; column-gap:12px; }
-  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px;
-    break-inside:avoid; -webkit-column-break-inside:avoid; margin:0 0 12px; }
-  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
-    display:flex; align-items:center; gap:8px; }
-  section h2 em { font-style:normal; color:#64748b; font-size:10px; font-weight:400; }
-
-  .row { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
-    padding:5px 0; border-bottom:1px solid #1b2436; }
-  .row:last-child { border-bottom:0; }
-  .k { color:#94a3b8; font-size:11px; min-width:0; }
-  .k .name { color:#cbd5e1; }
-  .k .raw { display:block; color:#475569; font-size:10px; }
-  .ctl { justify-self:end; display:flex; align-items:center; gap:6px; }
-  .st { color:#64748b; font-size:10px; min-height:14px; text-align:right; grid-column:1 / -1; margin:-2px 0 2px; }
-  .st.ok { color:#34d399; }
-  .st.err { color:#f87171; }
-
-  input[type=checkbox] { width:15px; height:15px; accent-color:#3b82f6; cursor:pointer; }
-  input[type=number], input[type=text], input[type=password] {
-    background:#0f172a; color:#e2e8f0; border:1px solid #223049; border-radius:5px;
+<style>#wrap { padding: 0; }
+.sub { color:var(--dim); font-size:11px; margin-bottom:10px; word-break:break-all; }
+.hint { background:var(--surface-3); border-left:3px solid var(--gold); border-radius:8px;
+    padding:8px 10px; color:var(--dim); font-size:11px; margin-bottom:14px; line-height:1.7; }
+.hint b { color:var(--text); font-weight:600; }
+.grid { column-width:380px; column-gap:12px; }
+.row { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
+    padding:5px 0; border-bottom:1px solid rgba(58,48,29,.55); }
+.row:last-child { border-bottom:0; }
+.k { color:var(--dim); font-size:11px; min-width:0; }
+.k .name { color:var(--text); }
+.k .raw { display:block; color:var(--mute); font-size:10px; }
+.ctl { justify-self:end; display:flex; align-items:center; gap:6px; }
+.st { color:var(--mute); font-size:10px; min-height:14px; text-align:right; grid-column:1 / -1; margin:-2px 0 2px; }
+.st.ok { color:var(--green); }
+.st.err { color:var(--red); }
+input[type=checkbox] { width:15px; height:15px; accent-color:var(--gold); cursor:pointer; }
+input[type=number], input[type=text], input[type=password] {
+    background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px;
     padding:3px 7px; font:12px/1.4 "Segoe UI","Microsoft YaHei",sans-serif; }
-  input[type=number] { width:78px; }
-  input[type=text] { width:172px; }
-  input[type=password] { width:112px; }
-  input:focus { outline:none; border-color:#3b82f6; }
-  .ro { color:#94a3b8; font-size:11px; max-width:150px; word-break:break-all; text-align:right;
+input[type=number] { width:78px; }
+input[type=text] { width:172px; }
+input[type=password] { width:112px; }
+input:focus { outline:none; border-color:var(--gold); }
+.ro { color:var(--dim); font-size:11px; max-width:150px; word-break:break-all; text-align:right;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tag { font-size:10px; padding:1px 6px; border-radius:4px; border:1px solid #263349; color:#64748b; }
-  .tag.live { color:#34d399; border-color:#1e4634; background:#0f2a22; }
-  .tag.restart { color:#fbbf24; border-color:#4a3a1c; background:#261f10; }
-  .tag.idle { color:#94a3b8; border-color:#2b374b; background:#1a2334; }
-  .badge { font-size:10px; padding:1px 6px; border-radius:4px; }
-  .badge.set { background:#0f2a22; color:#34d399; border:1px solid #1e4634; }
-  .badge.unset { background:#1a2334; color:#64748b; border:1px solid #263349; }
-  .smallbtn { background:#182234; border:1px solid #263349; color:#cbd5e1; border-radius:6px;
+.tag { font-size:10px; padding:1px 6px; border-radius:4px; border:1px solid var(--border); color:var(--mute); }
+.tag.live { color:var(--green); border-color:#1e4634; background:#0f2a22; }
+.tag.restart { color:var(--amber); border-color:#4a3a1c; background:#261f10; }
+.tag.idle { color:var(--dim); border-color:#2b374b; background:#1a2334; }
+.badge { font-size:10px; padding:1px 6px; border-radius:4px; }
+.badge.set { background:#0f2a22; color:var(--green); border:1px solid #1e4634; }
+.badge.unset { background:#1a2334; color:var(--mute); border:1px solid var(--border); }
+.smallbtn { background:var(--surface-3); border:1px solid var(--border); color:var(--text); border-radius:6px;
     padding:2px 9px; font-size:11px; cursor:pointer; }
-  .smallbtn:hover { background:#20304a; border-color:#3b82f6; color:#fff; }
-  .bar { display:flex; gap:8px; align-items:center; margin:0 0 12px; }
-</style>
+.smallbtn:hover { background:#20304a; border-color:var(--gold); color:#fff; }
+.bar { display:flex; gap:8px; align-items:center; margin:0 0 12px; }</style>
+<link rel="stylesheet" href="theme.css" />
 </head>
 <body>
 <div id="wrap">

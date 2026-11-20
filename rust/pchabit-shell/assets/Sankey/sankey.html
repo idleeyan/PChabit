@@ -8,7 +8,7 @@
         html, body { 
             width: 100%; 
             height: 100%; 
-            background: #f8f9fa;
+            background: #0a0907;
             overflow: hidden; 
         }
         #chart { width: 100%; height: 100%; }
@@ -19,9 +19,9 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #888;
+            color: #b7ad9b;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f8f9fa;
+            background: #0a0907;
         }
         #empty-icon { font-size: 48px; margin-bottom: 16px; }
         #empty-text { font-size: 16px; }
@@ -111,7 +111,7 @@
                             show: true,
                             fontSize: 11,
                             fontWeight: 'bold',
-                            color: '#333'
+                            color: '#e8e0d0'
                         }
                     });
                 }
@@ -156,7 +156,7 @@
                 }
                 
                 chart.setOption({
-                    backgroundColor: '#f8f9fa',
+                    backgroundColor: '#0a0907',
                     title: {
                         text: '应用切换关系图',
                         left: 'center',
@@ -164,7 +164,7 @@
                         textStyle: {
                             fontSize: 16,
                             fontWeight: 'bold',
-                            color: '#333'
+                            color: '#e8e0d0'
                         }
                     },
                     tooltip: {
@@ -173,7 +173,7 @@
                         borderColor: '#ddd',
                         borderWidth: 1,
                         textStyle: {
-                            color: '#333'
+                            color: '#e8e0d0'
                         },
                         formatter: function(params) {
                             if (params.dataType === 'node') {
@@ -193,7 +193,7 @@
                         itemHeight: 12,
                         textStyle: {
                             fontSize: 12,
-                            color: '#333'
+                            color: '#e8e0d0'
                         },
                         selectedMode: 'multiple'
                     },

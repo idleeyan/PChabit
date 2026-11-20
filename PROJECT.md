@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.33**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.34**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.34 | 视觉升级为鎏金暗夜：theme.css 重写（暖黑底 + 金色渐变 + 轻动效，兼容旧类名）、12 页全部接入、导航壳金色化、图表配色统一（含桑基图由白底改深底）、清掉散落蓝绿橙、分类管理补卡片、应用详情修 100vh 溢出 |
 | 2026-11-20 | 4.12.33 | 页面样式收敛到 `dist/pages/theme.css`（仪表盘 / 数据管理先接入）；仪表盘硬件曲线改 CPU 渐变面积 + GPU 折线 + 温度虚线；补回被 `dist/pages/*` 忽略规则挡住的 `theme.css` 与 `note-desktop.html` |
 | 2026-11-20 | 4.12.32 | 数据页 WebDAV 结果条 + 状态表（云端份数/最新/上次同步），状态查询加日志 |
 | 2026-11-20 | 4.12.31 | 便签永久保存（去掉保留期清理）+ 数据管理页 WebDAV 手动同步（上传/下载/便签/状态） |
@@ -112,7 +113,7 @@ enderDetail 绘制函数被 window.renderDetail（列表入口）覆盖 → 改�
 | 2026-11-19 | 4.10.5 | **便签可写 + 修逐进程网络虚高**：便签 CRUD（软删除，与 WPF 共用 StickyNotes，写连接 3 s busy_timeout，日志不写正文）；netd 跳过回环连接（127/8、::1）并对每拍进程增量之和按系统增量等比收缩——实测下行比从 3.69 降到 0.42、上行从 14.26 降到 0.43；历史脏数据先 VACUUM 备份再按小时系统值等比校正，去掉虚高 14,269 MB |
 | 2026-11-19 | 4.10.4 | **修发布版翻页 bug + 壳可写**：page_data 去掉磁盘存在性检查（发布版页面内嵌 exe，旧逻辑导致托盘开窗后翻页全报缺资产）；datad::cleanup_old/backup_now + 壳命令 cleanup_data/backup_db，数据管理页可备份/清理（实测备份 190 MB、保留 60 天删 180,029 条）；设置页白名单可写 set_setting（写前 .bak 备份），修 settings 页映射与载荷结构；壳窗口 60 s 自动刷新（写库页跳过）；采集 CLI 新增 --compare 日汇总对账（11-18 完全一致）。发布 4.10.4.0 部署 D:\Tool\PChabit |
 | 2026-11-19 | 4.10.3 | **仪表盘图表补自检**：dashboard.html 对 hourly（长度≠24 / 全 0 但总时长>0）与 	rend（长度≠7）加警告串，拼进渲染结果，壳日志可见。副本库实测 [页面] dashboard 已渲染 ok: 1h59m / 12 应用 / 475 键（无警告），activity/timeline/category/sankey 同轮渲染成功——数据链路正常，之前的「每小时图表不可用」属显示层观感。发布 4.10.3.0 部署 D:\Tool\PChabit |
-| 2026-11-19 | 4.10.2 | **网络分钟行脏增量防护**：sample_loop 对网卡单拍增量设 200 MB/s 上界，超界丢弃并留日志（不进分钟行、不喂 netd SYS），修掉「一行 51 GB 下行」把今日下行抬到 98 GB 的问题；同时删除 13:50–14:51 的 6 条无法还原的异常行（删前有自动备份），今日下行回到 2.76 GB。实测 16:15 行  .96 MB/12.4 MB，无异常日志；collect 单测 13 通过。发布 4.10.2.0 部署 D:\Tool\PChabit |
+| 2026-11-19 | 4.10.2 | **网络分钟行脏增量防护**：sample_loop 对网卡单拍增量设 200 MB/s 上界，超界丢弃并留日志（不进分钟行、不喂 netd SYS），修掉「一行 51 GB 下行」把今日下行抬到 98 GB 的问题；同时删除 13:50–14:51 的 6 条无法还原的异常行（删前有自动备份），今日下行回到 2.76 GB。实测 16:15 行 0.96 MB/12.4 MB，无异常日志；collect 单测 13 通过。发布 4.10.2.0 部署 D:\Tool\PChabit |
 | 2026-11-19 | 4.10.1 | **只读模式恢复任务栏小窗点击拦截**：StartUiOnlyMode 里只装一个鼠标低级钩子（复用 InputHookThread 消息泵线程），ClickInterceptor 仍走 TaskbarWidget.HitTestScreenPoint，命中即吞点击并弹进程网速浮窗；OnMouseClick 无订阅者，键鼠统计仍只由 Rust 宿主写库（不双计）；App.Shutdown 收钩子与线程。实测：日志「任务栏小窗点击拦截已启用（只读模式专用鼠标钩子，不采集键鼠）」+ 8 个命中区就绪；采集侧 HardwareSamples 8189/AppSessions 切段/WebSessions 抖音入库照常。WPF 单测 186 通过。发布 4.10.1.0 部署 D:\Tool\PChabit |
 | 2026-11-19 | 4.9.0 | **默认入口切换（P5-4 落地）**：WPF 只读 UI + Rust 采集宿主并行。`settings.json` 的 `CollectInShell=true` 时 WPF 只保留界面/托盘/小部件内存采样，采集表全部由 `PChabitShell.exe --host --headless` 写；单写者判断改为心跳文件 `.wpf-collecting`（WPF 采集时每 60 s 刷新，只读模式不写，宿主凭它放行）；netd 改多客户端（每条连接一线程，`STOP` 结束进程），解决 `ERROR_PIPE_BUSY`；应用会话忽略 `pchabit*` 自家进程与无标题矮工具窗；壳加单实例锁（`127.0.0.1:18765`）；开机自启新增计划任务「PChabit 采集宿主」（登录触发、最高权限，与 WPF 同权限才能共享 admin netd）。实测 15:15 后：`HardwareSamples` 全 8189、`NetworkTrafficSamples` 每分钟、`AppSessions` 真实切段、键鼠照写、`WebSessions` 抖音/steam/百度分类正常；WPF 日志 `采集已交给 Rust 宿主` + 小窗命中区就绪。代价：小窗点击拦截（依赖 WPF 鼠标钩子）暂不可用。发布 4.9.0.0 部署 `D:\Tool\PChabit` |
 | 2026-11-19 | 4.8.0 | **关窗=隐到托盘**：窗口模式默认建托盘（`--no-tray` 可关），`CloseRequested` → `api.prevent_close()` + `hide()`，采集继续；任何退出路径走 `RunEvent::Exit → HostState::stop()` 收口。自检开关 `PCHABIT_CLOSE_TEST=1`（10 秒后自发关窗）。实测副本库 + `--host dashboard`：`dashboard 已渲染 1h3m / 9 应用 / 306 键` → 关窗 → 进程 26016 与 netd 11528 仍在 → `14:47` 起分钟行照写（8189）、应用会话照切段。发布 4.8.0.0 部署 `D:\Tool\PChabit` |

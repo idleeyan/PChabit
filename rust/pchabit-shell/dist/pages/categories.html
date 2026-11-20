@@ -3,53 +3,43 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 分类管理</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; }
-  #wrap { padding:14px 16px 24px; }
-  h1 { font-size:15px; font-weight:600; margin:0 0 2px; }
-  .sub { color:#94a3b8; font-size:11px; margin-bottom:12px; }
-
-  .cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-  .chip { display:flex; align-items:center; gap:5px; background:#141e30;
-    border:1px solid #223049; border-radius:14px; padding:3px 6px 3px 10px; font-size:11px; }
-  .chip.off { opacity:.45; }
-  .dot { width:8px; height:8px; border-radius:50%; }
-  .chip .x { background:none; border:0; color:#64748b; cursor:pointer; font-size:11px;
+<style>#wrap { padding: 0; }
+.sub { color:var(--dim); font-size:11px; margin-bottom:12px; }
+.cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.chip { display:flex; align-items:center; gap:5px; background:var(--surface-3);
+    border:1px solid var(--border); border-radius:14px; padding:3px 6px 3px 10px; font-size:11px; }
+.chip.off { opacity:.45; }
+.dot { width:8px; height:8px; border-radius:50%; }
+.chip .x { background:none; border:0; color:var(--mute); cursor:pointer; font-size:11px;
     padding:0 3px; line-height:1; }
-  .chip .x:hover { color:#f87171; }
-  .chip .on { background:none; border:0; color:#34d399; cursor:pointer; font-size:10px; padding:0 3px; }
-
-  .newrow { display:flex; gap:6px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
-  .newrow input[type=text] { background:#141e30; border:1px solid #263349; color:#e2e8f0;
+.chip .x:hover { color:var(--red); }
+.chip .on { background:none; border:0; color:var(--green); cursor:pointer; font-size:10px; padding:0 3px; }
+.newrow { display:flex; gap:6px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+.newrow input[type=text] { background:var(--surface-3); border:1px solid var(--border); color:var(--text);
     border-radius:6px; padding:4px 8px; font-size:12px; outline:none; }
-  .newrow input.nm { width:130px; }
-  .newrow input.ic { width:44px; text-align:center; }
-  .newrow input[type=color] { width:30px; height:26px; background:#141e30; border:1px solid #263349;
+.newrow input.nm { width:130px; }
+.newrow input.ic { width:44px; text-align:center; }
+.newrow input[type=color] { width:30px; height:26px; background:var(--surface-3); border:1px solid var(--border);
     border-radius:5px; padding:0; cursor:pointer; }
-  .newrow button { background:#2563eb; border:1px solid #3b82f6; color:#fff; border-radius:6px;
+.newrow button { background:var(--gold); border:1px solid var(--gold); color:#241a06; font-weight:600; border-radius:6px;
     padding:4px 12px; font-size:12px; cursor:pointer; }
-  .newrow button:hover { background:#1d4ed8; }
-
-  .tools { display:flex; gap:8px; margin-bottom:10px; }
-  .tools input { flex:1; background:#141e30; border:1px solid #263349; color:#e2e8f0;
+.newrow button:hover { background:var(--gold-hi); border-color:var(--gold-hi); }
+.tools { display:flex; gap:8px; margin-bottom:10px; }
+.tools input { flex:1; background:var(--surface-3); border:1px solid var(--border); color:var(--text);
     border-radius:6px; padding:5px 9px; font-size:12px; outline:none; }
-  .tools input:focus { border-color:#3b82f6; }
-
-  table { width:100%; border-collapse:collapse; }
-  th, td { text-align:left; padding:5px 8px; border-bottom:1px solid #1b2436; }
-  th { color:#94a3b8; font-weight:500; font-size:11px; position:sticky; top:0; background:#0f172a; }
-  td.num { color:#94a3b8; font-variant-numeric:tabular-nums; }
-  .proc { color:#64748b; font-size:10px; }
-  .tag { font-size:9px; color:#64748b; border:1px solid #263349; border-radius:4px;
+.tools input:focus { border-color:var(--gold); }
+th, td { text-align:left; padding:5px 8px; border-bottom:1px solid rgba(58,48,29,.55); }
+th { color:var(--dim); font-weight:500; font-size:11px; position:sticky; top:0; background:var(--bg); }
+td.num { color:var(--dim); font-variant-numeric:tabular-nums; }
+.proc { color:var(--mute); font-size:10px; }
+.tag { font-size:9px; color:var(--mute); border:1px solid var(--border); border-radius:4px;
     padding:0 4px; margin-left:4px; }
-  select { background:#141e30; border:1px solid #263349; color:#e2e8f0;
+select { background:var(--surface-3); border:1px solid var(--border); color:var(--text);
     border-radius:5px; padding:2px 6px; font-size:11px; outline:none; cursor:pointer; }
-  select:focus { border-color:#3b82f6; }
-  tr:hover td { background:#121a29; }
-  #msg { color:#34d399; font-size:11px; margin-left:8px; }
-</style>
+select:focus { border-color:var(--gold); }
+tr:hover td { background:var(--surface); }
+#msg { color:var(--green); font-size:11px; margin-left:8px; }</style>
+<link rel="stylesheet" href="theme.css" />
 </head>
 <body>
 <div id="wrap">
@@ -58,12 +48,13 @@
 
   <div class="cats" id="cats"></div>
 
+  <section class="card" style="margin-top:var(--gap)">
   <div class="newrow">
     <input class="nm" id="nn" type="text" placeholder="新分类名称" maxlength="20" />
     <input class="ic" id="ni" type="text" placeholder="📁" maxlength="2" value="📁" />
     <input id="nc" type="color" value="#22C55E" title="分类颜色" />
     <button id="nadd">新建分类</button>
-    <span id="msg0" style="font-size:11px;color:#94a3b8"></span>
+    <span id="msg0" style="font-size:11px;color:var(--dim)"></span>
   </div>
 
   <div class="tools">
@@ -77,6 +68,7 @@
     </thead>
     <tbody id="rows"></tbody>
   </table>
+  </section>
 </div>
 <script>
   var DATA = null;
@@ -185,7 +177,7 @@
       var tr = document.createElement('tr');
       var td = document.createElement('td');
       td.colSpan = 3;
-      td.style.color = '#64748b';
+      td.style.color = 'var(--mute)';
       td.textContent = apps.length ? '没有匹配的应用' : '暂无数据';
       tr.appendChild(td);
       tbody.appendChild(tr);

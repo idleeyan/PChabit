@@ -3,56 +3,28 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 网络流量</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
-  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
-  h1 { font-size:15px; font-weight:600; margin:0; }
-  .hint { color:#94a3b8; font-size:11px; }
-
-  .ranges { display:flex; gap:6px; margin:-4px 0 12px; }
-  .ranges button { background:#182234; border:1px solid #263349; color:#94a3b8; border-radius:6px;
+<style>.hint { color:var(--dim); font-size:11px; }
+.ranges { display:flex; gap:6px; margin:-4px 0 12px; }
+.ranges button { background:var(--surface-3); border:1px solid var(--border); color:var(--dim); border-radius:6px;
     padding:3px 10px; font-size:11px; cursor:pointer; font-family:inherit; }
-  .ranges button:hover { border-color:#3b82f6; color:#cbd5e1; }
-  .ranges button.on { background:#1d3a63; border-color:#3b82f6; color:#e2e8f0; }
-
-  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; margin-bottom:14px; }
-  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
-  .kpi .n { color:#94a3b8; font-size:10px; }
-  .kpi .v { font-size:15px; font-weight:600; }
-  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
-
-  .row { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; align-items:start; }
-  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
-  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
-  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
-    display:flex; align-items:center; gap:8px; }
-  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
-
-  table { width:100%; border-collapse:collapse; }
-  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
-    border-bottom:1px solid #223049; white-space:nowrap; }
-  thead th.r, td.r { text-align:right; }
-  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
-  tbody tr:hover { background:#16233a; }
-  .nm { color:#93c5fd; }
-  .bar { height:3px; background:#1e3a5f; border-radius:2px; margin-top:3px; }
-  .bar i { display:block; height:3px; background:#3b82f6; border-radius:2px; }
-
-  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; align-items:end; height:60px; }
-  .hours i { display:block; border-radius:2px 2px 0 0; background:#2563eb; min-height:1px; }
-  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
-    font-size:9px; color:#475569; text-align:center; }
-
-  .days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
-  .days > div { text-align:center; }
-  .days .b { height:46px; display:flex; align-items:flex-end; }
-  .days .b i { display:block; width:100%; background:#0ea5e9; border-radius:3px; min-height:2px; }
-  .days .l { font-size:9px; color:#64748b; }
-  .days .v { font-size:9px; color:#94a3b8; }
-  .empty { color:#64748b; padding:8px 0; }
-</style>
+.ranges button:hover { border-color:var(--gold); color:var(--text); }
+.ranges button.on { background:var(--gold-soft); border-color:var(--gold); color:var(--text); }
+.row { display:grid; grid-template-columns:1.15fr .85fr; gap:12px; align-items:start; }
+@media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+thead th.r, td.r { text-align:right; }
+.bar { height:3px; background:#1e3a5f; border-radius:2px; margin-top:3px; }
+.bar i { display:block; height:3px; background:var(--gold); border-radius:2px; }
+.hours { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; align-items:end; height:60px; }
+.hours i { display:block; border-radius:2px 2px 0 0; background:var(--gold); min-height:1px; }
+.hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
+    font-size:9px; color:var(--mute); text-align:center; }
+.days { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+.days > div { text-align:center; }
+.days .b { height:46px; display:flex; align-items:flex-end; }
+.days .b i { display:block; width:100%; background:#0ea5e9; border-radius:3px; min-height:2px; }
+.days .l { font-size:9px; color:var(--mute); }
+.days .v { font-size:9px; color:var(--dim); }</style>
+<link rel="stylesheet" href="theme.css" />
 </head>
 <body>
 <header>

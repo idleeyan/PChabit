@@ -3,38 +3,31 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 便签</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.55 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px; }
-  header { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
-  h1 { font-size:15px; font-weight:600; margin:0; }
-  .hint { color:#94a3b8; font-size:11px; }
-  .grid { columns:320px; column-gap:12px; }
-  .note { break-inside:avoid; margin:0 0 12px; border-radius:10px; padding:10px 12px;
-    border:1px solid #223049; background:#141e30; }
-  .note.pin { border-color:#f59e0b55; }
-  .bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
-    font-size:10px; color:#94a3b8; }
-  .tag { padding:1px 6px; border-radius:5px; background:#0b1220; border:1px solid #263349; }
-  .body { white-space:pre-wrap; word-break:break-word; font-size:12px;
+<style>.hint { color:var(--dim); font-size:11px; }
+.grid { columns:320px; column-gap:12px; }
+.note { break-inside:avoid; margin:0 0 12px; border-radius:10px; padding:10px 12px;
+    border:1px solid var(--border); background:var(--surface-3); }
+.note.pin { border-color:var(--amber)55; }
+.bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;
+    font-size:10px; color:var(--dim); }
+.tag { padding:1px 6px; border-radius:5px; background:var(--bg); border:1px solid var(--border); }
+.body { white-space:pre-wrap; word-break:break-word; font-size:12px;
     font-family:"Consolas","Cascadia Mono","Microsoft YaHei",monospace; }
-  .body a { color:#60a5fa; }
-  .empty { color:#64748b; }
-  .new { background:#121a29; border:1px solid #223049; border-radius:10px;
+.body a { color:var(--gold-hi); }
+.new { background:var(--surface); border:1px solid var(--border); border-radius:10px;
     padding:10px 12px; margin-bottom:14px; }
-  .new textarea { width:100%; min-height:64px; resize:vertical; box-sizing:border-box;
-    background:#0f172a; color:#e2e8f0; border:1px solid #263349; border-radius:6px;
+.new textarea { width:100%; min-height:64px; resize:vertical; box-sizing:border-box;
+    background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px;
     padding:6px 8px; font:12px/1.5 "Consolas","Microsoft YaHei",monospace; }
-  .new .row2 { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
-  .new select, .note select { background:#0f172a; color:#e2e8f0; border:1px solid #263349;
+.new .row2 { display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+.new select, .note select { background:var(--bg); color:var(--text); border:1px solid var(--border);
     border-radius:6px; padding:2px 6px; font-size:11px; }
-  .act { background:#182234; border:1px solid #263349; color:#cbd5e1; border-radius:6px;
+.act { background:var(--surface-3); border:1px solid var(--border); color:var(--text); border-radius:6px;
     padding:2px 8px; font-size:11px; cursor:pointer; }
-  .act.pri { background:#1d4ed8; border-color:#1d4ed8; color:#fff; }
-  .acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-  .msg { font-size:11px; color:#94a3b8; }
-</style>
+.act.pri { background:var(--gold); border-color:var(--gold); color:#241a06; font-weight:600; }
+.acts { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+.msg { font-size:11px; color:var(--dim); }</style>
+<link rel="stylesheet" href="theme.css" />
 </head>
 <body>
 <header>
@@ -119,7 +112,7 @@
       var editor = document.createElement('textarea');
       editor.value = n.content || '';
       editor.style.cssText = 'display:none;width:100%;min-height:90px;resize:vertical;' +
-        'box-sizing:border-box;margin-top:6px;background:#0f172a;color:#e2e8f0;' +
+        'box-sizing:border-box;margin-top:6px;background:var(--bg);color:var(--text);' +
         'border:1px solid #263349;border-radius:6px;padding:6px 8px;' +
         'font:12px/1.5 "Consolas","Microsoft YaHei",monospace;';
       box.appendChild(editor);

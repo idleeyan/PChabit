@@ -3,46 +3,33 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 时间线</title>
-<style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 30px; }
-  header { display:flex; align-items:baseline; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
-  h1 { font-size:15px; font-weight:600; margin:0; }
-  .day { font-size:13px; color:#cbd5e1; }
-  .sub { color:#94a3b8; font-size:11px; }
-  .nav button { background:#16233a; color:#cbd5e1; border:1px solid #223049;
+<style>.day { font-size:13px; color:var(--text); }
+.sub { color:var(--dim); font-size:11px; }
+.nav button { background:var(--surface-3); color:var(--text); border:1px solid var(--border);
     border-radius:6px; padding:3px 9px; font-size:11px; cursor:pointer; margin-right:4px; }
-  .nav button:hover { background:#1e3a5f; }
-  .nav button:disabled { opacity:.4; cursor:default; }
-
-  .wrap { overflow-x:auto; }
-  .grid { position:relative; min-width:900px; }
-  .axis { position:relative; height:18px; margin-left:150px;
-    border-bottom:1px solid #223049; }
-  .axis span { position:absolute; top:1px; font-size:9px; color:#64748b; }
-  .lanes { position:relative; margin-left:150px; }
-  .lane { position:relative; height:19px; border-bottom:1px solid #16223a; }
-  .lane:hover { background:#121b2b; }
-  .lane .b { position:absolute; top:2px; height:14px; border-radius:2px; opacity:.92; }
-  .lane .b:hover { opacity:1; outline:1px solid #93c5fd; }
-  .names { position:absolute; left:0; top:18px; width:150px; }
-  .names .n { height:19px; line-height:19px; font-size:11px; color:#94a3b8;
+.nav button:hover { background:#1e3a5f; }
+.nav button:disabled { opacity:.4; cursor:default; }
+.wrap { overflow-x:auto; }
+.grid { position:relative; min-width:900px; }
+.axis { position:relative; height:18px; margin-left:150px;
+    border-bottom:1px solid var(--border); }
+.axis span { position:absolute; top:1px; font-size:9px; color:var(--mute); }
+.lanes { position:relative; margin-left:150px; }
+.lane { position:relative; height:19px; border-bottom:1px solid #16223a; }
+.lane:hover { background:#121b2b; }
+.lane .b { position:absolute; top:2px; height:14px; border-radius:2px; opacity:.92; }
+.lane .b:hover { opacity:1; outline:1px solid var(--gold-hi); }
+.names { position:absolute; left:0; top:18px; width:150px; }
+.names .n { height:19px; line-height:19px; font-size:11px; color:var(--dim);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px;
     border-bottom:1px solid #16223a; }
-  .names .n b { color:#e2e8f0; font-weight:500; }
-  .names .n i { font-style:normal; color:#64748b; font-size:10px; }
-  .vline { position:absolute; top:18px; bottom:0; width:1px; background:#1a2740; }
-  .now { position:absolute; top:18px; bottom:0; width:1px; background:#f59e0b; opacity:.7; }
-
-  .kpis { display:flex; gap:8px; margin:12px 0 0; flex-wrap:wrap; }
-  .kpi { background:#141e30; border:1px solid #223049; border-radius:8px; padding:6px 10px; min-width:110px; }
-  .kpi .n { font-size:10px; color:#94a3b8; }
-  .kpi .v { font-size:14px; font-weight:600; }
-  .empty { color:#64748b; padding:24px 0; }
-  .legend { margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; font-size:10px; color:#94a3b8; }
-  .legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; }
-</style>
+.names .n b { color:var(--text); font-weight:500; }
+.names .n i { font-style:normal; color:var(--mute); font-size:10px; }
+.vline { position:absolute; top:18px; bottom:0; width:1px; background:#1a2740; }
+.now { position:absolute; top:18px; bottom:0; width:1px; background:var(--amber); opacity:.7; }
+.legend { margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; font-size:10px; color:var(--dim); }
+.legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; }</style>
+<link rel="stylesheet" href="theme.css" />
 </head>
 <body>
 <header>
