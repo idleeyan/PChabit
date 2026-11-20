@@ -931,7 +931,9 @@ fn daily_loop(ctx: Arc<Ctx>) {
                         let now_stamp = now_stamp.split('.').next().unwrap_or("").to_string();
                         let gone = store.notes_purge_old(&cutoff_stamp, &now_stamp);
                         if gone > 0 {
-                            ctx.say(format!("便签清理：软删除 {gone} 张 {note_days} 天前的便签"));
+                            ctx.say(format!(
+                                "便签清理：软删除 {gone} 张 {note_days} 天前的空白/已归档便签（有正文的不动）"
+                            ));
                         }
                     }
                 }

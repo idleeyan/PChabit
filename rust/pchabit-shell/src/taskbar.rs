@@ -284,6 +284,32 @@ enum Tone {
     Net,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Slot {
+    /// 按实测文本宽度排版
+    Auto,
+    /// 固定占位（网速/磁盘速率）：按最宽速率串预留，数字位数变化不推挤后面的项
+    Rate,
+    /// 固定占位（百分比）：按「100%」预留，10% → 8% 这类变化不挪动后面的项
+    Percent,
+}
+
+/// 速率占位用的最宽参考串（3 位整数 + 1 位小数 + 单位）
+const PROBE_RATE: &str = "1023.9M/s";
+/// 百分比占位用的最宽参考串
+const PROBE_PCT: &str = "100%";
+
+impl Segment {
+    /// 该段数值区的固定宽度（0 = 按实测走）
+    fn slot_width(&self, hdc: HDC, measured: i32) -> i32 {
+        match self.slot {
+            Slot::Auto => 0,
+            Slot::Rate => unsafe { text_w(hdc, PROBE_RATE) }.max(measured),
+            Slot::Percent => unsafe { text_w(hdc, PROBE_PCT) }.max(measured),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct Segment {
     label: String,
@@ -293,6 +319,8 @@ struct Segment {
     value_pt: i32,
     /// 这一项前面要不要画一条竖分隔线（把「网速区」和「CPU/内存区」分开）
     divider_before: bool,
+    /// 数值区是否固定宽度（右对齐），避免 6K/s → 21.3M/s 这种位数变化把后面推走
+    slot: Slot,
 }
 
 struct State {
@@ -636,8 +664,12 @@ unsafe fn paint(hwnd: HWND) {
         let mut sz2 = Size::default();
         GetTextExtentPoint32W(mem_dc, v.as_ptr(), (v.len() - 1) as i32, &mut sz2);
         let vy = (h_ - sz2.cy) / 2;
-        TextOutW(mem_dc, x, vy, v.as_ptr(), (v.len() - 1) as i32);
-        x += sz2.cx + ITEM_GAP;
+        // 速率类固定占位：宽度按最宽参考串预留，文本右对齐 → 位数变化时数字不跳、后面不位移
+        let slot_w = seg.slot_width(mem_dc, sz2.cx);
+        let adv = if slot_w > 0 { slot_w } else { sz2.cx };
+        let tx = if slot_w > 0 { x + slot_w - sz2.cx } else { x };
+        TextOutW(mem_dc, tx, vy, v.as_ptr(), (v.len() - 1) as i32);
+        x += adv + ITEM_GAP;
     }
 
     BitBlt(hdc, 0, 0, w_, h_, mem_dc, 0, 0, SRCCOPY);
@@ -659,8 +691,15 @@ unsafe fn fill_rect(hdc: HDC, rc: &Rect, brush: HBRUSH) -> i32 {
     FillRect(hdc, rc, brush)
 }
 
-unsafe fn make_font(pt: i32, weight: i32, dpi: u32) -> HFONT {
-    let px = -((pt as f64 * dpi as f64 / 96.0).round() as i32);
+/// 用当前已选中的字体量一段文本的宽度（固定占位用）。
+unsafe fn text_w(hdc: HDC, s: &str) -> i32 {
+    let ws = w(s);
+    let mut sz = Size::default();
+    GetTextExtentPoint32W(hdc, ws.as_ptr(), (ws.len() - 1) as i32, &mut sz);
+    sz.cx
+}
+
+unsafe fn make_font(pt: i32, weight: i32, dpi: u32) -> HFONT {    let px = -((pt as f64 * dpi as f64 / 96.0).round() as i32);
     CreateFontW(
         px,
         0,
@@ -835,6 +874,7 @@ fn tick_loop() {
                 tone: Tone::Net,
                 value_pt: NET_PT,
                 divider_before: false,
+                slot: Slot::Rate,
             });
             segments.push(Segment {
                 label: "↑".into(),
@@ -842,6 +882,7 @@ fn tick_loop() {
                 tone: Tone::Net,
                 value_pt: VALUE_PT,
                 divider_before: false,
+                slot: Slot::Rate,
             });
         }
         if show_cpu || show_mem || has_gpu || show_disk || show_usage {
@@ -854,6 +895,7 @@ fn tick_loop() {
                     tone: load_tone(cpu),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
+                slot: Slot::Percent,
                 });
                 first_of_group = false;
             }
@@ -864,6 +906,7 @@ fn tick_loop() {
                     tone: load_tone(mem),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
+                slot: Slot::Percent,
                 });
                 first_of_group = false;
             }
@@ -874,6 +917,7 @@ fn tick_loop() {
                     tone: load_tone(gpu_load),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
+                slot: Slot::Percent,
                 });
                 first_of_group = false;
             }
@@ -884,6 +928,7 @@ fn tick_loop() {
                     tone: load_tone(vram_pct),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
+                slot: Slot::Percent,
                 });
                 first_of_group = false;
             }
@@ -894,6 +939,7 @@ fn tick_loop() {
                     tone: Tone::Value,
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
+                slot: Slot::Rate,
                 });
                 segments.push(Segment {
                     label: "写".into(),
@@ -901,6 +947,7 @@ fn tick_loop() {
                     tone: Tone::Value,
                     value_pt: VALUE_PT,
                     divider_before: false,
+                slot: Slot::Rate,
                 });
                 first_of_group = false;
             }
@@ -911,6 +958,7 @@ fn tick_loop() {
                     tone: load_tone(disk_act),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
+                slot: Slot::Percent,
                 });
             }
         }
@@ -1026,7 +1074,11 @@ fn remeasure() {
             SelectObject(hdc, value_font);
             let mut sz2 = Size::default();
             GetTextExtentPoint32W(hdc, v.as_ptr(), (v.len() - 1) as i32, &mut sz2);
-            width += sz2.cx + ITEM_GAP;
+            let adv = {
+                let sw = seg.slot_width(hdc, sz2.cx);
+                if sw > 0 { sw } else { sz2.cx }
+            };
+            width += adv + ITEM_GAP;
         }
         width = (width - ITEM_GAP + PADDING).max(MIN_WIDTH);
 
@@ -1035,7 +1087,11 @@ fn remeasure() {
         DeleteObject(font_value as HGDIOBJ);
         DeleteObject(font_net as HGDIOBJ);
 
+        let prev_w = with_state(|s| s.width).unwrap_or(0);
         with_state(|s| s.width = width);
+        if prev_w != width {
+            crate::log_line(&format!("[小窗] 宽度 {prev_w} → {width}"));
+        }
         position();
         InvalidateRect(hwnd, std::ptr::null(), 0);
         let _ = light;

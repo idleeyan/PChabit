@@ -324,8 +324,10 @@ impl Store {
         Ok(())
     }
 
-    /// 便签保留期清理：把早于 `cutoff`（`yyyy-MM-dd HH:mm:ss`）且未置顶的便签软删除。
-    /// 返回被删条数；`days<=0` 表示不清理。
+    /// 便签保留期清理：只清「正文为空」或「已归档」的旧便签。
+    ///
+    /// 有正文的便签**永不自动删**——2026-11-20 曾按 `UpdatedAt` 一刀切，把用户两张月前
+    /// 的笔记静默软删了（已在库里恢复）。空白便签才是随手点出来没写东西的残留。
     pub fn notes_purge_old(&self, cutoff: &str, now: &str) -> usize {
         if cutoff.is_empty() {
             return 0;
@@ -333,7 +335,8 @@ impl Store {
         self.conn
             .execute(
                 "UPDATE StickyNotes SET IsDeleted = 1, DeletedAt = ?2 \
-                 WHERE IsDeleted = 0 AND ifnull(IsPinned,0) = 0 AND UpdatedAt < ?1",
+                 WHERE IsDeleted = 0 AND ifnull(IsPinned,0) = 0 AND UpdatedAt < ?1 \
+                   AND (trim(ifnull(Content,'')) = '' OR ifnull(IsArchived,0) = 1)",
                 params![cutoff, now],
             )
             .unwrap_or(0)
