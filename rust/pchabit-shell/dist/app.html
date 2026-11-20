@@ -38,7 +38,6 @@
   <nav>
     <div class="brand">PChabit<span>Tauri 壳 · P4</span></div>
     <button data-page="dashboard">仪表盘</button>
-    <button data-page="hardware">硬件趋势</button>
     <button data-page="timeline">时间线</button>
     <button data-page="category">分类构成</button>
     <button data-page="sankey">应用切换关系</button>
@@ -66,15 +65,14 @@
   </main>
 </div>
 <script>
-  var ASSET = { hardware:'pages/hardware-trend.html',
-                category:'pages/piechart.html', sankey:'pages/sankey.html',
+  var ASSET = { category:'pages/piechart.html', sankey:'pages/sankey.html',
                 analytics:'pages/analytics.html', admin:'pages/categories.html',
                 detail:'pages/detail.html', settings:'pages/settings.html',
                 notes:'pages/notes.html', web:'pages/web.html',
                 timeline:'pages/timeline.html', dashboard:'pages/dashboard.html',
                 net:'pages/net.html', input:'pages/input.html',
                 reports:'pages/reports.html', data:'pages/data.html' };
-  var TITLE = { hardware:'硬件趋势', category:'分类构成',
+  var TITLE = { category:'分类构成',
                 sankey:'应用切换关系', analytics:'活动分析', admin:'分类管理',
                 detail:'应用详情', settings:'设置',
                 notes:'便签', web:'网页访问', timeline:'时间线',
@@ -96,10 +94,7 @@
   // 每页自己的"喂数据 + 触发绘制"（函数由页面自身导出，壳只调用）
   function feed(page, w, d) {
     if (!d) throw new Error('没有拿到 ' + page + ' 的数据');
-    if (page === 'hardware') {
-      w.__HW_DATA__ = d;
-      if (w.draw) w.draw(d);
-    } else if (page === 'category') {
+    if (page === 'category') {
       // 两种口径：按分类（全部）/ 按应用（Top8 + 其他）——对齐 WPF 的 PieMode
       var mode = w.__PIE_MODE__ || 'byCategory';
       pieToggle(w, d);

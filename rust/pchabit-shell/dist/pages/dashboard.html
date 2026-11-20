@@ -44,6 +44,14 @@
   .trend .l { font-size:9px; color:#64748b; }
   .trend .v { font-size:9px; color:#94a3b8; }
   .empty { color:#64748b; padding:8px 0; }
+
+  .hw { margin-top:12px; }
+  .hwgrid { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:14px; align-items:start; }
+  @media (max-width:1000px){ .hwgrid{ grid-template-columns:1fr; } }
+  #hc { width:100%; height:190px; display:block; background:#111827;
+    border:1px solid #1f2937; border-radius:8px; }
+  .legend { display:flex; gap:14px; margin-top:6px; color:#94a3b8; font-size:10px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
 </style>
 </head>
 <body>
@@ -87,6 +95,28 @@
   </div>
 </div>
 
+<div class="hw">
+  <section>
+    <h2>硬件趋势 <em id="hwMeta">近 7 天 · 按小时（CPU / GPU / 温度）</em></h2>
+    <div class="hwgrid">
+      <div>
+        <canvas id="hc"></canvas>
+        <div class="legend">
+          <span><i class="dot" style="background:#10B981"></i>CPU %</span>
+          <span><i class="dot" style="background:#0EA5E9"></i>GPU %</span>
+          <span><i class="dot" style="background:#F59E0B"></i>GPU 温度（右轴）</span>
+        </div>
+      </div>
+      <div>
+        <table>
+          <thead><tr><th>高负载应用</th><th class="r">CPU</th><th class="r">GPU</th><th class="r">峰温</th></tr></thead>
+          <tbody id="hwapps"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
 <script>
   function fmtM(v) {
     var m = Math.round(v || 0);
@@ -101,6 +131,79 @@
     return e;
   }
   function n0(v) { return (v == null ? '—' : Math.round(v) + '%'); }
+
+  var HW_HOURS = [];   // 缓存最近一次硬件曲线数据，窗口缩放时重画
+  window.addEventListener('resize', function () { drawHardware(HW_HOURS); });
+
+  // 硬件趋势曲线：24 个小时桶（近 7 天按小时累计），左轴负载 %，右轴温度 °C
+  function drawHardware(hours) {
+    var cv = document.getElementById('hc');
+    if (!cv || !cv.getContext) return;
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(320, cv.clientWidth || 860);
+    var cssH = 190;
+    cv.width = Math.round(cssW * dpr);
+    cv.height = Math.round(cssH * dpr);
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.font = '10px "Segoe UI","Microsoft YaHei",sans-serif';
+
+    if (!hours || !hours.length) {
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('暂无硬件样本', 12, 22);
+      return;
+    }
+
+    var padL = 38, padR = 42, padT = 12, padB = 24;
+    var plotW = cssW - padL - padR, plotH = cssH - padT - padB;
+    var temps = hours.map(function (h) { return h.temp; })
+      .filter(function (t) { return t != null; });
+    var maxTemp = temps.length
+      ? Math.max(100, Math.ceil(Math.max.apply(null, temps) / 10) * 10) : 100;
+
+    // 网格 + 左右轴刻度
+    for (var g = 0; g <= 4; g++) {
+      var y = padT + plotH * g / 4;
+      ctx.strokeStyle = '#1f2937';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+      ctx.fillStyle = '#64748b';
+      ctx.fillText(Math.round(100 * (1 - g / 4)) + '%', 6, y + 3);
+      var tl = Math.round(maxTemp * (1 - g / 4)) + '°';
+      ctx.fillText(tl, cssW - 30, y + 3);
+    }
+
+    var n = hours.length;
+    var step = plotW / Math.max(n, 1);
+    function line(key, color, scaleMax) {
+      ctx.beginPath();
+      var started = false;
+      for (var i = 0; i < n; i++) {
+        var v = hours[i][key];
+        if (v == null) continue;
+        var x = padL + step * i + step / 2;
+        var y = padT + plotH * (1 - Math.min(v, scaleMax) / scaleMax);
+        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    line('cpu', '#10B981', 100);
+    line('gpu', '#0EA5E9', 100);
+    line('temp', '#F59E0B', maxTemp);
+
+    // x 轴稀疏标签
+    ctx.fillStyle = '#64748b';
+    var every = Math.ceil(n / 12);
+    for (var i2 = 0; i2 < n; i2++) {
+      if (i2 % every !== 0) continue;
+      var x2 = padL + step * i2 + step / 2;
+      var lab = hours[i2].label || String(i2);
+      ctx.fillText(lab, x2 - 6, cssH - 7);
+    }
+  }
 
   function renderDashboard(d) {
     if (!d || d.ok === false) {
@@ -226,8 +329,35 @@
       pace.appendChild(tr);
     });
 
+    // 硬件趋势（原独立「硬件趋势」页已并入这里）
+    var hw = d.hw || {};
+    var hwHours = Array.isArray(hw.hours) ? hw.hours : [];
+    document.getElementById('hwMeta').textContent =
+      hw.summary || (hwHours.length ? hwHours.length + ' 个小时桶' : '暂无硬件样本');
+    HW_HOURS = hwHours;
+    drawHardware(hwHours);
+
+    var ha = document.getElementById('hwapps');
+    ha.innerHTML = '';
+    var hwApps = d.hwApps || [];
+    if (!hwApps.length) {
+      var htr0 = document.createElement('tr');
+      var htd0 = el('td', 'empty', '最近 7 天没有硬件样本');
+      htd0.colSpan = 4; htr0.appendChild(htd0); ha.appendChild(htr0);
+    }
+    hwApps.forEach(function (a) {
+      var tr = document.createElement('tr');
+      tr.appendChild(el('td', 'nm', a.displayName || a.processName || '—'));
+      tr.appendChild(el('td', 'r', n0(a.cpuLoadAvg)));
+      tr.appendChild(el('td', 'r', n0(a.gpuLoadAvg)));
+      tr.appendChild(el('td', 'r', a.gpuTempMax == null ? '—' : a.gpuTempMax.toFixed(0) + '°'));
+      tr.title = (a.processName || '') + ' · 重叠 ' + Math.round(a.overlapMinutes || 0) +
+        ' 分钟 · 样本 ' + (a.sampleCount || 0);
+      ha.appendChild(tr);
+    });
+
     return 'ok: ' + fmtM(d.totalMinutes) + ' / ' + d.appCount + ' 应用 / ' +
-      (d.keys || 0) + ' 键' + hourWarn;
+      (d.keys || 0) + ' 键 / 硬件 ' + hwHours.length + ' 桶' + hourWarn;
   }
 
   window.renderDashboard = renderDashboard;

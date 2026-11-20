@@ -26,7 +26,6 @@ fn main() {
     }
 
     let files = [
-        (r"Analytics\hardware-trend.html", "hardware-trend.html"),
         (r"PieChart\piechart.html", "piechart.html"),
         (r"PieChart\echarts.min.js", "echarts.min.js"),
         (r"Sankey\sankey.html", "sankey.html"),

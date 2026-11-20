@@ -491,7 +491,6 @@ fn cloud_latest_info() -> serde_json::Value {
 #[tauri::command]
 fn page_data(page: String) -> Result<serde_json::Value, String> {
     let file = match page.as_str() {
-        "hardware" => "hardware-trend.html",
         "category" => "piechart.html",
         "sankey" => "sankey.html",
         "analytics" => "analytics.html",
@@ -527,7 +526,8 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         "notes" => payload_notes(),
         "web" => payload_web(),
         "timeline" => payload_timeline(&pchabit_datad::today_local(), 0),
-        "dashboard" => payload_dashboard(),
+        // 仪表盘自带硬件趋势，单独取数时要重算一次分析报告
+        "dashboard" => payload_dashboard(&payload_analytics()),
         "net" => payload_net(),
         "input" => payload_input(),
         "reports" => payload_reports(),
@@ -539,7 +539,6 @@ fn page_data(page: String) -> Result<serde_json::Value, String> {
         _ => {
             let report = payload_analytics();
             match page.as_str() {
-                "hardware" => payload_hardware(&report),
                 "category" => payload_category(&report),
                 _ => report,
             }
@@ -563,7 +562,6 @@ fn all_pages() -> serde_json::Value {
             serde_json::json!({ "days": 7, "items": [] })
         });
     let pages = serde_json::json!({
-        "hardware": payload_hardware(&report),
         "category": payload_category(&report),
         "sankey": payload_sankey(),
         "analytics": report,
@@ -573,7 +571,7 @@ fn all_pages() -> serde_json::Value {
         "notes": payload_notes(),
         "web": payload_web(),
         "timeline": payload_timeline(&pchabit_datad::today_local(), 0),
-        "dashboard": payload_dashboard(),
+        "dashboard": payload_dashboard(&report),
         "net": payload_net(),
         "input": payload_input(),
         "reports": payload_reports(),
@@ -702,10 +700,34 @@ fn web_data(days: i64) -> Result<serde_json::Value, String> {
     }
 }
 
-/// 仪表盘（只读）：今日 KPI + 24 小时活跃 + Top 应用 + 7 天趋势。
-fn payload_dashboard() -> serde_json::Value {
+/// 仪表盘（只读）：今日 KPI + 24 小时活跃 + Top 应用 + 7 天趋势 + 硬件趋势（原独立页已并入）。
+///
+/// 硬件部分复用分析报告里的 `hardware`：`hw.hours` 画曲线、`hw.appLoads` 出负载榜。
+fn payload_dashboard(report: &serde_json::Value) -> serde_json::Value {
     match pchabit_datad::dashboard_json(&pchabit_datad::default_db()) {
-        Ok(v) => {
+        Ok(mut v) => {
+            let hw = payload_hardware(report);
+            // 只有零星样本（如安装器、右键"选取应用"）不配上榜；先筛再取前 6
+            let mut loads: Vec<serde_json::Value> = report["hardware"]["appLoads"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter(|x| {
+                            x["sampleCount"].as_i64().unwrap_or(0) >= 3
+                                && x["overlapMinutes"].as_f64().unwrap_or(0.0) >= 1.0
+                        })
+                        .take(6)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            v["hw"] = hw;
+            v["hwApps"] = serde_json::Value::Array(loads);
+            log_line(&format!(
+                "dashboard: 硬件 {} 个小时桶 / {} 个高负载应用",
+                v["hw"]["hours"].as_array().map(|a| a.len()).unwrap_or(0),
+                v["hwApps"].as_array().map(|a| a.len()).unwrap_or(0)
+            ));
             log_line(&format!(
                 "dashboard: {} {} / {:.1} 分钟 / {} 应用 / {:.1} ms",
                 v["label"].as_str().unwrap_or(""),
@@ -718,7 +740,8 @@ fn payload_dashboard() -> serde_json::Value {
         }
         Err(e) => {
             log_line(&format!("dashboard: 读取失败 {e}"));
-            serde_json::json!({ "ok": false, "error": e, "topApps": [], "hourly": [], "trend": [] })
+            serde_json::json!({ "ok": false, "error": e, "topApps": [], "hourly": [], "trend": [],
+                "hw": { "hours": [], "summary": "暂无硬件样本" }, "hwApps": [] })
         }
     }
 }
@@ -1392,7 +1415,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.26";
+const VERSION: &str = "4.12.27";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
