@@ -290,12 +290,19 @@ enum Slot {
     Auto,
     /// 固定占位（网速/磁盘速率）：按最宽速率串预留，数字位数变化不推挤后面的项
     Rate,
+    /// 固定占位（下行网速）：字号比常规大，探针略长一档
+    RateNet,
     /// 固定占位（百分比）：按「100%」预留，10% → 8% 这类变化不挪动后面的项
     Percent,
 }
 
-/// 速率占位用的最宽参考串（3 位整数 + 1 位小数 + 单位）
-const PROBE_RATE: &str = "1023.9M/s";
+/// 速率占位用的最宽参考串（下行大字号：21pt 下 8 字符，覆盖到 999.9M/s）
+/// 原来两列共用 "1023.9M/s"（9 字符），常态只显示 "12.3M/s" 这类 7 字符，
+/// 每列右边都空出一截；下行收 1 字符、上行收 2 字符，小窗整体窄约 33px。
+const PROBE_RATE_NET: &str = "999.9M/s";
+/// 速率占位用的最宽参考串（常规字号：上行 / 磁盘读写，7 字符）
+/// 超出探针时 `slot_width` 会退化成按实测宽度，只会临时撑开，不会截断。
+const PROBE_RATE: &str = "99.9M/s";
 /// 百分比占位用的最宽参考串
 const PROBE_PCT: &str = "100%";
 
@@ -304,6 +311,7 @@ impl Segment {
     fn slot_width(&self, hdc: HDC, measured: i32) -> i32 {
         match self.slot {
             Slot::Auto => 0,
+            Slot::RateNet => unsafe { text_w(hdc, PROBE_RATE_NET) }.max(measured),
             Slot::Rate => unsafe { text_w(hdc, PROBE_RATE) }.max(measured),
             Slot::Percent => unsafe { text_w(hdc, PROBE_PCT) }.max(measured),
         }
@@ -874,7 +882,7 @@ fn tick_loop() {
                 tone: Tone::Net,
                 value_pt: NET_PT,
                 divider_before: false,
-                slot: Slot::Rate,
+                slot: Slot::RateNet,
             });
             segments.push(Segment {
                 label: "↑".into(),

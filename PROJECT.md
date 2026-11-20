@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.44**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
+| 当前版本 | **4.12.45**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -73,6 +73,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.45 | 任务栏小窗下行/上行速率列探针分档（`1023.9M/s` → 9 字符共用 → 8/7 字符分档），小窗宽 602 → 569；浮窗表格列宽 74/74/78 → 68/62/66，并修浅色下分隔线与 hover 写死半透明白 |
 | 2026-11-20 | 4.12.44 | 设置页分组可折叠（标题行开关 + 三角箭头 + localStorage 记忆 + 全部展开/折叠）；修提示条行内标签挤行高；输入框字号统一 13px |
 | 2026-11-20 | 4.12.43 | **蓝白成为默认主题**（四处默认值 + 修 theme-boot 兜底误写 auto）；网页访问页表格加 colgroup 固定列宽（47/11/13/15/14）并删掉每行多出的空 td，域名加省略号；数据管理页三处硬编码色（`#9dc0ff` / `#e2e8f0` / `#0b1424`）改主题变量 |
 | 2026-11-20 | 4.12.42 | 全站字号上调（10–11px → 11.5、12 → 13）与次要文字提亮（五套主题分别调 --dim/--mute/--table-head）；便签页按颜色显示纸色（删掉 JS 里写死的深色表，改 data-color + CSS 变量）、修正 `.note.pin` 的无效色值、正文去等宽字体 |

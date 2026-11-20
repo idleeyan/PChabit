@@ -2631,7 +2631,7 @@ dependencies = [
 
 [[package]]
 name = "pchabit-collect"
-version = "4.12.44"
+version = "4.12.45"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "pchabit-shell"
-version = "4.12.44"
+version = "4.12.45"
 dependencies = [
  "pchabit-collect",
  "pchabit-datad",
