@@ -1036,6 +1036,8 @@ const SETTING_WHITELIST: &[&str] = &[
     "TrackKeyboard",
     "TrackMouse",
     "TrackWebBrowsing",
+    "ThemePreset",
+    "ThemeAccent",
 ];
 
 /// 只读键：时间戳/设备标识这类由程序自己维护的字段，设置页只展示不给改。
@@ -1355,7 +1357,7 @@ fn payload_settings() -> serde_json::Value {
             });
         }
     };
-    let v: serde_json::Value = match serde_json::from_str(&text) {
+    let mut v: serde_json::Value = match serde_json::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
             log_line(&format!("settings: 解析失败 {e}"));
@@ -1366,6 +1368,16 @@ fn payload_settings() -> serde_json::Value {
             });
         }
     };
+
+    // 配色方案：老设置文件里没有这两个键，补默认值让设置页能看到（用户改过才落盘）
+    if let Some(o) = v.as_object_mut() {
+        if !o.contains_key("ThemePreset") {
+            o.insert("ThemePreset".to_string(), serde_json::json!("gold"));
+        }
+        if !o.contains_key("ThemeAccent") {
+            o.insert("ThemeAccent".to_string(), serde_json::json!("auto"));
+        }
+    }
 
     // 敏感项：只显示"已设置"，不回显任何内容（也不进日志）
     let secret_keys = ["password", "apikey", "token", "secret"];
@@ -1449,7 +1461,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.34";
+const VERSION: &str = "4.12.35";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1632,11 +1644,37 @@ fn make_window(
 }
 
 /// 注入脚本（窗口创建时才需要，故做成函数，托盘开窗时现算）。
+/// 读配色方案（settings.json 的 `ThemePreset` / `ThemeAccent`，缺省 `gold`）。
+/// 页面侧的 `theme-boot.js` 会据此给 `<html>` 打 `data-theme` / `data-accent`。
+fn read_theme_preset() -> (String, String) {
+    let p = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("settings.json");
+    let fallback = ("gold".to_string(), "auto".to_string());
+    let Ok(text) = std::fs::read_to_string(p) else {
+        return fallback;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return fallback;
+    };
+    let get = |k: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or(if k == "ThemeAccent" { "auto" } else { "gold" })
+            .to_string()
+    };
+    (get("ThemePreset"), get("ThemeAccent"))
+}
+
 fn inject_script() -> String {
+    let (theme, accent) = read_theme_preset();
     format!(
-        "window.__PAGES__ = {};window.__VER__ = '{}';",
+        "window.__PAGES__ = {};window.__VER__ = '{}';window.__THEME__ = {{theme:'{}',accent:'{}'}};",
         all_pages(),
-        VERSION
+        VERSION,
+        theme,
+        accent
     )
 }
 

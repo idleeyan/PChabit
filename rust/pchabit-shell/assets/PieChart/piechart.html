@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <script src="theme-boot.js"></script>
+    <link rel="stylesheet" href="tokens.css" />
     <meta charset="utf-8">
     <script src="echarts.min.js"></script>
     <style>
@@ -10,7 +12,7 @@
             height: 100%;
             /* 自己铺深色底：以前写 transparent，单独打开这一页时画布是白的，
                而图例文字按深色主题取近白色 → 白底白字几乎看不见 */
-            background: #0a0907;
+            background: var(--bg);
             color: #f4efe4;
             overflow: hidden;
         }
@@ -24,7 +26,7 @@
             justify-content: center;
             color: #b7ad9b;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0907;
+            background: var(--bg);
         }
         #empty-icon { font-size: 48px; margin-bottom: 16px; }
         #empty-text { font-size: 16px; }
@@ -50,11 +52,18 @@
             return true;
         }
 
-        function themeText()   { return isDark() ? '#f4efe4' : '#333'; }
-        function themeSub()    { return isDark() ? '#b7ad9b' : '#666'; }
-        function themeBorder() { return isDark() ? '#3c4043' : '#ddd'; }
-        function tooltipBg()   { return isDark() ? 'rgba(32,33,36,0.96)' : 'rgba(255,255,255,0.96)'; }
-        function sliceBorder() { return isDark() ? '#1e1e1e' : '#ffffff'; }
+        // 颜色跟随 tokens.css：切换配色方案时无需重建图表
+        function cssVar(name, fb) {
+            try {
+                var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+                return v || fb;
+            } catch (e) { return fb; }
+        }
+        function themeText()   { return cssVar('--text', '#f4efe4'); }
+        function themeSub()    { return cssVar('--dim', '#b7ad9b'); }
+        function themeBorder() { return cssVar('--border', '#3c4043'); }
+        function tooltipBg()   { return cssVar('--surface-2', '#1a1d22'); }
+        function sliceBorder() { return cssVar('--bg', '#0a0907'); }
 
         function showEmpty() {
             document.getElementById('chart').style.display = 'none';

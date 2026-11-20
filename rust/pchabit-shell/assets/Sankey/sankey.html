@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <script src="theme-boot.js"></script>
+    <link rel="stylesheet" href="tokens.css" />
     <meta charset="utf-8">
     <script src="echarts.min.js"></script>
     <style>
@@ -8,7 +10,7 @@
         html, body { 
             width: 100%; 
             height: 100%; 
-            background: #0a0907;
+            background: var(--bg);
             overflow: hidden; 
         }
         #chart { width: 100%; height: 100%; }
@@ -19,9 +21,9 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #b7ad9b;
+            color: var(--dim);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #0a0907;
+            background: var(--bg);
         }
         #empty-icon { font-size: 48px; margin-bottom: 16px; }
         #empty-text { font-size: 16px; }
@@ -34,6 +36,12 @@
         <div id="empty-text">暂无数据</div>
     </div>
     <script>
+    function cssVar(name, fb) {
+        try {
+            var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return v || fb;
+        } catch (e) { return fb; }
+    }
         var chart = null;
         
         var categoryColors = {
@@ -111,7 +119,7 @@
                             show: true,
                             fontSize: 11,
                             fontWeight: 'bold',
-                            color: '#e8e0d0'
+                            color: cssVar('--text', '#e8e0d0')
                         }
                     });
                 }
@@ -156,7 +164,7 @@
                 }
                 
                 chart.setOption({
-                    backgroundColor: '#0a0907',
+                    backgroundColor: cssVar('--bg', '#0a0907'),
                     title: {
                         text: '应用切换关系图',
                         left: 'center',
@@ -164,7 +172,7 @@
                         textStyle: {
                             fontSize: 16,
                             fontWeight: 'bold',
-                            color: '#e8e0d0'
+                            color: cssVar('--text', '#e8e0d0')
                         }
                     },
                     tooltip: {
@@ -173,7 +181,7 @@
                         borderColor: '#ddd',
                         borderWidth: 1,
                         textStyle: {
-                            color: '#e8e0d0'
+                            color: cssVar('--text', '#e8e0d0')
                         },
                         formatter: function(params) {
                             if (params.dataType === 'node') {
@@ -193,7 +201,7 @@
                         itemHeight: 12,
                         textStyle: {
                             fontSize: 12,
-                            color: '#e8e0d0'
+                            color: cssVar('--text', '#e8e0d0')
                         },
                         selectedMode: 'multiple'
                     },

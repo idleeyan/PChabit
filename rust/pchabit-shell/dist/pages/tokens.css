@@ -1,0 +1,198 @@
+/* PChabit 配色令牌（4.12.35）
+ *
+ * 结构尺度与字体在这里定一次；颜色按主题分块，全部以变量暴露。
+ * theme.css 通过 @import 引入本文件，页面不要直接 link。
+ * app.html（导航壳）直接 link pages/tokens.css 取同一套变量。
+ *
+ * 切换方式（写在 <html> 上）：
+ *   <html data-theme="gold|graphite|warm|slate" data-accent="gold|copper|blue|cyan|violet|green|amber|rose">
+ * 未指定时 = gold（鎏金暗夜）。
+ */
+
+:root {
+  /* ---------- 尺度 / 字体：与配色无关 ---------- */
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r: 13px;
+  --r-lg: 18px;
+  --gap: 12px;
+  --pad: 16px;
+  --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-display: Georgia, "Songti SC", "STSong", "SimSun", serif;
+
+  /* ---------- 语义色：各主题共用（已降饱和） ---------- */
+  --green: #5fb98a;
+  --amber: #e39a3d;
+  --red: #e0665f;
+  --violet: #a98bd6;
+  --cyan: #5fb3c4;
+
+  /* ---------- 默认主题：鎏金暗夜 ---------- */
+  --bg: #0a0907;
+  --bg-image:
+    radial-gradient(1100px 480px at 50% -12%, rgba(217, 180, 90, 0.17), transparent 64%),
+    radial-gradient(700px 300px at 88% -6%, rgba(157, 122, 46, 0.10), transparent 62%),
+    linear-gradient(180deg, #0e0c08 0%, var(--bg) 60%);
+  --surface: #16120c;
+  --surface-2: #1d1810;
+  --surface-3: #241e14;
+  --border: #3a301d;
+  --border-hi: #604d28;
+  --text: #f4efe4;
+  --dim: #b7ad9b;
+  --mute: #8d8272;
+
+  --card-bg: linear-gradient(180deg, var(--surface-2) 0%, var(--surface) 100%);
+  --kpi-bg: linear-gradient(180deg, var(--surface-3) 0%, var(--surface) 100%);
+  --card-line: linear-gradient(90deg, transparent, rgba(247, 230, 180, 0.55), transparent);
+  --title-glow: drop-shadow(0 2px 12px rgba(217, 180, 90, 0.30));
+  --shadow: 0 18px 42px rgba(0, 0, 0, 0.58);
+  --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.42);
+  --ring: inset 0 1px 0 rgba(247, 230, 180, 0.06);
+  --table-head: #b09a6b;
+  --name-color: #e8cf8f;
+  --nav-bg: linear-gradient(180deg, #12100b 0%, #0c0a07 100%);
+
+  /* ---------- 强调色：默认金 ---------- */
+  --gold: #d9b45a;
+  --gold-hi: #f7e6b4;
+  --gold-deep: #b08a34;
+  --gold-soft: rgba(217, 180, 90, 0.12);
+  --gold-line: rgba(247, 230, 180, 0.55);
+  --grad-gold: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 52%, var(--gold-deep) 100%);
+  --grad-gold-line: linear-gradient(90deg, transparent, var(--gold-line), transparent);
+  --accent: var(--gold);
+  --accent-hi: var(--gold-hi);
+  --accent-soft: var(--gold-soft);
+  color-scheme: dark;
+}
+
+/* ================= 预置主题 ================= */
+
+/* 石墨灰蓝：中性灰底 + 淡蓝，去光晕去渐变，长时间看最省眼 */
+:root[data-theme="graphite"] {
+  --bg: #14161a;
+  --bg-image: none;
+  --surface: #1a1d22;
+  --surface-2: #1f232a;
+  --surface-3: #242932;
+  --border: #2e343d;
+  --border-hi: #454e5a;
+  --text: #e7eaee;
+  --dim: #a9b2be;
+  --mute: #8b95a3;
+
+  --card-bg: #1a1d22;
+  --kpi-bg: #1f232a;
+  --card-line: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+  --title-glow: none;
+  --shadow: 0 14px 32px rgba(0, 0, 0, 0.46);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.34);
+  --ring: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --table-head: #9aa5b2;
+  --name-color: #a8c6e2;
+  --nav-bg: linear-gradient(180deg, #171a1e 0%, #131519 100%);
+
+  --gold: #7fa8cc;
+  --gold-hi: #a8c6e2;
+  --gold-deep: #6b96bb;
+  --gold-soft: rgba(127, 168, 204, 0.14);
+  --gold-line: rgba(168, 198, 226, 0.40);
+}
+
+/* 暖棕纸墨：暖褐底 + 赭色，最低对比，接近纸质阅读 */
+:root[data-theme="warm"] {
+  --bg: #16120e;
+  --bg-image: none;
+  --surface: #1d1814;
+  --surface-2: #241e18;
+  --surface-3: #2b241c;
+  --border: #383026;
+  --border-hi: #57493a;
+  --text: #eee6d8;
+  --dim: #b3a794;
+  --mute: #918676;
+
+  --card-bg: #1d1814;
+  --kpi-bg: #241e18;
+  --card-line: linear-gradient(90deg, transparent, rgba(238, 230, 216, 0.12), transparent);
+  --title-glow: none;
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.44);
+  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.32);
+  --ring: inset 0 1px 0 rgba(238, 230, 216, 0.05);
+  --table-head: #ab9c86;
+  --name-color: #d8ab74;
+  --nav-bg: linear-gradient(180deg, #1a1511 0%, #15110d 100%);
+
+  --gold: #b98a52;
+  --gold-hi: #d8ab74;
+  --gold-deep: #9a7340;
+  --gold-soft: rgba(185, 138, 82, 0.14);
+  --gold-line: rgba(216, 171, 116, 0.38);
+}
+
+/* 青灰极简：冷灰底 + 青，冷调低饱和 */
+:root[data-theme="slate"] {
+  --bg: #12161a;
+  --bg-image: none;
+  --surface: #181d22;
+  --surface-2: #1d232a;
+  --surface-3: #222931;
+  --border: #2b333c;
+  --border-hi: #414c58;
+  --text: #e6eaee;
+  --dim: #a4aeb8;
+  --mute: #87919d;
+
+  --card-bg: #181d22;
+  --kpi-bg: #1d232a;
+  --card-line: linear-gradient(90deg, transparent, rgba(230, 234, 238, 0.10), transparent);
+  --title-glow: none;
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.44);
+  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.32);
+  --ring: inset 0 1px 0 rgba(230, 234, 238, 0.05);
+  --table-head: #95a0ab;
+  --name-color: #93cfd3;
+  --nav-bg: linear-gradient(180deg, #151a1f 0%, #11161a 100%);
+
+  --gold: #6fb3b8;
+  --gold-hi: #93cfd3;
+  --gold-deep: #5f9a9f;
+  --gold-soft: rgba(111, 179, 184, 0.14);
+  --gold-line: rgba(147, 207, 211, 0.38);
+}
+
+/* ================= 强调色（覆盖 --gold 系） ================= */
+
+:root[data-accent="gold"] {
+  --gold: #d9b45a; --gold-hi: #f7e6b4; --gold-deep: #b08a34;
+  --gold-soft: rgba(217, 180, 90, 0.12); --gold-line: rgba(247, 230, 180, 0.55);
+}
+:root[data-accent="copper"] {
+  --gold: #c98b4b; --gold-hi: #e8b483; --gold-deep: #a8723a;
+  --gold-soft: rgba(201, 139, 75, 0.14); --gold-line: rgba(232, 180, 131, 0.45);
+}
+:root[data-accent="blue"] {
+  --gold: #7fa8cc; --gold-hi: #a8c6e2; --gold-deep: #6b96bb;
+  --gold-soft: rgba(127, 168, 204, 0.14); --gold-line: rgba(168, 198, 226, 0.42);
+}
+:root[data-accent="cyan"] {
+  --gold: #5fb3c4; --gold-hi: #96d6e0; --gold-deep: #4f9aa6;
+  --gold-soft: rgba(95, 179, 196, 0.14); --gold-line: rgba(150, 214, 224, 0.42);
+}
+:root[data-accent="violet"] {
+  --gold: #a98bd6; --gold-hi: #cbb3ec; --gold-deep: #8a72bb;
+  --gold-soft: rgba(169, 139, 214, 0.14); --gold-line: rgba(203, 179, 236, 0.42);
+}
+:root[data-accent="green"] {
+  --gold: #5fb98a; --gold-hi: #93d9b3; --gold-deep: #46a071;
+  --gold-soft: rgba(95, 185, 138, 0.14); --gold-line: rgba(147, 217, 179, 0.42);
+}
+:root[data-accent="amber"] {
+  --gold: #e0a94b; --gold-hi: #f2cf8c; --gold-deep: #bf8c38;
+  --gold-soft: rgba(224, 169, 75, 0.14); --gold-line: rgba(242, 207, 140, 0.48);
+}
+:root[data-accent="rose"] {
+  --gold: #d17a97; --gold-hi: #eaaec2; --gold-deep: #b56283;
+  --gold-soft: rgba(209, 122, 151, 0.14); --gold-line: rgba(234, 174, 194, 0.42);
+}

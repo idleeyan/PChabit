@@ -40,6 +40,7 @@ input:focus { outline:none; border-color:var(--gold); }
     padding:2px 9px; font-size:11px; cursor:pointer; }
 .smallbtn:hover { background:#20304a; border-color:var(--gold); color:#fff; }
 .bar { display:flex; gap:8px; align-items:center; margin:0 0 12px; }</style>
+<script src="theme-boot.js"></script>
 <link rel="stylesheet" href="theme.css" />
 </head>
 <body>
@@ -69,6 +70,8 @@ input:focus { outline:none; border-color:var(--gold); }
     AutoStartMonitoring: '启动即开始采集',
     CollectInShell: '采集宿主随壳启动',
     CurrentTheme: '主题',
+    ThemePreset: '配色方案',
+    ThemeAccent: '强调色',
     CurrentLanguage: '语言',
     DailyUsageGoalHours: '每日使用目标（小时）',
     MonitoringInterval: '采集间隔（秒）',
@@ -134,6 +137,7 @@ input:focus { outline:none; border-color:var(--gold); }
 
   // 改了当拍就生效的键（其余标「重启生效」或「未接入」）
   var LIVE = {
+    ThemePreset: 1, ThemeAccent: 1,
     TaskbarEnabled: 1, TaskbarShowCpu: 1, TaskbarShowMemory: 1, TaskbarShowNet: 1,
     TaskbarShowGpu: 1, TaskbarShowVram: 1, TaskbarShowDisk: 1, TaskbarShowUsage: 1,
     DataRetentionDays: 1, RetentionDays: 1,
@@ -157,6 +161,20 @@ input:focus { outline:none; border-color:var(--gold); }
     StickyNotesSyncEnabled: 1, StickyNotesLastSync: 1
   };
 
+  // 配色方案：与 tokens.css 的 data-theme / data-accent 取值一一对应
+  var ENUM = {
+    ThemePreset: [
+      ['gold', '鎏金暗夜'], ['graphite', '石墨灰蓝'],
+      ['warm', '暖棕纸墨'], ['slate', '青灰极简']
+    ],
+    ThemeAccent: [
+      ['auto', '跟随方案'], ['gold', '金'], ['copper', '铜'], ['blue', '蓝'], ['cyan', '青'],
+      ['violet', '紫'], ['green', '绿'], ['amber', '琥珀'], ['rose', '玫']
+    ]
+  };
+  // 当前选择，改完通过 postMessage 通知导航壳即时切换
+  var THEME_SEL = { theme: 'gold', accent: 'auto' };
+
   // 已决定不做的项：温度受 HVCI 限制（4.11.1 删除）、CollectInShell 是旧架构
   var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1, StickyNotesRetentionDays: 1, CurrentTheme: 1 };
 
@@ -174,7 +192,7 @@ input:focus { outline:none; border-color:var(--gold); }
   };
 
   var GROUPS = [
-    ['通用', ['StartWithWindows','MinimizeToTray','ShowNotifications','AutoStartMonitoring','CollectInShell','CurrentTheme','CurrentLanguage','DailyUsageGoalHours']],
+    ['通用', ['StartWithWindows','MinimizeToTray','ShowNotifications','AutoStartMonitoring','CollectInShell','ThemePreset','ThemeAccent','CurrentLanguage','DailyUsageGoalHours']],
     ['采集', ['TrackKeyboard','TrackMouse','TrackWebBrowsing','AnonymizeData','DataRetentionDays','RetentionDays','AutoCleanupEnabled','ArchiveBeforeCleanup','MonitoringInterval','IdleThreshold']],
     ['网络与同步', ['WebSocketPort','WebDAVEnabled','WebDAVUrl','WebDAVUsername','WebDAVPassword','WebDAVLastSync','BrowserSyncEnabled','BrowserHistoryIngestEnabled','BrowserSyncIntervalMinutes','BrowserAutoPush']],
     ['备份', ['BackupPath','AutoBackupEnabled','AutoBackupIntervalHours','MaxBackupCount','MaxCloudBackupCount']],
@@ -203,6 +221,13 @@ input:focus { outline:none; border-color:var(--gold); }
         setStatus(st, '已保存 ' + now(), 'ok');
         it.value = value;
         if (window.__TAURI__) window.__SET_RESULT__ = 'save: ' + it.key + ' = ' + value;
+        if (it.key === 'ThemePreset' || it.key === 'ThemeAccent') {
+          THEME_SEL[it.key === 'ThemePreset' ? 'theme' : 'accent'] = String(value);
+          try {
+            window.parent.postMessage(
+              { type: 'pch-theme', theme: THEME_SEL.theme, accent: THEME_SEL.accent }, '*');
+          } catch (e) { }
+        }
       })
       .catch(function (e) { setStatus(st, '失败：' + e, 'err'); });
   }
@@ -304,6 +329,19 @@ input:focus { outline:none; border-color:var(--gold); }
       pw.addEventListener('focus', function () { editing = true; });
       pw.addEventListener('blur', function () { editing = false; });
       ctl.appendChild(badge); ctl.appendChild(pw); ctl.appendChild(btn);
+    } else if (ENUM[it.key]) {
+      if (it.key === 'ThemePreset') THEME_SEL.theme = String(it.value);
+      if (it.key === 'ThemeAccent') THEME_SEL.accent = String(it.value);
+      var sel = document.createElement('select');
+      ENUM[it.key].forEach(function (pair) {
+        var op = document.createElement('option');
+        op.value = pair[0];
+        op.textContent = pair[1];
+        if (String(it.value) === pair[0]) op.selected = true;
+        sel.appendChild(op);
+      });
+      sel.addEventListener('change', function () { save(it, sel.value, st); });
+      ctl.appendChild(sel);
     } else {
       var tx = document.createElement('input');
       tx.type = 'text';

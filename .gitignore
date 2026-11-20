@@ -232,3 +232,5 @@ rust/pchabit-shell/dist/pages/*
 !rust/pchabit-shell/dist/pages/data.html
 !rust/pchabit-shell/dist/pages/note-desktop.html
 !rust/pchabit-shell/dist/pages/theme.css
+!rust/pchabit-shell/dist/pages/tokens.css
+!rust/pchabit-shell/dist/pages/theme-boot.js

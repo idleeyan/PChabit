@@ -3,30 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit</title>
+<script src="pages/theme-boot.js"></script>
+<link rel="stylesheet" href="pages/tokens.css" />
 <style>
-  :root {
-    color-scheme: dark;
-    --bg:#0a0907; --surface:#16120c; --surface-3:#241e14;
-    --border:#3a301d; --border-hi:#604d28;
-    --text:#f4efe4; --dim:#b7ad9b; --mute:#7e7464;
-    --gold:#d9b45a; --gold-hi:#f7e6b4; --gold-deep:#9d7a2e;
-    --gold-soft:rgba(217,180,90,.12);
-    --grad-gold:linear-gradient(180deg,#fff4d2 0%,#f2d492 42%,#d3a54b 100%);
-    --font:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
-  }
+  :root { color-scheme: dark; }
   html, body { margin:0; height:100%; color:var(--text);
     font:13px/1.5 var(--font); overflow:hidden; }
-  body { background:
-      radial-gradient(900px 380px at 16% -10%, rgba(217,180,90,.10), transparent 62%),
-      var(--bg); }
+  body { background-color: var(--bg); background-image: var(--bg-image);
+    background-attachment: fixed; }
   #app { display:flex; height:100%; }
 
-  nav { width:190px; flex:none; background:linear-gradient(180deg,#12100b 0%,#0c0a07 100%);
+  nav { width:190px; flex:none; background:var(--nav-bg);
     border-right:1px solid var(--border);
     display:flex; flex-direction:column; padding:14px 10px; gap:3px; box-sizing:border-box; }
   nav .brand { font-size:15px; font-weight:700; letter-spacing:.14em; padding:4px 8px 12px;
     background:var(--grad-gold); -webkit-background-clip:text; background-clip:text;
-    -webkit-text-fill-color:transparent; filter:drop-shadow(0 2px 10px rgba(217,180,90,.28)); }
+    -webkit-text-fill-color:transparent; filter:var(--title-glow); }
   nav .brand span { display:block; font-size:10.5px; font-weight:400; letter-spacing:.06em;
     color:var(--mute); -webkit-text-fill-color:var(--mute); margin-top:4px; }
   nav button {
@@ -35,11 +27,11 @@
     font-size:13px; font-family:inherit; letter-spacing:.02em;
     transition:background .16s, color .16s, border-color .16s, box-shadow .16s;
   }
-  nav button:hover { background:rgba(217,180,90,.07); color:var(--gold-hi); }
+  nav button:hover { background:var(--gold-soft); color:var(--gold-hi); }
   nav button.active {
-    background:linear-gradient(90deg, rgba(217,180,90,.18), rgba(217,180,90,.04));
-    border-color:rgba(217,180,90,.40); color:var(--gold-hi);
-    box-shadow:inset 2px 0 0 var(--gold), 0 0 18px rgba(217,180,90,.10);
+    background:linear-gradient(90deg, var(--gold-soft), transparent);
+    border-color:var(--gold-deep); color:var(--gold-hi);
+    box-shadow:inset 2px 0 0 var(--gold), 0 0 18px var(--gold-soft);
   }
   nav .spacer { flex:1; }
   nav .foot { font-size:11px; color:var(--mute); padding:8px; }
@@ -48,7 +40,7 @@
   main { flex:1; min-width:0; display:flex; flex-direction:column; }
   header { height:42px; flex:none; display:flex; align-items:center; gap:12px;
     padding:0 16px; border-bottom:1px solid var(--border); color:var(--mute); font-size:12px;
-    background:linear-gradient(180deg, rgba(217,180,90,.05), transparent); }
+    background:linear-gradient(180deg, var(--gold-soft), transparent); }
   header b { font-size:13px; font-weight:600; letter-spacing:.08em;
     background:var(--grad-gold); -webkit-background-clip:text; background-clip:text;
     -webkit-text-fill-color:transparent; }
@@ -58,6 +50,32 @@
     font-family:inherit; transition:border-color .16s, color .16s; }
   header button:hover { border-color:var(--gold); color:var(--gold-hi); }
   #frame { flex:1; border:0; width:100%; background:var(--bg); }
+  /* ---------- 配色切换 ---------- */
+  .themebox { position:relative; }
+  .themebox > button { display:inline-flex; align-items:center; gap:6px; }
+  .themebox .dotcur { width:8px; height:8px; border-radius:50%; background:var(--gold); }
+  .pop {
+    position:absolute; right:0; top:34px; z-index:50; width:236px; display:none;
+    background:var(--surface); border:1px solid var(--border-hi); border-radius:10px;
+    box-shadow:var(--shadow); padding:10px 12px 12px;
+  }
+  .pop.open { display:block; }
+  .pop .tlabel { font-size:10.5px; color:var(--mute); letter-spacing:.08em; margin:2px 0 6px; }
+  .pop .trow { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .pop .titem {
+    flex:1 1 calc(50% - 6px); padding:6px 8px; border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); background:var(--surface-3); color:var(--dim);
+    font-size:11.5px; font-family:inherit; text-align:left;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  .pop .titem:hover { border-color:var(--gold-deep); color:var(--gold-hi); }
+  .pop .titem.on { border-color:var(--gold); color:var(--gold-hi); background:var(--gold-soft); font-weight:600; }
+  .pop .sw {
+    width:24px; height:24px; border-radius:6px; cursor:pointer; border:2px solid transparent;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,.35); transition:transform .12s, border-color .15s;
+  }
+  .pop .sw:hover { transform:translateY(-1px); }
+  .pop .sw.on { border-color:var(--text); }
 </style>
 </head>
 <body>
@@ -86,12 +104,116 @@
     <header>
       <b id="title">仪表盘</b><span id="meta"></span>
       <span class="spacer"></span>
+      <div class="themebox">
+        <button id="btnTheme" title="切换配色方案"><span class="dotcur" id="dotCur"></span>配色</button>
+        <div class="pop" id="themePop">
+          <div class="tlabel">底色方案</div>
+          <div class="trow" id="tThemes"></div>
+          <div class="tlabel">强调色</div>
+          <div class="trow" id="tAccents"></div>
+        </div>
+      </div>
       <button id="refresh" title="重新查库并重算五页载荷">刷新</button>
     </header>
     <iframe id="frame"></iframe>
   </main>
 </div>
 <script>
+  // ---------- 配色方案 ----------
+  var THEMES = [
+    { k: 'gold', n: '鎏金暗夜' }, { k: 'graphite', n: '石墨灰蓝' },
+    { k: 'warm', n: '暖棕纸墨' }, { k: 'slate', n: '青灰极简' }
+  ];
+  var ACCENTS = [
+    { k: 'auto', n: '跟随方案', c: '' },
+    { k: 'gold', n: '金', c: '#d9b45a' }, { k: 'copper', n: '铜', c: '#c98b4b' },
+    { k: 'blue', n: '蓝', c: '#7fa8cc' }, { k: 'cyan', n: '青', c: '#5fb3c4' },
+    { k: 'violet', n: '紫', c: '#a98bd6' }, { k: 'green', n: '绿', c: '#5fb98a' },
+    { k: 'amber', n: '琥珀', c: '#e0a94b' }, { k: 'rose', n: '玫', c: '#d17e9a' }
+  ];
+  var TH = { theme: 'gold', accent: 'auto' };
+
+  /// 把当前配色写到 iframe 的 <html> 上（同源可直接改；跨帧失败就静默跳过）
+  function syncFrameTheme() {
+    try {
+      var d = document.getElementById('frame').contentDocument;
+      if (d && d.documentElement) {
+        d.documentElement.setAttribute('data-theme', TH.theme);
+        if (TH.accent && TH.accent !== 'auto') d.documentElement.setAttribute('data-accent', TH.accent);
+        else d.documentElement.removeAttribute('data-accent');
+      }
+    } catch (e) { }
+  }
+
+  function applyTheme(theme, accent, persist) {
+    TH.theme = theme; TH.accent = accent;
+    var el = document.documentElement;
+    el.setAttribute('data-theme', theme);
+    // auto = 用方案自带的强调色；其余 = 覆盖
+    if (accent && accent !== 'auto') el.setAttribute('data-accent', accent);
+    else el.removeAttribute('data-accent');
+    try {
+      localStorage.setItem('pch.theme', theme);
+      localStorage.setItem('pch.accent', accent);
+    } catch (e) { }
+    // iframe 同源：直接改属性即时生效，不必重载页面
+    syncFrameTheme();
+    paintThemeUI();
+    // 图表页的色值在初始化时读取，换配色后重载一次才生效
+    if (typeof current !== 'undefined' && (current === 'category' || current === 'sankey')) {
+      load(current);
+    }
+    if (persist && window.__TAURI__) {
+      window.__TAURI__.core.invoke('set_setting', { key: 'ThemePreset', value: theme }).catch(function () { });
+      window.__TAURI__.core.invoke('set_setting', { key: 'ThemeAccent', value: accent }).catch(function () { });
+    }
+  }
+
+  function paintThemeUI() {
+    var box = document.getElementById('tThemes');
+    if (!box) return;
+    box.innerHTML = '';
+    THEMES.forEach(function (t) {
+      var b = document.createElement('button');
+      b.className = 'titem' + (t.k === TH.theme ? ' on' : '');
+      b.textContent = t.n;
+      b.onclick = function (ev) { ev.stopPropagation(); applyTheme(t.k, TH.accent, true); };
+      box.appendChild(b);
+    });
+    var ab = document.getElementById('tAccents');
+    ab.innerHTML = '';
+    var themeAccent = getComputedStyle(document.documentElement).getPropertyValue('--gold').trim();
+    ACCENTS.forEach(function (a) {
+      var s = document.createElement('div');
+      s.className = 'sw' + (a.k === TH.accent ? ' on' : '');
+      s.style.background = a.c || themeAccent || '#d9b45a';
+      s.title = a.n;
+      s.onclick = function (ev) { ev.stopPropagation(); applyTheme(TH.theme, a.k, true); };
+      ab.appendChild(s);
+    });
+    var cur = ACCENTS.filter(function (a) { return a.k === TH.accent; })[0];
+    var dot = document.getElementById('dotCur');
+    if (dot) dot.style.background = (cur && cur.c) ? cur.c : (themeAccent || '#d9b45a');
+  }
+
+  function initTheme() {
+    var injected = window.__THEME__ || null;
+    var ls = null;
+    try { ls = { t: localStorage.getItem('pch.theme'), a: localStorage.getItem('pch.accent') }; } catch (e) { }
+    var t = (injected && injected.theme) || (ls && ls.t) || 'gold';
+    var a = (injected && injected.accent) || (ls && ls.a) || 'auto';
+    applyTheme(t, a, false);
+    var btn = document.getElementById('btnTheme');
+    var pop = document.getElementById('themePop');
+    if (btn) btn.onclick = function (e) { e.stopPropagation(); pop.classList.toggle('open'); };
+    document.addEventListener('click', function () { if (pop) pop.classList.remove('open'); });
+    // 设置页里改配色：同源 postMessage 同步过来
+    window.addEventListener('message', function (e) {
+      var d = e.data || {};
+      if (d && d.type === 'pch-theme') applyTheme(d.theme, d.accent, false);
+    });
+  }
+
   var ASSET = { category:'pages/piechart.html', sankey:'pages/sankey.html',
                 analytics:'pages/analytics.html', admin:'pages/categories.html',
                 detail:'pages/detail.html', settings:'pages/settings.html',
@@ -250,6 +372,9 @@
     setActive(page);
     document.getElementById('meta').textContent = '加载中…';
     var src = ASSET[page];
+    // 配色参数透传：页面首帧就按当前方案渲染，避免闪默认色
+    src += (src.indexOf('?') < 0 ? '?' : '&') +
+      'theme=' + encodeURIComponent(TH.theme) + '&accent=' + encodeURIComponent(TH.accent);
     // 自测参数透传：?davtest=down|info|up 交给数据页自己执行（正常打开不带这些参数）
     var dtv = new URLSearchParams(location.search).get('davtest');
     if (page === 'data' && dtv) {
@@ -259,6 +384,7 @@
   }
 
   frame.addEventListener('load', function () {
+    syncFrameTheme();
     var page = current;
     if (!page) return;
     var meta = document.getElementById('meta');
@@ -504,6 +630,7 @@
 
   // 命令行直开：app.html?p=sankey　自测刷新：再加 &auto=1
   var q = new URLSearchParams(location.search).get('p');
+  initTheme();
   load(ASSET[q] ? q : 'dashboard');
   // 托盘「新建便签」：打开便签页后把光标放进新建框
   if (q === 'notes' && new URLSearchParams(location.search).get('newnote') === '1') {
@@ -521,6 +648,7 @@
     // 常驻窗口每分钟刷新一次，数据页/管理页操作期间不打扰
     setInterval(refreshLive, 60000);
   }
+
 </script>
 </body>
 </html>
