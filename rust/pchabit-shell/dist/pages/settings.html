@@ -70,6 +70,7 @@
   <div class="bar">
     <button class="smallbtn" id="cloudNow">立即云备份</button>
     <button class="smallbtn" id="cloudInfo">查看云端状态</button>
+    <button class="smallbtn" id="notesSync">同步便签</button>
     <span id="cloudMsg" class="sub"></span>
   </div>
   <div class="grid" id="grid"></div>
@@ -149,8 +150,9 @@
   // 改了当拍就生效的键（其余标「重启生效」或「未接入」）
   var LIVE = {
     TaskbarEnabled: 1, TaskbarShowCpu: 1, TaskbarShowMemory: 1, TaskbarShowNet: 1,
-    TaskbarShowGpu: 1, TaskbarShowVram: 1,
+    TaskbarShowGpu: 1, TaskbarShowVram: 1, TaskbarShowDisk: 1, TaskbarShowUsage: 1,
     DataRetentionDays: 1, RetentionDays: 1,
+    AutoCleanupEnabled: 1, ArchiveBeforeCleanup: 1,
     // 采集侧每秒/每分钟重读 settings.json，改了立刻生效
     TrackKeyboard: 1, TrackMouse: 1, TrackWebBrowsing: 1, BrowserHistoryIngestEnabled: 1,
     AnonymizeData: 1,
@@ -161,21 +163,24 @@
     // 备份线程每 5 分钟读一次设置
     AutoBackupEnabled: 1, AutoBackupIntervalHours: 1, MaxBackupCount: 1, BackupPath: 1,
     WebDAVEnabled: 1, WebDAVUrl: 1, WebDAVUsername: 1, WebDAVPassword: 1, MaxCloudBackupCount: 1,
-    // 桌面小窗每拍重读
-    DesktopWidgetShowCpu: 1, DesktopWidgetShowMemory: 1, DesktopWidgetShowNet: 1
+    // 桌面小窗每拍重读（GPU/显存/磁盘/占用/当前应用、多屏定位都在这一拍里用）
+    DesktopWidgetShowCpu: 1, DesktopWidgetShowMemory: 1, DesktopWidgetShowNet: 1,
+    DesktopWidgetShowGpu: 1, DesktopWidgetShowVram: 1, DesktopWidgetShowDisk: 1,
+    DesktopWidgetShowUsage: 1, DesktopWidgetShowCurrentApp: 1,
+    DesktopWidgetClampToScreen: 1, DesktopWidgetScreen: 1,
+    StickyNotesRetentionDays: 1, StickyNotesQuickDismissOnFocusLost: 1,
+    StickyNotesSyncEnabled: 1, StickyNotesLastSync: 1
   };
+
+  // 已决定不做的项：温度受 HVCI 限制（4.11.1 删除）、CollectInShell 是旧架构
+  var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1 };
 
   // Rust 侧还没接线的键：能改、会写进 settings.json，但当前壳/采集不读它（旧 WPF 功能尚未迁移）
   var INACTIVE = {
-    CollectInShell: 1, CurrentLanguage: 1,
+    CurrentLanguage: 1,
     MonitoringInterval: 1, IdleThreshold: 1,
     BrowserSyncEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1,
-    ArchiveBeforeCleanup: 1,
-    TaskbarShowDisk: 1, TaskbarShowTemp: 1, TaskbarShowUsage: 1,
-    DesktopWidgetShowGpu: 1, DesktopWidgetShowVram: 1,
-    DesktopWidgetShowDisk: 1, DesktopWidgetShowUsage: 1, DesktopWidgetShowCurrentApp: 1,
-    DesktopWidgetClampToScreen: 1, DesktopWidgetScreen: 1,
-    StickyNotesSyncEnabled: 1, StickyNotesRetentionDays: 1, StickyNotesQuickDismissOnFocusLost: 1
+    StickyNotesSyncEnabled: 1
   };
 
   var GROUPS = [
@@ -235,6 +240,11 @@
       tag2.className = 'tag live';
       tag2.textContent = '立即生效';
       k.appendChild(tag2);
+    } else if (DEPRECATED[it.key]) {
+      var tag4 = document.createElement('span');
+      tag4.className = 'tag idle';
+      tag4.textContent = '已废弃（不再生效）';
+      k.appendChild(tag4);
     } else if (INACTIVE[it.key]) {
       var tag3 = document.createElement('span');
       tag3.className = 'tag idle';
@@ -390,6 +400,16 @@
         msg.textContent = v.ok
           ? ('云端最新：' + (v.latest || '无') + ' ｜ 上次同步：' + (v.lastSync || '—'))
           : ('云端查询失败：' + (v.error || '未知'));
+      }).catch(function (e) { msg.textContent = '失败：' + e; });
+    };
+    document.getElementById('notesSync').onclick = function () {
+      if (!inv) { msg.textContent = 'IPC 不可用'; return; }
+      msg.textContent = '正在同步便签…';
+      inv('notes_sync').then(function (r) {
+        msg.textContent = r;
+        return inv('page_data', { page: 'settings' });
+      }).then(function (d) {
+        if (d) window.renderSettings(d);
       }).catch(function (e) { msg.textContent = '失败：' + e; });
     };
   });

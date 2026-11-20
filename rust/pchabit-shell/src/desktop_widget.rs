@@ -103,6 +103,15 @@ struct MemoryStatusEx {
     avail_extended_virtual: u64,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+struct MonitorInfo {
+    cb_size: u32,
+    rc_monitor: Rect,
+    rc_work: Rect,
+    flags: u32,
+}
+
 #[link(name = "user32")]
 extern "system" {
     fn RegisterClassW(wc: *const WndClassW) -> u16;
@@ -124,6 +133,8 @@ extern "system" {
     fn SetWindowPos(hwnd: HWND, after: HWND, x: i32, y: i32, cx: i32, cy: i32, flags: u32) -> i32;
     fn ShowWindow(hwnd: HWND, cmd: i32) -> i32;
     fn GetCursorPos(p: *mut Point) -> i32;
+    fn GetForegroundWindow() -> HWND;
+    fn GetWindowThreadProcessId(hwnd: HWND, pid: *mut u32) -> u32;
     fn SetCapture(hwnd: HWND) -> HWND;
     fn ReleaseCapture() -> i32;
     fn UpdateLayeredWindow(
@@ -146,6 +157,13 @@ extern "system" {
     fn PostQuitMessage(code: i32);
     fn GetSystemTimes(idle: *mut u64, kernel: *mut u64, user: *mut u64) -> i32;
     fn SystemParametersInfoW(action: u32, ui: u32, pv: *mut Rect, win_ini: u32) -> i32;
+    fn EnumDisplayMonitors(
+        hdc: HDC,
+        clip: *const Rect,
+        cb: Option<unsafe extern "system" fn(HWND, HDC, *const Rect, isize) -> i32>,
+        data: isize,
+    ) -> i32;
+    fn GetMonitorInfoW(monitor: HWND, info: *mut MonitorInfo) -> i32;
 }
 
 #[repr(C)]
@@ -237,12 +255,20 @@ struct Snapshot {
     mem: f64,
     down: f64,
     up: f64,
+    gpu: f64,
+    vram_pct: f64,
+    disk_read: f64,
+    disk_write: f64,
+    disk_act: f64,
+    app: String,
 }
 
 struct State {
     hwnd: HWND,
     width: i32,
     height: i32,
+    /// 设置里给的初始高度（自动加高时作为下限，不会越改越高后回不去）
+    min_h: i32,
     dragging: bool,
     drag_origin: (i32, i32),
     win_origin: (i32, i32),
@@ -266,10 +292,12 @@ pub fn start(app: tauri::AppHandle) {
             hwnd: 0,
             width: w,
             height: h,
+            min_h: h,
             dragging: false,
             drag_origin: (0, 0),
             win_origin: (x, y),
-            snap: Snapshot { cpu: 0.0, mem: 0.0, down: 0.0, up: 0.0 },
+            snap: Snapshot { cpu: 0.0, mem: 0.0, down: 0.0, up: 0.0, gpu: -1.0, vram_pct: 0.0,
+                disk_read: 0.0, disk_write: 0.0, disk_act: 0.0, app: String::new() },
         })
     });
 
@@ -292,6 +320,8 @@ pub fn start(app: tauri::AppHandle) {
 }
 
 /// 读 `settings.json` 里的位置与尺寸；没配过就放在主屏右下角往内缩一点。
+/// 多屏：`DesktopWidgetScreen` 选第几块（按左边界从左到右编号），`DesktopWidgetClampToScreen`
+/// 为真时把窗口夹进该屏的工作区（副屏/缩放不同也不至于跑出屏幕）。
 fn read_geometry() -> (i32, i32, i32, i32) {
     let p = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
         .join("PChabit")
@@ -302,21 +332,82 @@ fn read_geometry() -> (i32, i32, i32, i32) {
         .unwrap_or(serde_json::Value::Null);
     let width = v.get("DesktopWidgetWidth").and_then(|x| x.as_i64()).unwrap_or(BASE_W as i64) as i32;
     let height = v.get("DesktopWidgetHeight").and_then(|x| x.as_i64()).unwrap_or(BASE_H as i64) as i32;
+    // `DesktopWidgetScreen` 老配置里是设备名（`\\.\DISPLAY1`），新配置可以填序号（0 起）
+    let idx = match v.get("DesktopWidgetScreen") {
+        Some(serde_json::Value::Number(n)) => n.as_i64().unwrap_or(0).max(0) as usize,
+        Some(serde_json::Value::String(s)) => s
+            .chars()
+            .filter(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse::<usize>()
+            .map(|n| n.saturating_sub(1))
+            .unwrap_or(0),
+        _ => 0,
+    };
+    let clamp = v
+        .get("DesktopWidgetClampToScreen")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(true);
+
     let mut work = Rect::default();
     unsafe {
         SystemParametersInfoW(SPI_GETWORKAREA, 0, &mut work, 0);
     }
-    let left = v
+    let screens = monitors();
+    let idx = if screens.is_empty() { 0 } else { idx.min(screens.len() - 1) };
+    let work = match screens.get(idx) {
+        Some(&(l, t, r, b)) => Rect { left: l, top: t, right: r, bottom: b },
+        None => work,
+    };
+
+    let mut left = v
         .get("DesktopWidgetLeft")
         .and_then(|x| x.as_i64())
         .map(|x| x as i32)
         .unwrap_or(work.right - width - 24);
-    let top = v
+    let mut top = v
         .get("DesktopWidgetTop")
         .and_then(|x| x.as_i64())
         .map(|x| x as i32)
         .unwrap_or(work.top + 24);
+    if clamp {
+        let (l, t) = clamp_into(work, width, height, left, top);
+        left = l;
+        top = t;
+    }
     (width, height, left, top)
+}
+
+/// 把 (x, y) 夹进工作区，保证整块窗口可见。
+fn clamp_into(work: Rect, w: i32, h: i32, x: i32, y: i32) -> (i32, i32) {
+    let max_x = (work.right - w).max(work.left);
+    let max_y = (work.bottom - h).max(work.top);
+    (x.clamp(work.left, max_x), y.clamp(work.top, max_y))
+}
+
+static MONITORS: Mutex<Vec<(i32, i32, i32, i32)>> = Mutex::new(Vec::new());
+
+unsafe extern "system" fn monitor_cb(hm: HWND, _hdc: HDC, _clip: *const Rect, _data: isize) -> i32 {
+    let mut mi = MonitorInfo { cb_size: std::mem::size_of::<MonitorInfo>() as u32, ..Default::default() };
+    if GetMonitorInfoW(hm, &mut mi) != 0 {
+        if let Ok(mut v) = MONITORS.lock() {
+            v.push((mi.rc_work.left, mi.rc_work.top, mi.rc_work.right, mi.rc_work.bottom));
+        }
+    }
+    1
+}
+
+/// 枚举所有显示器的工作区，按左边界从左到右排序（索引即 `DesktopWidgetScreen` 的取值）。
+fn monitors() -> Vec<(i32, i32, i32, i32)> {
+    if let Ok(mut v) = MONITORS.lock() {
+        v.clear();
+    }
+    unsafe {
+        EnumDisplayMonitors(0, std::ptr::null(), Some(monitor_cb), 0);
+    }
+    let mut v = MONITORS.lock().map(|x| x.clone()).unwrap_or_default();
+    v.sort_by_key(|m| m.0);
+    v
 }
 
 unsafe fn create_window() {
@@ -465,7 +556,22 @@ unsafe fn render() {
         _ => return,
     };
     let (w, h, snap) = match with_state(|s| {
-        (s.width, s.height, Snapshot { cpu: s.snap.cpu, mem: s.snap.mem, down: s.snap.down, up: s.snap.up })
+        (
+            s.width,
+            s.height,
+            Snapshot {
+                cpu: s.snap.cpu,
+                mem: s.snap.mem,
+                down: s.snap.down,
+                up: s.snap.up,
+                gpu: s.snap.gpu,
+                vram_pct: s.snap.vram_pct,
+                disk_read: s.snap.disk_read,
+                disk_write: s.snap.disk_write,
+                disk_act: s.snap.disk_act,
+                app: s.snap.app.clone(),
+            },
+        )
     }) {
         Some(v) => v,
         None => return,
@@ -518,6 +624,23 @@ unsafe fn render() {
     if crate::setting_bool_default("DesktopWidgetShowNet", true) {
         rows.push(("下载", rate(snap.down)));
         rows.push(("上传", rate(snap.up)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowGpu", false) && snap.gpu >= 0.0 {
+        rows.push(("GPU", format!("{:.0}%", snap.gpu)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowVram", false) && snap.vram_pct > 0.0 {
+        rows.push(("显存", format!("{:.0}%", snap.vram_pct)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowDisk", false) {
+        rows.push(("磁盘读", rate(snap.disk_read)));
+        rows.push(("磁盘写", rate(snap.disk_write)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowUsage", false) {
+        rows.push(("磁盘占用", format!("{:.0}%", snap.disk_act)));
+    }
+    if crate::setting_bool_default("DesktopWidgetShowCurrentApp", false) && !snap.app.is_empty() {
+        let name: String = snap.app.chars().take(16).collect();
+        rows.push(("当前应用", name));
     }
 
     let pad = (PAD as f32 * scale) as i32;
@@ -630,6 +753,8 @@ unsafe fn text_width(hdc: HDC, text: &str) -> i32 {
 
 fn tick_loop() {
     let mut meter = pchabit_collect::netif::NetMeter::new();
+    let mut disk_meter = pchabit_collect::netif::DiskMeter::new();
+    let mut gpu_pipe: Option<pchabit_collect::netd::Pipe> = pchabit_collect::netd::Pipe::connect(1);
     let mut last_idle = 0u64;
     let mut last_kernel = 0u64;
     let mut last_user = 0u64;
@@ -668,10 +793,61 @@ fn tick_loop() {
             None => (0.0, 0.0),
         };
 
+        let (disk_act, disk_read, disk_write) = match disk_meter.as_mut() {
+            Some(m) => m.sample().unwrap_or((0.0, 0.0, 0.0)),
+            None => (0.0, 0.0, 0.0),
+        };
+
+        // GPU / 显存：向 netd 问一次（没有 N 卡或管道没连上就保持不可用）
+        let (gpu, vram_pct) = match gpu_pipe.as_mut() {
+            Some(p) => match p.cmd("GPU") {
+                Some(text) => match serde_json::from_str::<serde_json::Value>(&text) {
+                    Ok(v) if v["avail"].as_bool().unwrap_or(false) => {
+                        let load = v["load"].as_f64().unwrap_or(0.0);
+                        let used = v["vramUsed"].as_f64().unwrap_or(0.0);
+                        let total = v["vramTotal"].as_f64().unwrap_or(0.0);
+                        let pct = if total > 0.0 { (used / total * 100.0).clamp(0.0, 100.0) } else { 0.0 };
+                        (load, pct)
+                    }
+                    _ => (-1.0, 0.0),
+                },
+                None => {
+                    gpu_pipe = pchabit_collect::netd::Pipe::connect(1);
+                    (-1.0, 0.0)
+                }
+            },
+            None => {
+                gpu_pipe = pchabit_collect::netd::Pipe::connect(1);
+                (-1.0, 0.0)
+            }
+        };
+
+        // 当前前台应用（映像名去 .exe）
+        let app = unsafe {
+            let hwnd = GetForegroundWindow();
+            let mut pid: u32 = 0;
+            if hwnd != 0 {
+                GetWindowThreadProcessId(hwnd, &mut pid);
+            }
+            if pid > 0 { pchabit_collect::win::process_stem(pid) } else { String::new() }
+        };
+
         with_state(|s| {
-            s.snap = Snapshot { cpu, mem, down, up };
+            s.snap = Snapshot {
+                cpu,
+                mem,
+                down,
+                up,
+                gpu,
+                vram_pct,
+                disk_read,
+                disk_write,
+                disk_act,
+                app: app.clone(),
+            };
         });
         unsafe { render() };
+        grow_to_fit();
 
         if OPEN_REQ.swap(false, Ordering::SeqCst) {
             if let Some(app) = APP.get() {
@@ -685,8 +861,51 @@ fn tick_loop() {
     }
 }
 
-fn rate(bytes: f64) -> String {
-    if bytes < 1024.0 {
+/// 勾选更多指标行时自动加高窗口（只升不降到配置的初始高度以下）。
+fn grow_to_fit() {
+    let on = |k: &str, d: bool| crate::setting_bool_default(k, d);
+    let mut rows = 0i32;
+    if on("DesktopWidgetShowCpu", true) {
+        rows += 1;
+    }
+    if on("DesktopWidgetShowMemory", true) {
+        rows += 1;
+    }
+    if on("DesktopWidgetShowNet", true) {
+        rows += 2;
+    }
+    if on("DesktopWidgetShowGpu", false) {
+        rows += 1;
+    }
+    if on("DesktopWidgetShowVram", false) {
+        rows += 1;
+    }
+    if on("DesktopWidgetShowDisk", false) {
+        rows += 2;
+    }
+    if on("DesktopWidgetShowUsage", false) {
+        rows += 1;
+    }
+    if on("DesktopWidgetShowCurrentApp", false) {
+        rows += 1;
+    }
+    let need = PAD * 2 + (rows + 1) * 24 + 6;
+    let (hwnd, w, h, min_h, x, y) = match with_state(|s| {
+        (s.hwnd, s.width, s.height, s.min_h, s.win_origin.0, s.win_origin.1)
+    }) {
+        Some(v) => v,
+        None => return,
+    };
+    let target = need.max(min_h);
+    if target != h && hwnd != 0 {
+        with_state(|s| s.height = target);
+        unsafe {
+            SetWindowPos(hwnd, 0, x, y, w, target, SWP_NOACTIVATE);
+        }
+    }
+}
+
+fn rate(bytes: f64) -> String {    if bytes < 1024.0 {
         format!("{:.0} B/s", bytes)
     } else if bytes < 1024.0 * 1024.0 {
         format!("{:.0} K/s", bytes / 1024.0)

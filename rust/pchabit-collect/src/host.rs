@@ -893,16 +893,47 @@ fn daily_loop(ctx: Arc<Ctx>) {
             let today = crate::dt::date_ms(crate::dt::local_ms_now());
             if last_cleanup_day != today {
                 last_cleanup_day = today.clone();
-                // 保留天数每次清理前重读：设置页改完不用重启采集宿主
-                let retention = read_retention_days();
-                // WPF 的 cutoff：Today.AddDays(-retention) 的 yyyy-MM-dd；硬件分钟样本再拼 " 00:00"
-                let cutoff = crate::dt::date_ms(crate::dt::local_ms_now() - retention * 86_400_000);
-                let sample_cutoff = format!("{cutoff} 00:00");
-                let n = store.cleanup_before(&cutoff, &sample_cutoff);
-                if n > 0 {
-                    ctx.say(format!("数据清理完成：删除 {n} 条 {retention} 天前的记录（截止 {cutoff}）"));
+                if !crate::settings::bool_of("AutoCleanupEnabled", true) {
+                    ctx.say("自动清理已关闭（AutoCleanupEnabled=false），跳过".to_string());
                 } else {
-                    ctx.say(format!("无过期数据需要清理（保留 {retention} 天）"));
+                    // 保留天数每次清理前重读：设置页改完不用重启采集宿主
+                    let retention = read_retention_days();
+                    // WPF 的 cutoff：Today.AddDays(-retention) 的 yyyy-MM-dd；硬件分钟样本再拼 " 00:00"
+                    let cutoff = crate::dt::date_ms(crate::dt::local_ms_now() - retention * 86_400_000);
+                    let sample_cutoff = format!("{cutoff} 00:00");
+                    // 清理前归档：先 VACUUM INTO 一份整库快照，再删
+                    if crate::settings::bool_of("ArchiveBeforeCleanup", false) {
+                        match archive_before_cleanup(&store) {
+                            Ok(Some((path, size))) => ctx.say(format!(
+                                "清理前归档：{}（{:.0} MB）",
+                                path,
+                                size as f64 / 1024.0 / 1024.0
+                            )),
+                            Ok(None) => ctx.say("清理前归档：今天已归档过，跳过".to_string()),
+                            Err(e) => ctx.say(format!("清理前归档失败（继续清理）：{e}")),
+                        }
+                    }
+                    let n = store.cleanup_before(&cutoff, &sample_cutoff);
+                    if n > 0 {
+                        ctx.say(format!("数据清理完成：删除 {n} 条 {retention} 天前的记录（截止 {cutoff}）"));
+                    } else {
+                        ctx.say(format!("无过期数据需要清理（保留 {retention} 天）"));
+                    }
+
+                    // 便签保留期：`StickyNotesRetentionDays` > 0 才清理（0/负数=永久保留）
+                    let note_days = crate::settings::i64_of("StickyNotesRetentionDays", 0);
+                    if note_days > 0 {
+                        let note_cutoff = crate::dt::date_ms(
+                            crate::dt::local_ms_now() - note_days * 86_400_000,
+                        );
+                        let cutoff_stamp = format!("{note_cutoff} 00:00:00");
+                        let now_stamp = crate::timefmt::stamp7(&crate::timefmt::now());
+                        let now_stamp = now_stamp.split('.').next().unwrap_or("").to_string();
+                        let gone = store.notes_purge_old(&cutoff_stamp, &now_stamp);
+                        if gone > 0 {
+                            ctx.say(format!("便签清理：软删除 {gone} 张 {note_days} 天前的便签"));
+                        }
+                    }
                 }
             }
         }
@@ -917,8 +948,25 @@ fn daily_loop(ctx: Arc<Ctx>) {
 }
 
 /// 保留天数：读 `%LOCALAPPDATA%\PChabit\settings.json` 的 `DataRetentionDays`（默认 90，钳到 1..=3650）。
-fn read_retention_days() -> i64 {
-    // 自测用覆盖（不写进设置，也不影响生产）
+/// 清理前归档：每天最多一份 `archive_before_cleanup_YYYYMMDD.db`，已存在就跳过。
+fn archive_before_cleanup(store: &crate::store::Store) -> Result<Option<(String, u64)>, String> {
+    let base = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join("PChabit")
+        .join("Backups");
+    std::fs::create_dir_all(&base).map_err(|e| format!("创建归档目录失败: {e}"))?;
+    let day = crate::dt::date_ms(crate::dt::local_ms_now()).replace('-', "");
+    let path = base.join(format!("archive_before_cleanup_{day}.db"));
+    if path.exists() {
+        return Ok(None);
+    }
+    let text = path.to_string_lossy().to_string();
+    let size = store.vacuum_into(&text)?;
+    Ok(Some((text, size)))
+}
+
+fn read_retention_days() -> i64 {    // 自测用覆盖（不写进设置，也不影响生产）
     if let Ok(v) = std::env::var("PCHABIT_RETENTION_DAYS") {
         if let Ok(n) = v.trim().parse::<i64>() {
             return n.clamp(1, 3650);

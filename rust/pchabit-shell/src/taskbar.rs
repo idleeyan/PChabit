@@ -722,6 +722,8 @@ fn tick_loop() {
     let mut last_user = 0u64;
     let mut first = true;
     let mut meter = pchabit_collect::netif::NetMeter::new();
+    // 磁盘：活动率 / 读 / 写（PDH，口径与 HardwareSamples 的 DiskActivity/DiskRead/DiskWrite 一致）
+    let mut disk_meter = pchabit_collect::netif::DiskMeter::new();
     let mut tick: u32 = 0;
     // netd 管道：GPU 每秒问一次，断了就下一拍重连（不阻塞采集）
     let mut gpu_pipe: Option<pchabit_collect::netd::Pipe> = pchabit_collect::netd::Pipe::connect(1);
@@ -770,6 +772,12 @@ fn tick_loop() {
             None => (0.0, 0.0),
         };
 
+        // 磁盘：活动率（%）、读/写字节每秒；首拍没有基准时给 (0,0,0)
+        let (disk_act, disk_read, disk_write) = match disk_meter.as_mut() {
+            Some(m) => m.sample().unwrap_or((0.0, 0.0, 0.0)),
+            None => (0.0, 0.0, 0.0),
+        };
+
         // GPU：向 netd 问一次快照（NVML 直读；无 N 卡时 avail=false）
         let (gpu_load, vram_used, vram_total) = {
             let reply = match gpu_pipe.as_mut() {
@@ -813,8 +821,10 @@ fn tick_loop() {
         let show_mem = setting_bool("TaskbarShowMemory", true);
         let show_gpu = setting_bool("TaskbarShowGpu", true);
         let show_vram = setting_bool("TaskbarShowVram", true);
+        let show_disk = setting_bool("TaskbarShowDisk", false);
+        let show_usage = setting_bool("TaskbarShowUsage", false);
 
-        // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存 / GPU / 显存
+        // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存 / GPU / 显存 / 磁盘
         let has_gpu = gpu_avail && (show_gpu || show_vram);
         let vram_pct = if vram_total > 0.0 { (vram_used / vram_total * 100.0).clamp(0.0, 100.0) } else { 0.0 };
         let mut segments: Vec<Segment> = Vec::with_capacity(6);
@@ -834,7 +844,7 @@ fn tick_loop() {
                 divider_before: false,
             });
         }
-        if show_cpu || show_mem || has_gpu {
+        if show_cpu || show_mem || has_gpu || show_disk || show_usage {
             // 网速区之后用一条竖线隔开；网速没开就由第一个指标自己顶上
             let mut first_of_group = true;
             if show_cpu {
@@ -872,6 +882,33 @@ fn tick_loop() {
                     label: "显存".into(),
                     value: format!("{:.0}%", vram_pct),
                     tone: load_tone(vram_pct),
+                    value_pt: VALUE_PT,
+                    divider_before: show_net && first_of_group,
+                });
+                first_of_group = false;
+            }
+            if show_disk {
+                segments.push(Segment {
+                    label: "读".into(),
+                    value: rate(disk_read),
+                    tone: Tone::Value,
+                    value_pt: VALUE_PT,
+                    divider_before: show_net && first_of_group,
+                });
+                segments.push(Segment {
+                    label: "写".into(),
+                    value: rate(disk_write),
+                    tone: Tone::Value,
+                    value_pt: VALUE_PT,
+                    divider_before: false,
+                });
+                first_of_group = false;
+            }
+            if show_usage {
+                segments.push(Segment {
+                    label: "磁盘".into(),
+                    value: format!("{:.0}%", disk_act),
+                    tone: load_tone(disk_act),
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
                 });

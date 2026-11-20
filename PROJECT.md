@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.23**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.26**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.26 | 补全小窗磁盘/悬浮窗 GPU+显存+磁盘+当前应用+多屏/清理开关+归档/便签保留期+失焦收起+WebDAV 同步 |
 | 2026-11-20 | 4.12.23 | 设置页改列流布局，消掉分组间空白 |
 | 2026-11-20 | 4.12.22 | 键鼠计数按 (日期,小时,进程) 分桶，修掉每小时单行覆盖进程名/整点丢增量/鼠标进程不更新 |
 | 2026-11-20 | 4.12.21 | 网页访问/网络流量/应用详情/键鼠活动 统一范围条（全部/今日/7/30/90），网络页新增 net_data 与全量口径 |

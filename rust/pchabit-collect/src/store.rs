@@ -324,6 +324,31 @@ impl Store {
         Ok(())
     }
 
+    /// 便签保留期清理：把早于 `cutoff`（`yyyy-MM-dd HH:mm:ss`）且未置顶的便签软删除。
+    /// 返回被删条数；`days<=0` 表示不清理。
+    pub fn notes_purge_old(&self, cutoff: &str, now: &str) -> usize {
+        if cutoff.is_empty() {
+            return 0;
+        }
+        self.conn
+            .execute(
+                "UPDATE StickyNotes SET IsDeleted = 1, DeletedAt = ?2 \
+                 WHERE IsDeleted = 0 AND ifnull(IsPinned,0) = 0 AND UpdatedAt < ?1",
+                params![cutoff, now],
+            )
+            .unwrap_or(0)
+    }
+
+    /// 把整库快照写到指定文件（`VACUUM INTO`，与 `pchabit-datad::backup_now` 同一手法）。
+    /// 用于「清理前归档」：先落一份完整备份，再删旧数据。
+    pub fn vacuum_into(&self, path: &str) -> Result<u64, String> {
+        let escaped = path.replace('\'', "''");
+        self.conn
+            .execute_batch(&format!("VACUUM INTO '{escaped}'"))
+            .map_err(|e| format!("归档数据库失败: {e}"))?;
+        Ok(std::fs::metadata(path).map(|m| m.len()).unwrap_or(0))
+    }
+
     pub fn kb_add(&self, d: &KbDelta) -> Result<(), String> {
         if d.total == 0 && d.repeat == 0 && d.freq.is_empty() && d.combos.is_empty() {
             return Ok(());

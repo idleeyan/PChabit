@@ -427,9 +427,26 @@ fn notes_delete(id: String) -> Result<String, String> {
 
 #[tauri::command]
 fn cleanup_data(days: i64) -> Result<String, String> {
+    // 清理前归档：设置页勾了 ArchiveBeforeCleanup 就先落一份整库备份
+    let mut prefix = String::new();
+    if setting_bool_default("ArchiveBeforeCleanup", false) {
+        match pchabit_datad::backup_now() {
+            Ok((path, size)) => {
+                log_line(&format!(
+                    "[壳] 清理前归档：{path}（{} MB）",
+                    (size as f64 / 1048576.0).round()
+                ));
+                prefix = format!("已先归档到 {path}；");
+            }
+            Err(e) => {
+                log_line(&format!("[壳] 清理前归档失败（继续清理）：{e}"));
+                prefix = format!("归档失败（{e}），仍继续清理；");
+            }
+        }
+    }
     let (cutoff, deleted) = pchabit_datad::cleanup_old(days)?;
     log_line(&format!("[壳] 手动清理：删除 {deleted} 条（截止 {cutoff}，保留 {days} 天）"));
-    Ok(format!("已删除 {deleted} 条 {days} 天前的记录（截止 {cutoff}）"))
+    Ok(format!("{prefix}已删除 {deleted} 条 {days} 天前的记录（截止 {cutoff}）"))
 }
 
 #[tauri::command]
@@ -439,10 +456,20 @@ fn backup_db() -> Result<String, String> {
     Ok(format!("备份完成：{path}（{} MB）", (size as f64 / 1048576.0).round()))
 }
 
+/// 便签同步（WebDAV）：合并远端与本地，再把合并结果传回。
+#[tauri::command]
+fn notes_sync() -> Result<String, String> {
+    if !setting_bool_default("StickyNotesSyncEnabled", false) {
+        return Err("设置里未启用便签同步（StickyNotesSyncEnabled）".to_string());
+    }
+    let (imported, total) = backup::notes_sync()?;
+    log_line(&format!("[便签] 同步完成：合并 {imported} 张，共 {total} 张"));
+    Ok(format!("同步完成：合并 {imported} 张，本地共 {total} 张"))
+}
+
 /// 手动触发一次云备份（设置页按钮用）。
 #[tauri::command]
-fn cloud_backup_now() -> Result<String, String> {
-    let name = backup::cloud_backup()?;
+fn cloud_backup_now() -> Result<String, String> {    let name = backup::cloud_backup()?;
     log_line(&format!("[云备份] 手动上传完成：{name}"));
     Ok(format!("已上传 {name}"))
 }
@@ -1365,7 +1392,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.23";
+const VERSION: &str = "4.12.26";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1473,10 +1500,21 @@ fn open_note_window(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
 
     let app2 = app.clone();
     let id2 = id.to_string();
-    w.on_window_event(move |e| {
-        if matches!(e, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)) {
+    let app3 = app.clone();
+    w.on_window_event(move |e| match e {
+        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
             let _ = save_note_pos(&app2, &id2);
         }
+        tauri::WindowEvent::Focused(false) => {
+            // 设置页 StickyNotesQuickDismissOnFocusLost：点到别处就自动收起（隐藏，不是关掉）
+            if crate::setting_bool_default("StickyNotesQuickDismissOnFocusLost", false) {
+                if let Some(win) = app3.get_webview_window(&format!("note-{id2}")) {
+                    let _ = win.hide();
+                    log_line(&format!("[便签] {id2} 失焦自动收起"));
+                }
+            }
+        }
+        _ => {}
     });
     log_line(&format!("[便签] 桌面窗口已建 {id}"));
     Ok(())
@@ -1758,6 +1796,7 @@ fn main() {
             backup_db,
             set_setting,
             cloud_backup_now,
+            notes_sync,
             cloud_latest_info,
             notes_create,
             notes_update,

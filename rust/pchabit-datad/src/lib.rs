@@ -3136,6 +3136,39 @@ fn weekday_label(date: &str) -> &'static str {
 //
 // 便签：`StickyNotes` 里 `IsDeleted = 0` 的行，置顶优先、更新时间倒序。
 
+/// 跨设备同步用：把远端便签合并进本地（按 Id 去重，`updatedAt` 更新的覆盖内容）。
+/// 返回「新增或更新」的条数。
+pub fn notes_import(items: &[serde_json::Value]) -> Result<usize, String> {
+    let conn = open_write()?;
+    let mut changed = 0usize;
+    for it in items {
+        let id = it["id"].as_str().unwrap_or("").trim();
+        if id.is_empty() {
+            continue;
+        }
+        let content = it["content"].as_str().unwrap_or("");
+        let color = note_color(it["color"].as_str().unwrap_or("yellow"));
+        let pinned = if it["pinned"].as_bool().unwrap_or(false) { 1 } else { 0 };
+        let created = it["createdAt"].as_str().unwrap_or("").to_string();
+        let updated = it["updatedAt"].as_str().unwrap_or("").to_string();
+        let n = conn
+            .execute(
+                "INSERT INTO StickyNotes \
+                 (Id, Content, Color, SortOrder, IsPinned, IsArchived, IsDeleted, CreatedAt, UpdatedAt, \
+                  DeletedAt, DeviceId, Version, IsOnDesktop, WindowLeft, WindowTop, WindowWidth, WindowHeight) \
+                 VALUES (?1,?2,?3,0,?4,0,0,?5,?6,NULL,'',1,0,0.0,0.0,300.0,220.0) \
+                 ON CONFLICT(Id) DO UPDATE SET \
+                  Content = excluded.Content, Color = excluded.Color, IsPinned = excluded.IsPinned, \
+                  UpdatedAt = excluded.UpdatedAt \
+                 WHERE excluded.UpdatedAt > StickyNotes.UpdatedAt",
+                rusqlite::params![id, content, color, pinned, created, updated],
+            )
+            .map_err(|e| format!("导入便签失败：{e}"))?;
+        changed += n;
+    }
+    Ok(changed)
+}
+
 /// 便签清单：`[{id, color, content, pinned, archived, createdAt, updatedAt}]`
 /// 便签可用的颜色（与 WPF 的色板一致，非法值回落 yellow）。
 const NOTE_COLORS: &[&str] = &["yellow", "green", "pink", "blue", "purple"];

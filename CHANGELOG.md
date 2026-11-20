@@ -2,6 +2,38 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.24 ~ 4.12.26] - 2026-11-20
+
+### 补全设置页里标「Rust 未接入」的功能
+
+**4.12.24 小窗 / 悬浮窗**
+- 任务栏小窗新增磁盘三格：`TaskbarShowDisk`（读 / 写速率）、`TaskbarShowUsage`（磁盘活动率 %），
+  数据来自 `pchabit_collect::netif::DiskMeter`（PDH `\PhysicalDisk(_Total)`，与 `HardwareSamples` 同口径）。
+- 桌面悬浮窗新增 `DesktopWidgetShowGpu`（GPU 负载，netd 管道）、`DesktopWidgetShowVram`（显存占用 %）、
+  `DesktopWidgetShowDisk`（磁盘读/写）、`DesktopWidgetShowUsage`（磁盘占用）、`DesktopWidgetShowCurrentApp`（当前前台应用）。
+- 悬浮窗按勾选的行数自动加高（只升不降到配置高度以下），不会挤成一行。
+- 多屏：`DesktopWidgetScreen` 支持序号（0 起）与旧设备名（`\\.\DISPLAY1` → 第 1 块），
+  `DesktopWidgetClampToScreen` 为真时把窗口夹进所选屏的工作区。
+- 清理开关与归档：`AutoCleanupEnabled=false` 时宿主跳过自动清理；`ArchiveBeforeCleanup=true` 时
+  清理前先 `VACUUM INTO` 一份 `Backups\archive_before_cleanup_YYYYMMDD.db`（每天最多一份）。
+  壳里「手动清理」同样先归档。
+
+**4.12.25 便签保留期 / 失焦收起**
+- `StickyNotesRetentionDays > 0` 时，宿主每天软删除超期且未置顶的便签（实测当天清了 3 张）。
+- `StickyNotesQuickDismissOnFocusLost=true` 时，桌面便签窗口失焦自动隐藏（不是删除）。
+
+**4.12.26 便签云端同步**
+- 新增 `notes_sync` 命令与设置页「同步便签」按钮：远端 `pchabit_notes.json` 与本地按 Id 合并
+  （`updatedAt` 新的赢），合并后整份传回，并回写 `StickyNotesLastSync`。
+- `pchabit_datad::notes_import` 负责合并入库（`ON CONFLICT(Id)` 只在更晚时覆盖）。
+- 设置页标签更新：上述键全部标「立即生效」；`CollectInShell` / `TaskbarShowTemp` 标「已废弃（不再生效）」。
+
+### 仍未还原
+
+- `BrowserSyncEnabled / BrowserSyncIntervalMinutes / BrowserAutoPush`（浏览器实时同步/推送）
+- `MonitoringInterval / IdleThreshold`（采集间隔与空闲判定，会影响"活跃时长"口径）
+- `CurrentLanguage`（多语言，目前只有中文）
+
 ## [4.12.23] - 2026-11-20
 
 ### 设置页布局：grid 换成列流，消掉分组之间的大片空白

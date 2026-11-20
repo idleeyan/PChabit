@@ -95,8 +95,51 @@ pub fn local_backup() -> Result<(PathBuf, u64), String> {
     Ok((dst, size))
 }
 
+/// 便签同步：远端 `pchabit_notes.json` 与本地互并（按 Id 去重、`updatedAt` 新的赢），
+/// 合并结果再传回远端。返回 `(新增/更新条数, 本地总条数)`。
+/// 需要 `WebDAV*` 配好且 `StickyNotesSyncEnabled` 为真（调用方判断）。
+pub fn notes_sync() -> Result<(usize, usize), String> {
+    let d = dav()?;
+    let db = pchabit_datad::default_db();
+    let local = pchabit_datad::notes_json(&db)?;
+    let local_items: Vec<serde_json::Value> =
+        local["items"].as_array().cloned().unwrap_or_default();
+
+    let mut merged = local_items.clone();
+    if let Some(bytes) = d.get("pchabit_notes.json")? {
+        if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+            if let Some(arr) = v["items"].as_array() {
+                let known: std::collections::HashSet<String> = local_items
+                    .iter()
+                    .filter_map(|n| n["id"].as_str().map(|s| s.to_string()))
+                    .collect();
+                for it in arr {
+                    if let Some(id) = it["id"].as_str() {
+                        if !known.contains(id) {
+                            merged.push(it.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let imported = pchabit_datad::notes_import(&merged)?;
+    // 导入后再读一遍（本地已是合并后的全集），整份上传
+    let now = pchabit_datad::notes_json(&db)?;
+    let bytes = serde_json::to_vec(&now).map_err(|e| format!("序列化便签失败：{e}"))?;
+    let code = d.put("pchabit_notes.json", &bytes)?;
+    if !(200..=299).contains(&code) {
+        return Err(format!("便签上传返回 {code}"));
+    }
+    let total = now["items"].as_array().map(|a| a.len()).unwrap_or(0);
+    let stamp = pchabit_datad::today_local() + " " + &stamp_hm();
+    crate::update_setting_file("StickyNotesLastSync", serde_json::Value::String(stamp));
+    Ok((imported, total))
+}
+
 /// 按设置连一次 WebDAV；`WebDAVUrl` 为空直接报错。
-fn dav() -> Result<Dav, String> {
+pub(crate) fn dav() -> Result<Dav, String> {
     let url = s("WebDAVUrl", "");
     if url.trim().is_empty() {
         return Err("WebDAVUrl 为空".to_string());
