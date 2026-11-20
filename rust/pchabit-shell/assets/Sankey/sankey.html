@@ -7,29 +7,75 @@
     <script src="echarts.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { 
-            width: 100%; 
-            height: 100%; 
-            background: var(--bg);
-            overflow: hidden; 
-        }
-        #chart { width: 100%; height: 100%; }
-        #empty {
-            display: none;
+        html, body {
             width: 100%;
             height: 100%;
+            background: var(--bg);
+            overflow: hidden;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            font-family: var(--font, "Segoe UI", "Microsoft YaHei", sans-serif);
+        }
+
+        /* 顶部工具栏：范围按钮 + 当前区间说明（原来满屏画布，没有可交互区） */
+        .tbar {
+            flex: none;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0 14px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+        .tbar .ttl {
+            font-size: 13.5px; font-weight: 600; letter-spacing: .06em;
+            color: var(--gold-hi); white-space: nowrap;
+        }
+        .tbar .ranges { display: flex; gap: 5px; }
+        .tbar .ranges button {
+            font: inherit; font-size: 12px; padding: 4px 11px; border-radius: 6px;
+            cursor: pointer; border: 1px solid var(--border);
+            background: var(--surface-2); color: var(--dim);
+            transition: border-color .14s, color .14s, background .14s;
+        }
+        .tbar .ranges button:hover { border-color: var(--gold); color: var(--gold-hi); }
+        .tbar .ranges button.on {
+            background: var(--gold-soft); border-color: var(--gold);
+            color: var(--gold-hi); font-weight: 600;
+        }
+        .tbar .meta {
+            margin-left: auto; font-size: 11.5px; color: var(--mute);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        #chart { flex: 1; min-height: 0; width: 100%; }
+        #empty {
+            display: none;
+            flex: 1;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             color: var(--dim);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: var(--bg);
         }
-        #empty-icon { font-size: 48px; margin-bottom: 16px; }
-        #empty-text { font-size: 16px; }
+        #empty-icon { font-size: 44px; margin-bottom: 14px; }
+        #empty-text { font-size: 15px; }
     </style>
 </head>
 <body>
+    <div class="tbar">
+        <span class="ttl">应用切换关系</span>
+        <div class="ranges" id="ranges">
+            <button data-days="1">今天</button>
+            <button data-days="7" class="on">近 7 天</button>
+            <button data-days="30">近 30 天</button>
+            <button data-days="90">近 90 天</button>
+            <button data-days="0">全部</button>
+        </div>
+        <span class="meta" id="meta"></span>
+    </div>
     <div id="chart"></div>
     <div id="empty" style="display: none;">
         <div id="empty-icon">📊</div>
@@ -72,6 +118,13 @@
         
         function renderSankey(data) {
             try {
+                // 壳每分钟会把「近 7 天」载荷注入一次（自动刷新）。用户选过别的范围时
+                // 必须忽略它，否则选择会在 60 秒后被刷回 7 天。
+                // 页面自己取的数据带 __explicit 标记，不受此限。
+                if (data && !data.__explicit &&
+                    chosenDays !== null && !isNaN(chosenDays) && chosenDays !== 7) {
+                    return 'skip: 保持用户选择的范围';
+                }
                 if (!data || !data.nodes || !data.links) {
                     showEmpty();
                     return 'error: invalid data';
@@ -164,21 +217,12 @@
                 }
                 
                 chart.setOption({
-                    backgroundColor: cssVar('--bg', '#0a0907'),
-                    title: {
-                        text: '应用切换关系图',
-                        left: 'center',
-                        top: 10,
-                        textStyle: {
-                            fontSize: 16,
-                            fontWeight: 'bold',
-                            color: cssVar('--text', '#e8e0d0')
-                        }
-                    },
+                    backgroundColor: 'transparent',
                     tooltip: {
                         trigger: 'item',
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                        borderColor: '#ddd',
+                        // 原来写死白底 + 主题字色：深色主题下是「白底白字」，看不见
+                        backgroundColor: cssVar('--surface-2', '#1a1d22'),
+                        borderColor: cssVar('--border', '#3c4043'),
                         borderWidth: 1,
                         textStyle: {
                             color: cssVar('--text', '#e8e0d0')
@@ -186,9 +230,9 @@
                         formatter: function(params) {
                             if (params.dataType === 'node') {
                                 var mins = params.data.value || 0;
-                                return '<div style="padding: 4px 8px;"><strong style="font-size: 14px;">' + params.name + '</strong><br/><span style="color: #666;">使用时长: ' + mins + ' 分钟</span></div>';
+                                return '<div style="padding: 4px 8px;"><strong style="font-size: 14px;">' + params.name + '</strong><br/><span style="color:' + cssVar('--mute', '#8d8272') + ';">使用时长: ' + mins + ' 分钟</span></div>';
                             } else {
-                                return '<div style="padding: 4px 8px;"><strong>' + params.data.source + ' → ' + params.data.target + '</strong><br/><span style="color: #666;">切换次数: ' + params.data.value + ' 次</span></div>';
+                                return '<div style="padding: 4px 8px;"><strong>' + params.data.source + ' → ' + params.data.target + '</strong><br/><span style="color:' + cssVar('--mute', '#8d8272') + ';">切换次数: ' + params.data.value + ' 次</span></div>';
                             }
                         }
                     },
@@ -196,7 +240,7 @@
                         data: categoryList,
                         orient: 'vertical',
                         right: 20,
-                        top: 60,
+                        top: 16,
                         itemWidth: 12,
                         itemHeight: 12,
                         textStyle: {
@@ -245,6 +289,7 @@
                     }]
                 });
                 
+                if (data.summary) setMeta(data.summary);
                 return 'success: ' + nodes.length + ' nodes, ' + links.length + ' links';
             } catch (e) {
                 return 'error: ' + e.message;
@@ -254,7 +299,69 @@
         function resize() {
             if (chart) chart.resize();
         }
-        
+
+        // ---------- 日期范围（4.12.46）----------
+        // 默认仍是近 7 天（与壳注入的载荷一致），用户选过就记住，下次进来按上次的来。
+        var DAYS_KEY = 'pch.sankeyDays';
+        var chosenDays = null;
+        try {
+            var savedDays = localStorage.getItem(DAYS_KEY);
+            if (savedDays !== null && savedDays !== '') chosenDays = Number(savedDays);
+        } catch (e) { /* 存储被禁用时按默认走 */ }
+
+        function setMeta(text) {
+            var m = document.getElementById('meta');
+            if (m) m.textContent = text || '';
+        }
+
+        function markRange(days) {
+            var bar = document.getElementById('ranges');
+            if (!bar) return;
+            Array.prototype.forEach.call(bar.children, function (b) {
+                b.className = (Number(b.getAttribute('data-days')) === days) ? 'on' : '';
+            });
+        }
+
+        function pickRange(days) {
+            if (!window.__TAURI__) { setMeta('壳未注入 IPC，无法切换范围'); return; }
+            chosenDays = days;
+            try { localStorage.setItem(DAYS_KEY, String(days)); } catch (e) { }
+            markRange(days);
+            setMeta('读取中…');
+            window.__TAURI__.core.invoke('sankey_data', { days: days }).then(function (d) {
+                if (d) d.__explicit = true;
+                var r = renderSankey(d);
+                window.__SANKEY_RESULT__ = 'range ' + days + ': ' + r;
+                if (!(d && d.summary)) setMeta('');
+            }).catch(function (e) {
+                setMeta('读取失败：' + e);
+                window.__SANKEY_RESULT__ = 'range error: ' + e;
+            });
+        }
+
+        function bindRanges() {
+            var bar = document.getElementById('ranges');
+            if (!bar) return;
+            Array.prototype.forEach.call(bar.children, function (b) {
+                b.addEventListener('click', function () {
+                    pickRange(Number(b.getAttribute('data-days')));
+                });
+            });
+            // 壳注入的永远是近 7 天；用户上次选过别的范围就覆盖一次
+            if (chosenDays !== null && !isNaN(chosenDays)) {
+                markRange(chosenDays);
+                if (chosenDays !== 7) pickRange(chosenDays);
+            } else {
+                markRange(7);
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindRanges);
+        } else {
+            bindRanges();
+        }
+
         window.onresize = resize;
     </script>
 </body>

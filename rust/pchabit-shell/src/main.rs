@@ -515,6 +515,29 @@ fn payload_category(report: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({ "byCategory": by_category, "byApp": by_app })
 }
 
+/// 桑基图数据：按天范围重算（`days <= 0` 表示全部历史）。页面里的范围按钮直接调这个，
+/// 不必重开窗口；口径与 `web_data` 一致。
+#[tauri::command]
+fn sankey_data(days: i64) -> Result<serde_json::Value, String> {
+    let today = pchabit_datad::today_local();
+    let db = pchabit_datad::default_db();
+    let days = days.clamp(0, 3650);
+    let start = if days <= 0 {
+        // 全部历史：从 AppSessions 最早一天起；一条都没有就退化成近 30 天
+        pchabit_datad::app_earliest_date(&db)
+            .unwrap_or_else(|| pchabit_datad::date_shift(&today, -29))
+    } else {
+        pchabit_datad::date_shift(&today, -(days - 1))
+    };
+    let v = pchabit_datad::sankey_json(&db, &start, &today, 15)?;
+    log_line(&format!(
+        "sankey: {} · {:.1} ms",
+        v["summary"].as_str().unwrap_or(""),
+        v["ms"].as_f64().unwrap_or(0.0)
+    ));
+    Ok(v)
+}
+
 /// 桑基图：`{ nodes:[{name,value,category}], links:[{source,target,value}] }`
 fn payload_sankey() -> serde_json::Value {
     let today = pchabit_datad::today_local();
@@ -1730,7 +1753,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.45";
+const VERSION: &str = "4.12.46";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -2146,6 +2169,7 @@ fn main() {
             page_data,
             pages_data,
             web_data,
+            sankey_data,
             apps_stats,
             input_data,
             net_data,
