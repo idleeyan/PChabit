@@ -4,39 +4,39 @@
 <meta charset="utf-8" />
 <title>PChabit 分类管理</title>
 <style>#wrap { padding: 0; }
-.sub { color:var(--dim); font-size:11px; margin-bottom:12px; }
+.sub { color:var(--dim); font-size:11.5px; margin-bottom:12px; }
 .cats { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
 .chip { display:flex; align-items:center; gap:5px; background:var(--surface-3);
-    border:1px solid var(--border); border-radius:14px; padding:3px 6px 3px 10px; font-size:11px; }
+    border:1px solid var(--border); border-radius:14px; padding:3px 6px 3px 10px; font-size:11.5px; }
 .chip.off { opacity:.45; }
 .dot { width:8px; height:8px; border-radius:50%; }
-.chip .x { background:none; border:0; color:var(--mute); cursor:pointer; font-size:11px;
+.chip .x { background:none; border:0; color:var(--mute); cursor:pointer; font-size:11.5px;
     padding:0 3px; line-height:1; }
 .chip .x:hover { color:var(--red); }
-.chip .on { background:none; border:0; color:var(--green); cursor:pointer; font-size:10px; padding:0 3px; }
+.chip .on { background:none; border:0; color:var(--green); cursor:pointer; font-size:11.5px; padding:0 3px; }
 .newrow { display:flex; gap:6px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
 .newrow input[type=text] { background:var(--surface-3); border:1px solid var(--border); color:var(--text);
-    border-radius:6px; padding:4px 8px; font-size:12px; outline:none; }
+    border-radius:6px; padding:4px 8px; font-size:12.5px; outline:none; }
 .newrow input.nm { width:130px; }
 .newrow input.ic { width:44px; text-align:center; }
 .newrow input[type=color] { width:30px; height:26px; background:var(--surface-3); border:1px solid var(--border);
     border-radius:5px; padding:0; cursor:pointer; }
 .newrow button { background:var(--gold); border:1px solid var(--gold); color:#241a06; font-weight:600; border-radius:6px;
-    padding:4px 12px; font-size:12px; cursor:pointer; }
+    padding:4px 12px; font-size:12.5px; cursor:pointer; }
 .newrow button:hover { background:var(--gold-hi); border-color:var(--gold-hi); }
 .tools { display:flex; gap:8px; margin-bottom:10px; }
 .tools input { flex:1; background:var(--surface-3); border:1px solid var(--border); color:var(--text);
-    border-radius:6px; padding:5px 9px; font-size:12px; outline:none; }
+    border-radius:6px; padding:5px 9px; font-size:12.5px; outline:none; }
 .tools input:focus { border-color:var(--gold); }
 th, td { text-align:left; padding:5px 8px; border-bottom:1px solid rgba(58,48,29,.55); }
-th { color:var(--dim); font-weight:500; font-size:11px; position:sticky; top:0; background:var(--bg); }
+th { color:var(--dim); font-weight:500; font-size:11.5px; position:sticky; top:0; background:var(--bg); }
 td.num { color:var(--dim); font-variant-numeric:tabular-nums; }
-.proc { color:var(--mute); font-size:10px; }
+.proc { color:var(--mute); font-size:11.5px; }
 .appcell { display:flex; align-items:center; gap:8px; }
 .appcell .ico { width:18px; height:18px; flex:none; border-radius:3px; object-fit:contain; }
 .appcell .ico.ph { display:inline-flex; align-items:center; justify-content:center;
   background:var(--surface-3); border:1px solid var(--border); color:var(--dim);
-  font-size:10px; font-weight:600; line-height:1; }
+  font-size:11.5px; font-weight:600; line-height:1; }
 .appcell .tx { min-width:0; }
 
   /* 分类详情弹层（旧版 CategoryDetailDialog） */
@@ -46,15 +46,15 @@ td.num { color:var(--dim); font-variant-numeric:tabular-nums; }
     border:1px solid var(--border-hi); border-radius:12px; padding:15px 17px 16px;
     box-shadow:var(--shadow); }
   .cbox h3 { margin:0 0 3px; font-size:14px; letter-spacing:.04em; color:var(--gold-hi); }
-  .cbox .sub2 { color:var(--mute); font-size:11px; margin-bottom:11px; }
+  .cbox .sub2 { color:var(--mute); font-size:11.5px; margin-bottom:11px; }
   .cbox .x2 { position:absolute; right:14px; top:12px; }
-.tag { font-size:9px; color:var(--mute); border:1px solid var(--border); border-radius:4px;
+.tag { font-size:10.5px; color:var(--mute); border:1px solid var(--border); border-radius:4px;
     padding:0 4px; margin-left:4px; }
 select { background:var(--surface-3); border:1px solid var(--border); color:var(--text);
-    border-radius:5px; padding:2px 6px; font-size:11px; outline:none; cursor:pointer; }
+    border-radius:5px; padding:2px 6px; font-size:11.5px; outline:none; cursor:pointer; }
 select:focus { border-color:var(--gold); }
 tr:hover td { background:var(--surface); }
-#msg { color:var(--green); font-size:11px; margin-left:8px; }</style>
+#msg { color:var(--green); font-size:11.5px; margin-left:8px; }</style>
 <script src="theme-boot.js"></script>
 <link rel="stylesheet" href="theme.css" />
 </head>
@@ -71,7 +71,7 @@ tr:hover td { background:var(--surface); }
     <input class="ic" id="ni" type="text" placeholder="📁" maxlength="2" value="📁" />
     <input id="nc" type="color" value="#22C55E" title="分类颜色" />
     <button id="nadd">新建分类</button>
-    <span id="msg0" style="font-size:11px;color:var(--dim)"></span>
+    <span id="msg0" style="font-size:11.5px;color:var(--dim)"></span>
   </div>
 
   <div class="tools">

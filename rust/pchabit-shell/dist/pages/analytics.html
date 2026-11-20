@@ -4,8 +4,8 @@
 <meta charset="utf-8" />
 <title>PChabit 分析</title>
 <style>#wrap { padding: 0; }
-.sub { color:var(--dim); font-size:11px; margin-bottom:14px; }
-.kpi .d { font-size:11px; }
+.sub { color:var(--dim); font-size:11.5px; margin-bottom:14px; }
+.kpi .d { font-size:11.5px; }
 .up { color:var(--green); }
 .down { color:var(--red); }
 .flat { color:var(--dim); }
@@ -13,12 +13,12 @@
 @media (max-width: 900px) { .row { grid-template-columns:1fr; } }
 .cal { display:grid; grid-template-columns:repeat(14, 1fr); gap:3px; }
 .cal .day { border-radius:4px; height:40px; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; font-size:10px; color:var(--mute); background:var(--surface-3); }
+    align-items:center; justify-content:center; font-size:11.5px; color:var(--mute); background:var(--surface-3); }
 .cal .day.in { color:var(--text); }
-.cal .day .h { font-size:11px; font-weight:600; }
-.cal .day .l { font-size:9px; opacity:.8; }
+.cal .day .h { font-size:11.5px; font-weight:600; }
+.cal .day .l { font-size:10.5px; opacity:.8; }
 .heat { display:grid; grid-template-columns:repeat(24, 1fr); gap:2px; margin-top:12px; }
-.heat div { height:26px; border-radius:3px; background:var(--surface-3); font-size:9px; color:var(--mute);
+.heat div { height:26px; border-radius:3px; background:var(--surface-3); font-size:10.5px; color:var(--mute);
     display:flex; align-items:center; justify-content:center; }
 .heat div.m { color:var(--text); }
 ul { list-style:none; margin:0; padding:0; }
@@ -32,8 +32,8 @@ li:last-child { border-bottom:0; }
 .insight { padding:7px 9px; border-radius:8px; margin-bottom:6px; background:var(--surface-3); border-left:3px solid var(--gold); }
 .insight.warning { border-left-color:var(--amber); }
 .insight.critical { border-left-color:#ef4444; }
-.insight b { display:block; font-size:11px; margin-bottom:2px; }
-.insight span { color:var(--dim); font-size:11px; }  /* 效率评分 */
+.insight b { display:block; font-size:11.5px; margin-bottom:2px; }
+.insight span { color:var(--dim); font-size:11.5px; }  /* 效率评分 */
   .eff { display:grid; grid-template-columns:130px minmax(0,1fr) 230px; gap:18px; align-items:center; }
   @media (max-width:1000px){ .eff { grid-template-columns:1fr; } }
   .eff-score {
@@ -42,7 +42,7 @@ li:last-child { border-bottom:0; }
     background:var(--grad-gold); -webkit-background-clip:text; background-clip:text;
     -webkit-text-fill-color:transparent;
   }
-  .eff-label { color:var(--mute); font-size:11px; margin-top:7px; line-height:1.6; }
+  .eff-label { color:var(--mute); font-size:11.5px; margin-top:7px; line-height:1.6; }
   .eff-items { display:grid; gap:7px; }
   .eff-row { display:grid; grid-template-columns:64px 1fr 46px; gap:10px; align-items:center; font-size:11.5px; }
   .eff-row .n { color:var(--dim); }
@@ -52,7 +52,7 @@ li:last-child { border-bottom:0; }
   .eff-week .col i { width:100%; border-radius:3px 3px 1px 1px; min-height:2px;
     background:linear-gradient(180deg, var(--gold-hi), var(--gold-deep)); opacity:.55; }
   .eff-week .col.today i { opacity:1; }
-  .eff-week .col span { font-size:9px; color:var(--mute); }
+  .eff-week .col span { font-size:10.5px; color:var(--mute); }
 </style>
 <script src="theme-boot.js"></script>
 <link rel="stylesheet" href="theme.css" />
@@ -189,7 +189,7 @@ li:last-child { border-bottom:0; }
       week.appendChild(col);
     });
     if (!(e.week || []).length) {
-      week.innerHTML = '<span style="color:var(--mute);font-size:11px">暂无趋势</span>';
+      week.innerHTML = '<span style="color:var(--mute);font-size:11.5px">暂无趋势</span>';
     }
   }
 
