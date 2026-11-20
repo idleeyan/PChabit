@@ -17,6 +17,7 @@ use tauri::Manager;
 mod backup;
 mod desktop_widget;
 mod hotkey;
+mod icons;
 mod taskbar;
 mod webdav;
 
@@ -263,6 +264,65 @@ fn payload_hardware(report: &serde_json::Value) -> serde_json::Value {
 ///
 /// 分钟数保留 1 位小数，与 C# 的 `Math.Round(minutes, 1)` 一致。
 /// 应用搜索下沉到数据层：分类页进程很多时由这里过滤，不再让前端全量过一遍。
+/// 用系统默认浏览器打开链接（旧版 `UrlLauncher` 的等价实现）。
+/// 只放行 http/https，避免被页面上任意字符串当成 shell 命令执行。
+#[tauri::command]
+fn open_url(url: String) -> Result<String, String> {
+    let u = url.trim();
+    if !(u.starts_with("http://") || u.starts_with("https://")) {
+        return Err("只允许 http/https 链接".to_string());
+    }
+    #[link(name = "shell32")]
+    extern "system" {
+        fn ShellExecuteW(
+            hwnd: *mut std::ffi::c_void,
+            op: *const u16,
+            file: *const u16,
+            params: *const u16,
+            dir: *const u16,
+            show: i32,
+        ) -> *mut std::ffi::c_void;
+    }
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+    let op = wide("open");
+    let target = wide(u);
+    let rc = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            op.as_ptr(),
+            target.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            1,
+        )
+    };
+    if rc as isize <= 32 {
+        return Err(format!("打开失败（ShellExecute 返回 {}）", rc as isize));
+    }
+    log_line(&format!("[打开链接] {u}"));
+    Ok(u.to_string())
+}
+
+/// 批量取应用图标（32×32 BMP 的 data URL）。前端按进程名查表，取不到就显示占位。
+#[tauri::command]
+fn app_icons(procs: Vec<String>) -> serde_json::Value {
+    let t0 = std::time::Instant::now();
+    let map = icons::icons_for(&procs);
+    log_line(&format!(
+        "[图标] 取到 {} / {} 个（{:.0} ms）",
+        map.len(),
+        procs.len(),
+        t0.elapsed().as_secs_f64() * 1000.0
+    ));
+    serde_json::Value::Object(
+        map.into_iter()
+            .map(|(k, v)| (k, serde_json::Value::String(v)))
+            .collect(),
+    )
+}
+
 #[tauri::command]
 fn app_search(q: String) -> Result<serde_json::Value, String> {
     pchabit_datad::search_json(&pchabit_datad::default_db(), &q)
@@ -1043,6 +1103,122 @@ const SETTING_WHITELIST: &[&str] = &[
 /// 只读键：时间戳/设备标识这类由程序自己维护的字段，设置页只展示不给改。
 const SETTING_READONLY: &[&str] = &["WebDAVLastSync", "StickyNotesLastSync", "StickyNotesDeviceId"];
 
+/// 导出多格式统计（JSON / Markdown / CSV）：数据来自 datad 的应用统计，写到
+/// `%LOCALAPPDATA%\PChabit\Exports\PChabit-统计-YYYYMMDD-N天.<ext>`。
+/// 区间是「今天往前 N 天」含今天，与页面上的 7/30/90 天口径一致。
+#[tauri::command]
+fn export_data(fmt: String, days: i64) -> Result<String, String> {
+    let db = pchabit_datad::default_db();
+    let today = pchabit_datad::today_local();
+    let days = days.clamp(1, 365);
+    let cur_start = pchabit_datad::date_shift(&today, -days);
+    let cur_end = pchabit_datad::date_shift(&today, 1);
+    let prev_start = pchabit_datad::date_shift(&today, -days * 2);
+    let req = serde_json::json!({
+        "curStart": cur_start,
+        "curEnd": cur_end,
+        "prevStart": prev_start,
+        "prevEnd": cur_start,
+    });
+    let report = pchabit_datad::stats_json(&db, &req)?;
+    let items = report
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let dir = PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
+        .join("PChabit")
+        .join("Exports");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建导出目录失败：{e}"))?;
+    let stamp = today.replace('-', "");
+    let (ext, content) = match fmt.as_str() {
+        "json" => (
+            "json",
+            serde_json::to_string_pretty(&report).map_err(|e| e.to_string())?,
+        ),
+        "md" => (
+            "md",
+            export_markdown(&items, &cur_start, &today, days),
+        ),
+        "csv" => ("csv", export_csv(&items)),
+        other => return Err(format!("不支持的导出格式：{other}")),
+    };
+    let path = dir.join(format!("PChabit-统计-{stamp}-{days}天.{ext}"));
+    std::fs::write(&path, content).map_err(|e| format!("写文件失败：{e}"))?;
+    log_line(&format!(
+        "[导出] {}（{} 个应用）",
+        path.display(),
+        items.len()
+    ));
+    Ok(path.display().to_string())
+}
+
+/// Markdown 报告：汇总 + 应用表。给人看、可直接贴进笔记。
+fn export_markdown(
+    items: &[serde_json::Value],
+    start: &str,
+    end: &str,
+    days: i64,
+) -> String {
+    let num = |v: &serde_json::Value, k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let txt = |v: &serde_json::Value, k: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let total: f64 = items.iter().map(|i| num(i, "durationMinutes")).sum();
+    let mut out = String::new();
+    out.push_str(&format!("# PChabit 使用统计（近 {days} 天）\n\n"));
+    out.push_str(&format!("- 统计区间：{start} ~ {end}\n"));
+    out.push_str(&format!("- 应用数：{}\n", items.len()));
+    out.push_str(&format!("- 总活跃：{} 小时 {} 分\n\n", (total / 60.0) as i64, (total % 60.0) as i64));
+    out.push_str("| # | 应用 | 分类 | 活跃 | 占比 | 会话 |\n");
+    out.push_str("|---:|---|---|---:|---:|---:|\n");
+    for (idx, it) in items.iter().enumerate() {
+        let m = num(it, "durationMinutes");
+        out.push_str(&format!(
+            "| {} | {} | {} | {}h{:02}m | {:.1}% | {} |\n",
+            idx + 1,
+            txt(it, "appName"),
+            txt(it, "category"),
+            (m / 60.0) as i64,
+            (m % 60.0) as i64,
+            num(it, "percentage"),
+            num(it, "sessions") as i64
+        ));
+    }
+    out
+}
+
+/// CSV：带 BOM 便于 Excel 直接双击打开不乱码。
+fn export_csv(items: &[serde_json::Value]) -> String {
+    let num = |v: &serde_json::Value, k: &str| v.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let txt = |v: &serde_json::Value, k: &str| {
+        v.get(k)
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .replace(',', "，")
+            .replace('"', "\"")
+    };
+    let mut out = String::from("\u{feff}");
+    out.push_str("应用,进程,分类,活跃分钟,占比,会话数,平均时长分钟\n");
+    for it in items {
+        out.push_str(&format!(
+            "{},{},{},{:.1},{:.2},{},{:.2}\n",
+            txt(it, "appName"),
+            txt(it, "processName"),
+            txt(it, "category"),
+            num(it, "durationMinutes"),
+            num(it, "percentage"),
+            num(it, "sessions") as i64,
+            num(it, "avgDurationMinutes")
+        ));
+    }
+    out
+}
+
 /// 导出周报 Excel：把「周汇总 / 近 7 天 / 今日应用」拼成工作簿，交给 datad 的 `xlsx` 子命令写盘。
 /// 输出目录：`%LOCALAPPDATA%\PChabit\Exports\周报_YYYY-MM-DD.xlsx`。
 #[tauri::command]
@@ -1461,7 +1637,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.36";
+const VERSION: &str = "4.12.37";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1903,7 +2079,10 @@ fn main() {
             note_pos,
             note_desktop_set,
             export_weekly,
-            app_search
+            export_data,
+            app_search,
+            app_icons,
+            open_url
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {
@@ -1917,6 +2096,37 @@ fn main() {
             let _ = APP_HANDLE.set(app.handle().clone());
             // 采集宿主随壳启动：单写者约束在 Host 内部（WPF 在跑就拒绝）
             app.manage(HostState(std::sync::Mutex::new(None)));
+
+            // 图标预热：后台把常见应用的图标先取好，打开详情页/分类页时直接命中缓存。
+            // 同时充当自检（日志里能看提取成功率）。
+            std::thread::spawn(|| {
+                let db = pchabit_datad::default_db();
+                let Ok(v) = pchabit_datad::app_categories_json(&db, 7) else {
+                    return;
+                };
+                let procs: Vec<String> = v
+                    .get("items")
+                    .and_then(|x| x.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|i| {
+                                i.get("processName")
+                                    .and_then(|p| p.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .take(40)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let t0 = std::time::Instant::now();
+                let m = icons::icons_for(&procs);
+                log_line(&format!(
+                    "[图标] 预热 {}/{} 个（{:.0} ms）",
+                    m.len(),
+                    procs.len(),
+                    t0.elapsed().as_secs_f64() * 1000.0
+                ));
+            });
 
             // 单实例端口的服务端：第二个进程点快捷方式时发 "SHOW"，这里把窗口亮出来
             {

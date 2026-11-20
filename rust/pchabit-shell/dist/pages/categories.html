@@ -32,6 +32,12 @@ th, td { text-align:left; padding:5px 8px; border-bottom:1px solid rgba(58,48,29
 th { color:var(--dim); font-weight:500; font-size:11px; position:sticky; top:0; background:var(--bg); }
 td.num { color:var(--dim); font-variant-numeric:tabular-nums; }
 .proc { color:var(--mute); font-size:10px; }
+.appcell { display:flex; align-items:center; gap:8px; }
+.appcell .ico { width:18px; height:18px; flex:none; border-radius:3px; object-fit:contain; }
+.appcell .ico.ph { display:inline-flex; align-items:center; justify-content:center;
+  background:var(--surface-3); border:1px solid var(--border); color:var(--dim);
+  font-size:10px; font-weight:600; line-height:1; }
+.appcell .tx { min-width:0; }
 .tag { font-size:9px; color:var(--mute); border:1px solid var(--border); border-radius:4px;
     padding:0 4px; margin-left:4px; }
 select { background:var(--surface-3); border:1px solid var(--border); color:var(--text);
@@ -73,6 +79,20 @@ tr:hover td { background:var(--surface); }
 </div>
 <script>
   var DATA = null;
+  var ICONS = {};
+  var ICONS_LOADED = false;
+
+  function loadIcons(list) {
+    if (ICONS_LOADED || !window.__TAURI__ || !list || !list.length) return;
+    ICONS_LOADED = true;
+    var procs = [];
+    list.forEach(function (a) {
+      if (a.processName && procs.indexOf(a.processName) < 0) procs.push(a.processName);
+    });
+    window.__TAURI__.core.invoke('app_icons', { procs: procs })
+      .then(function (m) { ICONS = m || {}; if (DATA) render(DATA); })
+      .catch(function () { });
+  }
   var MSG = null;
 
   function fmtMins(v) {
@@ -86,6 +106,7 @@ tr:hover td { background:var(--surface); }
     var cats = (d && d.categories) || [];
     var apps = (d && d.apps && d.apps.items) || [];
 
+    loadIcons(apps);
     document.getElementById('sub').textContent =
       '近 ' + ((d && d.apps && d.apps.days) || 7) + ' 天 · ' + apps.length +
       ' 个进程 · ' + cats.length + ' 个启用分类';
@@ -139,11 +160,28 @@ tr:hover td { background:var(--surface); }
 
       var tr = document.createElement('tr');
       var td1 = document.createElement('td');
-      td1.appendChild(document.createTextNode(a.appName || a.processName));
+      td1.className = 'appcell';
+      var url = ICONS[a.processName];
+      if (url) {
+        var im = document.createElement('img');
+        im.className = 'ico';
+        im.src = url;
+        im.alt = '';
+        td1.appendChild(im);
+      } else {
+        var ph = document.createElement('span');
+        ph.className = 'ico ph';
+        ph.textContent = String(a.appName || a.processName || '?').trim().charAt(0).toUpperCase();
+        td1.appendChild(ph);
+      }
+      var tx = document.createElement('div');
+      tx.className = 'tx';
+      tx.appendChild(document.createTextNode(a.appName || a.processName));
       var proc = document.createElement('div');
       proc.className = 'proc';
       proc.textContent = a.processName;
-      td1.appendChild(proc);
+      tx.appendChild(proc);
+      td1.appendChild(tx);
       if (!a.mapped) {
         var tag = document.createElement('span');
         tag.className = 'tag';

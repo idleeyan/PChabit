@@ -13,7 +13,14 @@
 .tag { padding:1px 6px; border-radius:5px; background:var(--bg); border:1px solid var(--border); }
 .body { white-space:pre-wrap; word-break:break-word; font-size:12px;
     font-family:"Consolas","Cascadia Mono","Microsoft YaHei",monospace; }
-.body a { color:var(--gold-hi); }
+.body a { color:var(--gold-hi); text-decoration:underline; cursor:pointer; }
+.body b { color:var(--gold-hi); }
+.body code { background:var(--surface-2); border:1px solid var(--border); border-radius:4px;
+  padding:0 4px; font-family:Consolas,"Cascadia Mono",monospace; font-size:11px; }
+.body .md-h1 { font-size:14px; font-weight:600; color:var(--gold-hi); margin:5px 0 2px; }
+.body .md-h2 { font-size:13px; font-weight:600; margin:4px 0 2px; }
+.body .md-h3 { font-size:12.5px; font-weight:600; color:var(--dim); margin:3px 0 1px; }
+.body .md-li { padding-left:9px; }
 .new { background:var(--surface); border:1px solid var(--border); border-radius:10px;
     padding:10px 12px; margin-bottom:14px; }
 .new textarea { width:100%; min-height:64px; resize:vertical; box-sizing:border-box;
@@ -58,22 +65,34 @@
   };
 
   // 只把 http(s) 链接变成可点文本，其余内容原样输出（不执行任何 HTML）
+  // 简易 Markdown：标题 / 粗体 / 行内代码 / 列表 / 链接。
+  // 旧版是完整的 MarkdownText 控件；这里覆盖笔记里最常用的几种，
+  // 先转义再替换，不会引入 HTML 注入。
+  function mdToHtml(src) {
+    var s = String(src || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" data-url="$1">$1</a>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/^### (.*)$/gm, '<div class="md-h3">$1</div>');
+    s = s.replace(/^## (.*)$/gm, '<div class="md-h2">$1</div>');
+    s = s.replace(/^# (.*)$/gm, '<div class="md-h1">$1</div>');
+    s = s.replace(/^- (.*)$/gm, '<div class="md-li">· $1</div>');
+    return s;
+  }
+
+  // 便签里的链接交给系统浏览器（WebView 里新开窗口不可控）
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest ? ev.target.closest('a[data-url]') : null;
+    if (!a || !window.__TAURI__) return;
+    ev.preventDefault();
+    window.__TAURI__.core.invoke('open_url', { url: a.getAttribute('data-url') }).catch(function () { });
+  });
+
   function paintBody(text) {
     var box = document.createElement('div');
     box.className = 'body';
-    var re = /https?:\/\/[^\s"'<>]+/g;
-    var last = 0, m;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) box.appendChild(document.createTextNode(text.slice(last, m.index)));
-      var a = document.createElement('a');
-      a.href = m[0];
-      a.target = '_blank';
-      a.rel = 'noreferrer';
-      a.textContent = m[0];
-      box.appendChild(a);
-      last = m.index + m[0].length;
-    }
-    if (last < text.length) box.appendChild(document.createTextNode(text.slice(last)));
+    box.innerHTML = mdToHtml(text);
     return box;
   }
 

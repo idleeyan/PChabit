@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.36**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
+| 当前版本 | **4.12.37**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.37 | 补回旧版能力第一批：应用图标（GDI 直取 + 五路路径兜底，实测 42/96）、多格式导出（JSON/MD/CSV）、关于区块、open_url 外链、便签简易 Markdown |
 | 2026-11-20 | 4.12.36 | 修「界面发灰」：卡片/底色 1.07→1.16、边框/卡片 1.33→2.2（靠描边分层而非提亮卡片）、底色压近纯黑、卡片改纯色、去掉鎏金顶部光晕、正文 13px/行高 1.6、小字与表头同步提亮 |
 | 2026-11-20 | 4.12.35 | 配色可切换：4 套底色方案（鎏金/石墨/暖棕/青灰）+ 8 色强调 + 「跟随方案」；新增 tokens.css 与 theme-boot.js，导航壳顶部加配色面板，设置页加两个下拉；图表页改读 CSS 变量跟随主题；修 `data-accent` 默认覆盖主题自带的缺陷；**坑**：改 dist/*.html 后普通 cargo build 可能沿用旧资源快照，需 touch build.rs |
 | 2026-11-20 | 4.12.34 | 视觉升级为鎏金暗夜：theme.css 重写（暖黑底 + 金色渐变 + 轻动效，兼容旧类名）、12 页全部接入、导航壳金色化、图表配色统一（含桑基图由白底改深底）、清掉散落蓝绿橙、分类管理补卡片、应用详情修 100vh 溢出 |
@@ -197,7 +198,13 @@ enderDetail 绘制函数被 window.renderDetail（列表入口）覆盖 → 改�
 
 ## 5. 待办与维护
 
-**未完成事项（截至 4.12.0）**
+**未完成事项（截至 4.12.37）**
+
+- [ ] **旧版能力补全（第二批）**：小窗点击弹进程网速排行浮窗（旧 `NetworkProcessWindow`）、分类详情弹窗
+      （旧 `CategoryDetailDialog`）、效率评分（旧 `EfficiencyScore`）、全局操作日志面板（旧 `GlobalOpLog`）
+- [ ] **旧版能力补全（第三批，需新实现而非迁移）**：多语言（`CurrentLanguage` 仍 INACTIVE）、
+      监控间隔 / 空闲阈值（`MonitoringInterval` / `IdleThreshold` 仍 INACTIVE）、浏览器同步三项
+      （对应已下线的书签同步模块，需先决定是否恢复）
 
 - [ ] **观察期对账**：计划任务「PChabit 每日对账」00:10 比昨天，写 `Logs\compare.log`；首跑 11-18 各项差 0
 - [ ] **桌面便签功能补齐**：Rust 版已能建窗/拖动/回写/置顶/收回；与 WPF 版差异项：颜色切换、便签列表页的头像式预览尚未做

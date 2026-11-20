@@ -19,6 +19,10 @@ aside li:hover { background:var(--surface-3); }
 aside li.on { background:var(--gold-soft); }
 aside li .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 aside li .mn { color:var(--mute); font-size:10px; flex:none; }
+aside li .ico { width:16px; height:16px; flex:none; border-radius:3px; object-fit:contain; }
+aside li .ico.ph { display:inline-flex; align-items:center; justify-content:center;
+  background:var(--surface-3); border:1px solid var(--border); color:var(--dim);
+  font-size:9px; font-weight:600; line-height:1; }
 aside .ranges { display:flex; gap:4px; padding:0 10px 8px; }
 aside .ranges button { flex:1; background:var(--surface-3); border:1px solid var(--border); color:var(--dim);
     border-radius:5px; padding:2px 0; font-size:10px; cursor:pointer; font-family:inherit; }
@@ -89,6 +93,19 @@ ul.titles li { font-size:11px; color:var(--text); padding:4px 0; border-bottom:1
 </div>
 <script>
   var APPS = [];
+  var ICONS = {};
+
+  // 图标由壳的 icons 模块从 exe 提取（32×32 BMP），一次批量取、本地缓存
+  function loadIcons() {
+    if (!window.__TAURI__ || !APPS.length) return;
+    var procs = [];
+    APPS.forEach(function (a) {
+      if (a.processName && procs.indexOf(a.processName) < 0) procs.push(a.processName);
+    });
+    window.__TAURI__.core.invoke('app_icons', { procs: procs })
+      .then(function (m) { ICONS = m || {}; renderList(); })
+      .catch(function () { });
+  }
   var CUR = null;
   var chosenDays = 0;   // 0 = 全部历史
 
@@ -125,6 +142,18 @@ ul.titles li { font-size:11px; color:var(--text); padding:4px 0; border-bottom:1
           (a.processName || '').toLowerCase().indexOf(kw) < 0) return;
       shown++;
       var li = el('li', CUR && CUR.processName === a.processName ? 'on' : '');
+      var url = ICONS[a.processName];
+      if (url) {
+        var im = document.createElement('img');
+        im.className = 'ico';
+        im.src = url;
+        im.alt = '';
+        li.appendChild(im);
+      } else {
+        var ph = el('span', 'ico ph',
+          String(a.appName || a.processName || '?').trim().charAt(0).toUpperCase());
+        li.appendChild(ph);
+      }
       li.appendChild(el('span', 'nm', a.appName || a.processName));
       li.appendChild(el('span', 'mn', Math.round(a.minutes) + 'm'));
       li.addEventListener('click', function () { select(a); });
@@ -286,6 +315,7 @@ ul.titles li { font-size:11px; color:var(--text); padding:4px 0; border-bottom:1
     window.__TAURI__.core.invoke('apps_stats', { days: days }).then(function (p) {
       APPS = (p && p.items) || [];
       renderList();
+      loadIcons();
       var keep = null;
       if (CUR) {
         for (var i = 0; i < APPS.length; i++) {
@@ -322,6 +352,7 @@ ul.titles li { font-size:11px; color:var(--text); padding:4px 0; border-bottom:1
     }
     APPS = (payload && payload.apps && payload.apps.items) || [];
     renderList();
+    loadIcons();
     if (APPS.length) select(APPS[0]);
     return 'ok: ' + APPS.length + ' 个应用';
   };

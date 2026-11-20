@@ -33,6 +33,9 @@
     <div class="act-row">
       <button class="btn btn-primary" id="btnBackup">立即备份</button>
       <button class="btn" id="btnClean">清理旧数据</button>
+      <button class="btn" id="btnJson">导出 JSON</button>
+      <button class="btn" id="btnMd">导出 Markdown</button>
+      <button class="btn" id="btnCsv">导出 CSV</button>
       <span class="hint" id="actMsg"></span>
     </div>
   </section>
@@ -180,6 +183,29 @@
     if (b) b.addEventListener('click', function () { act('backup'); });
     if (c) c.addEventListener('click', function () { act('clean'); });
 
+    // 多格式导出：近 30 天应用统计 → %LOCALAPPDATA%\PChabit\Exports
+    function doExport(fmt, btn) {
+      var msg = document.getElementById('actMsg');
+      if (!window.__TAURI__) { msg.textContent = '壳未注入 IPC，无法导出'; return; }
+      var label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '导出中…';
+      window.__TAURI__.core.invoke('export_data', { fmt: fmt, days: 30 })
+        .then(function (p) {
+          msg.textContent = '已导出：' + p;
+          window.__DATA_RESULT__ = 'export-' + fmt + ': ' + p;
+        })
+        .catch(function (e) {
+          msg.textContent = '导出失败：' + e;
+          window.__DATA_RESULT__ = 'export-error-' + fmt + ': ' + e;
+        })
+        .then(function () { btn.disabled = false; btn.textContent = label; });
+    }
+    [['btnJson', 'json'], ['btnMd', 'md'], ['btnCsv', 'csv']].forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (el) el.addEventListener('click', function () { doExport(pair[1], el); });
+    });
+
     // WebDAV 手动同步：结果写在明显的结果条里，状态写进下方表格
     function stamp() {
       var d = new Date();
@@ -191,7 +217,7 @@
       if (m) {
         m.textContent = '[' + stamp() + '] ' + text;
         m.style.color = tone === 'bad' ? 'var(--red)' : (tone === 'good' ? 'var(--green)' : 'var(--dim)');
-        m.style.borderColor = tone === 'bad' ? '#7f1d1d' : (tone === 'good' ? '#166534' : '#1f2937');
+        m.style.borderColor = tone === 'bad' ? 'var(--red)' : (tone === 'good' ? 'var(--green)' : 'var(--border)');
       }
       window.__DATA_RESULT__ = 'dav: ' + text;
     }

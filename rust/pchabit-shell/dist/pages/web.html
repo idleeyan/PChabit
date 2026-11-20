@@ -53,7 +53,7 @@ ul.recent .t2 { color:var(--mute); font-size:10px; display:flex; gap:8px; }</sty
 <div class="row">
   <div>
     <section style="margin-bottom:12px">
-      <h2>网站访问排行 <em>近 20 个域名 · 按有效浏览时长 · 右键可改分类（WPF 端）</em></h2>
+      <h2>网站访问排行 <em>近 20 个域名 · 按有效浏览时长 · 点击域名打开 · 右键改分类</em></h2>
       <table>
         <thead><tr>
           <th>域名</th><th class="r">访问</th><th class="r">时长</th>
@@ -180,7 +180,16 @@ ul.recent .t2 { color:var(--mute); font-size:10px; display:flex; gap:8px; }</sty
     domains.forEach(function (x) {
       var tr = document.createElement('tr');
       var tdDom = el('td');
-      tdDom.appendChild(el('span', 'dm', x.domain));
+      var dm = el('span', 'dm', x.domain);
+      dm.style.cursor = 'pointer';
+      dm.title = '点击用默认浏览器打开 https://' + x.domain;
+      dm.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (!window.__TAURI__) return;
+        window.__TAURI__.core.invoke('open_url', { url: 'https://' + x.domain })
+          .catch(function (e) { dm.title = '打开失败：' + e; });
+      });
+      tdDom.appendChild(dm);
       var bar = el('div', 'bar');
       var fill = el('i');
       fill.style.width = Math.max(2, ((x.sharePercent || 0) / maxShare) * 100) + '%';

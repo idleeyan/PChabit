@@ -373,6 +373,51 @@ input:focus { outline:none; border-color:var(--gold); }
     grid.appendChild(s);
   }
 
+  /// 关于：版本 / 技术栈 / 目录 / 项目地址（只读展示，便于排查时一眼取到路径）
+  function aboutSection(grid, d) {
+    var s = document.createElement('section');
+    var h = document.createElement('h2');
+    h.textContent = '关于';
+    var em = document.createElement('em');
+    em.textContent = 'PChabit';
+    h.appendChild(em);
+    s.appendChild(h);
+
+    var dir = String(d.path || '').replace(/[\\/][^\\/]+$/, '');
+    var rows = [
+      ['版本', window.__VER__ || '—'],
+      ['技术栈', 'Rust + Tauri 2 + WebView2'],
+      ['数据目录', dir],
+      ['数据库', dir + '\\Data\\pchabit.db'],
+      ['日志', '%TEMP%\\pchabit-shell.log'],
+      ['项目地址', 'https://github.com/idleeyan/PChabit']
+    ];
+    rows.forEach(function (pair) {
+      var r = document.createElement('div');
+      r.className = 'row';
+      var k = document.createElement('div');
+      k.className = 'k';
+      var nm = document.createElement('span');
+      nm.className = 'name';
+      nm.textContent = pair[0];
+      k.appendChild(nm);
+      var ctl = document.createElement('div');
+      ctl.className = 'ctl';
+      var ro = document.createElement('span');
+      ro.className = 'ro';
+      ro.textContent = pair[1] || '—';
+      ro.title = pair[1] || '';
+      ctl.appendChild(ro);
+      r.appendChild(k);
+      r.appendChild(ctl);
+      var st = document.createElement('div');
+      st.className = 'st';
+      r.appendChild(st);
+      s.appendChild(r);
+    });
+    grid.appendChild(s);
+  }
+
   function render(d) {
     if (!d) return 'error: no data';
     var pathEl = document.getElementById('path');
@@ -399,6 +444,7 @@ input:focus { outline:none; border-color:var(--gold); }
 
     var others = items.filter(function (i) { return !used[i.key]; });
     if (others.length) section('其他', others, grid);
+    aboutSection(grid, d);
 
     return 'ok: ' + items.length + ' 项 / ' + grid.children.length + ' 组';
   }
