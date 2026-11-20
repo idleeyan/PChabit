@@ -1007,7 +1007,11 @@ fn tick_loop() {
                 let app2 = app.clone();
                 let app3 = app.clone();
                 let _ = app2.run_on_main_thread(move || {
-                    crate::open_window_at(&app3, "app.html", "任务栏小窗点击");
+                    // 点击小窗 → 弹「实时网速 · 进程排行」浮窗（旧版 NetworkProcessWindow）；
+                    // 浮窗起不来时退回打开主窗口，保证点击有反应。
+                    if crate::open_netprocs(&app3).is_err() {
+                        crate::open_window_at(&app3, "app.html", "任务栏小窗点击");
+                    }
                 });
             }
         }

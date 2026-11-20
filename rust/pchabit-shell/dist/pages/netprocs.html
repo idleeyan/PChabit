@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>进程网速</title>
+<script src="theme-boot.js"></script>
+<link rel="stylesheet" href="theme.css" />
+<style>
+  html, body { height: 100%; }
+  body { padding: 0; overflow: hidden; }
+  .shell {
+    height: 100%; display: flex; flex-direction: column;
+    background: var(--bg);
+    border: 1px solid var(--border-hi); border-radius: 10px; overflow: hidden;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    cursor: default;
+  }
+  .bar .t { font-size: 12.5px; font-weight: 600; letter-spacing: .06em; color: var(--gold-hi); }
+  .bar .grow { flex: 1; }
+  .bar .x {
+    width: 20px; height: 20px; border: 0; border-radius: 5px; cursor: pointer;
+    background: transparent; color: var(--mute); font-size: 13px; line-height: 1;
+  }
+  .bar .x:hover { background: var(--gold-soft); color: var(--gold-hi); }
+
+  .totals { display: flex; gap: 16px; padding: 10px 14px 8px; }
+  .tot { min-width: 0; }
+  .tot .n { font-size: 10px; color: var(--mute); letter-spacing: .06em; }
+  .tot .v {
+    font-family: var(--font-display); font-size: 17px; font-weight: 600;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    background: var(--grad-gold); -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .tot .v.sm { font-size: 13px; }
+
+  .head, .row {
+    display: grid; grid-template-columns: 1fr 74px 74px 78px; gap: 6px;
+    padding: 4px 14px; align-items: center;
+  }
+  .head {
+    font-size: 10px; color: var(--table-head); letter-spacing: .08em;
+    border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  }
+  .head .r, .row .r { text-align: right; }
+  .list { flex: 1; overflow-y: auto; padding-bottom: 8px; }
+  .row { font-size: 12px; border-bottom: 1px solid rgba(255,255,255,.03); }
+  .row:hover { background: rgba(255,255,255,.035); }
+  .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  .row .dn { color: var(--gold-hi); font-variant-numeric: tabular-nums; }
+  .row .up { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .row .td { color: var(--mute); font-variant-numeric: tabular-nums; font-size: 11px; }
+  .empty { padding: 18px 14px; color: var(--mute); font-size: 12px; }
+  .note { padding: 6px 14px 10px; color: var(--mute); font-size: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="bar" data-tauri-drag-region>
+    <span class="t">实时网速 · 进程排行</span>
+    <span class="pill" id="elev">—</span>
+    <span class="grow"></span>
+    <button class="x" id="btnClose" title="收起">✕</button>
+  </div>
+
+  <div class="totals">
+    <div class="tot"><div class="n">下行</div><div class="v" id="vDown">—</div></div>
+    <div class="tot"><div class="n">上行</div><div class="v" id="vUp">—</div></div>
+    <div class="tot"><div class="n">今日累计</div><div class="v sm" id="vToday">—</div></div>
+  </div>
+
+  <div class="head"><span>进程</span><span class="r">↓</span><span class="r">↑</span><span class="r">今日</span></div>
+  <div class="list" id="list"><div class="empty">读取中…</div></div>
+  <div class="note" id="note">按进程归因需要管理员权限；未提权时只能看到总量。</div>
+</div>
+
+<script>
+  function fmtRate(bps) {
+    var v = Number(bps) || 0;
+    if (v < 1024) return v.toFixed(0) + ' B/s';
+    if (v < 1024 * 1024) return (v / 1024).toFixed(1) + ' K/s';
+    if (v < 1024 * 1024 * 1024) return (v / 1048576).toFixed(2) + ' M/s';
+    return (v / 1073741824).toFixed(2) + ' G/s';
+  }
+  function fmtBytes(b) {
+    var v = Number(b) || 0;
+    if (v < 1024) return v + ' B';
+    if (v < 1048576) return (v / 1024).toFixed(0) + ' KB';
+    if (v < 1073741824) return (v / 1048576).toFixed(1) + ' MB';
+    return (v / 1073741824).toFixed(2) + ' GB';
+  }
+
+  var timer = null;
+  function pull() {
+    if (!window.__TAURI__) return;
+    window.__TAURI__.core.invoke('net_procs', { top: 30 }).then(function (d) {
+      var rate = (d && d.rate) || [];
+      var today = (d && d.today) || {};
+      var sys = (d && d.sys) || {};
+
+      var down = 0, up = 0;
+      rate.forEach(function (r) { down += r.d || 0; up += r.u || 0; });
+      document.getElementById('vDown').textContent = fmtRate(down);
+      document.getElementById('vUp').textContent = fmtRate(up);
+      document.getElementById('vToday').textContent = fmtBytes(sys.td || 0) + ' ↓';
+
+      var el = document.getElementById('elev');
+      el.textContent = d && d.elev ? '已提权' : '未提权';
+      el.className = 'pill ' + (d && d.elev ? 'good' : 'info');
+
+      // 今日累计按进程名合并进来
+      var tmap = {};
+      (today instanceof Array ? today : []).forEach(function (t) { tmap[t.n] = t; });
+
+      var list = document.getElementById('list');
+      list.innerHTML = '';
+      if (!rate.length) {
+        var e = document.createElement('div');
+        e.className = 'empty';
+        e.textContent = (d && d.estats) ? '当前没有进程在用网' : '无进程数据（需要管理员权限才能按进程归因）';
+        list.appendChild(e);
+        return;
+      }
+      rate.forEach(function (r) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        var nm = document.createElement('span');
+        nm.className = 'nm';
+        nm.textContent = r.n || ('PID ' + (r.p || ''));
+        nm.title = (r.n || '') + (r.c ? '　' + r.c + ' 个连接' : '');
+        var dn = document.createElement('span');
+        dn.className = 'r dn';
+        dn.textContent = (r.d || 0) > 0 ? fmtRate(r.d) : '—';
+        var up = document.createElement('span');
+        up.className = 'r up';
+        up.textContent = (r.u || 0) > 0 ? fmtRate(r.u) : '—';
+        var td = document.createElement('span');
+        td.className = 'r td';
+        var t = tmap[r.n];
+        td.textContent = t ? fmtBytes(t.d || 0) : '—';
+        row.appendChild(nm); row.appendChild(dn); row.appendChild(up); row.appendChild(td);
+        list.appendChild(row);
+      });
+    }).catch(function (e) {
+      document.getElementById('list').innerHTML =
+        '<div class="empty">读取失败：' + e + '</div>';
+    });
+  }
+
+  document.getElementById('btnClose').addEventListener('click', function () {
+    if (window.__TAURI__ && window.__TAURI__.window) {
+      window.__TAURI__.window.getCurrentWindow().hide();
+    }
+  });
+  // 空格 / Esc 收起
+  document.addEventListener('keydown', function (ev) {
+    if ((ev.key === 'Escape' || ev.key === ' ') && window.__TAURI__ && window.__TAURI__.window) {
+      window.__TAURI__.window.getCurrentWindow().hide();
+    }
+  });
+
+  pull();
+  timer = setInterval(pull, 1000);
+  window.addEventListener('beforeunload', function () { if (timer) clearInterval(timer); });
+</script>
+</body>
+</html>

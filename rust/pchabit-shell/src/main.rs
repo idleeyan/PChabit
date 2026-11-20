@@ -264,6 +264,81 @@ fn payload_hardware(report: &serde_json::Value) -> serde_json::Value {
 ///
 /// 分钟数保留 1 位小数，与 C# 的 `Math.Round(minutes, 1)` 一致。
 /// 应用搜索下沉到数据层：分类页进程很多时由这里过滤，不再让前端全量过一遍。
+/// 进程网速排行：直接问 netd 要快照（netd 每连接一线程，可以并发查，不影响宿主那条连接）。
+/// 返回 `{elev, sys:{su,sd,tu,td}, rate:[{n,p,u,d,c,su,sd}], today:[{n,u,d}]}`。
+#[tauri::command]
+fn net_procs(top: usize) -> Result<serde_json::Value, String> {
+    let mut p = pchabit_collect::netd::Pipe::connect(3)
+        .ok_or_else(|| "netd 未连接（守护进程没起）".to_string())?;
+    let text = p
+        .cmd(&format!("SNAP {}", top.clamp(1, 80)))
+        .ok_or_else(|| "netd 无响应".to_string())?;
+    serde_json::from_str::<serde_json::Value>(&text).map_err(|e| format!("快照解析失败：{e}"))
+}
+
+/// 读日志文件尾部若干行：日志面板用。
+/// 壳与采集宿主都写同一个文件，所以这里能一次看到两侧。
+#[tauri::command]
+fn recent_logs(lines: usize) -> serde_json::Value {
+    let path = std::env::temp_dir().join("pchabit-shell.log");
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let all: Vec<&str> = text.lines().collect();
+    let n = lines.clamp(1, 300);
+    let start = all.len().saturating_sub(n);
+    serde_json::json!({
+        "lines": &all[start..],
+        "total": all.len(),
+    })
+}
+
+/// 打开/收起「进程网速」浮窗（旧版 `NetworkProcessWindow`）。
+/// 无边框、置顶、不进任务栏，失焦自动收起；位置贴主屏右下（任务栏小窗附近）。
+pub(crate) fn open_netprocs(app: &tauri::AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("netprocs") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let (w, h) = (430.0_f64, 560.0_f64);
+    let (mut x, mut y) = (900.0_f64, 240.0_f64);
+    if let Ok(Some(m)) = app.primary_monitor() {
+        let scale = m.scale_factor();
+        let pos = m.position();
+        let size = m.size();
+        x = pos.x as f64 / scale + size.width as f64 / scale - w - 18.0;
+        y = pos.y as f64 / scale + size.height as f64 / scale - h - 72.0;
+    }
+    let win = tauri::WebviewWindowBuilder::new(
+        app,
+        "netprocs",
+        tauri::WebviewUrl::App("pages/netprocs.html".into()),
+    )
+    .title("实时网速 · 进程排行")
+    .inner_size(w, h)
+    .position(x, y)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .initialization_script(&inject_script())
+    .build()
+    .map_err(|e| format!("创建浮窗失败：{e}"))?;
+
+    let _ = win.set_focus();
+    let w2 = win.clone();
+    let created = std::time::Instant::now();
+    win.on_window_event(move |ev| {
+        if let tauri::WindowEvent::Focused(false) = ev {
+            // 新窗口刚建好时可能先收到一次失焦，800ms 内不响应，否则会「一闪就没」
+            if created.elapsed().as_millis() > 800 {
+                let _ = w2.hide();
+            }
+        }
+    });
+    log_line("[浮窗] 进程网速排行已打开");
+    Ok(())
+}
+
 /// 用系统默认浏览器打开链接（旧版 `UrlLauncher` 的等价实现）。
 /// 只放行 http/https，避免被页面上任意字符串当成 shell 命令执行。
 #[tauri::command]
@@ -1637,7 +1712,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.37";
+const VERSION: &str = "4.12.38";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -2082,7 +2157,9 @@ fn main() {
             export_data,
             app_search,
             app_icons,
-            open_url
+            open_url,
+            net_procs,
+            recent_logs
         ])
         .on_page_load(|webview, payload| {
             let stage = match payload.event() {
@@ -2126,6 +2203,20 @@ fn main() {
                     procs.len(),
                     t0.elapsed().as_secs_f64() * 1000.0
                 ));
+
+                // 自检：宿主已占一条 netd 连接，这里再开一条，确认「浮窗查询」不会抢不到。
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                match net_procs(30) {
+                    Ok(v) => {
+                        let n = v
+                            .get("rate")
+                            .and_then(|r| r.as_array())
+                            .map(|a| a.len())
+                            .unwrap_or(0);
+                        log_line(&format!("[自检] netd 并发查询正常：{n} 个进程在用网"));
+                    }
+                    Err(e) => log_line(&format!("[自检] netd 并发查询失败：{e}")),
+                }
             });
 
             // 单实例端口的服务端：第二个进程点快捷方式时发 "SHOW"，这里把窗口亮出来

@@ -38,6 +38,16 @@ td.num { color:var(--dim); font-variant-numeric:tabular-nums; }
   background:var(--surface-3); border:1px solid var(--border); color:var(--dim);
   font-size:10px; font-weight:600; line-height:1; }
 .appcell .tx { min-width:0; }
+
+  /* 分类详情弹层（旧版 CategoryDetailDialog） */
+  .cmask { position:fixed; inset:0; background:rgba(0,0,0,.58); display:flex;
+    align-items:center; justify-content:center; z-index:80; }
+  .cbox { width:min(600px,92vw); max-height:76vh; overflow:auto; background:var(--surface);
+    border:1px solid var(--border-hi); border-radius:12px; padding:15px 17px 16px;
+    box-shadow:var(--shadow); }
+  .cbox h3 { margin:0 0 3px; font-size:14px; letter-spacing:.04em; color:var(--gold-hi); }
+  .cbox .sub2 { color:var(--mute); font-size:11px; margin-bottom:11px; }
+  .cbox .x2 { position:absolute; right:14px; top:12px; }
 .tag { font-size:9px; color:var(--mute); border:1px solid var(--border); border-radius:4px;
     padding:0 4px; margin-left:4px; }
 select { background:var(--surface-3); border:1px solid var(--border); color:var(--text);
@@ -101,6 +111,80 @@ tr:hover td { background:var(--surface); }
     return Math.floor(m / 60) + ' 小时 ' + (m % 60) + ' 分';
   }
 
+  /// 分类详情：该分类下的应用、时长与占比（旧版 CategoryDetailDialog 的等价实现）
+  function showCategoryDetail(c, apps) {
+    var list = apps.filter(function (a) { return (a.category || '') === c.name; })
+      .sort(function (a, b) { return (b.minutes || 0) - (a.minutes || 0); });
+    var total = list.reduce(function (s, a) { return s + (a.minutes || 0); }, 0);
+    var allTotal = apps.reduce(function (s, a) { return s + (a.minutes || 0); }, 0);
+
+    var mask = document.createElement('div');
+    mask.className = 'cmask';
+    var box = document.createElement('div');
+    box.className = 'cbox';
+    box.style.position = 'relative';
+
+    var h = document.createElement('h3');
+    h.textContent = (c.icon || '') + ' ' + c.name;
+    var sub = document.createElement('div');
+    sub.className = 'sub2';
+    sub.textContent = list.length + ' 个应用 · 合计 ' + fmtMins(total) +
+      ' · 占全部 ' + (allTotal > 0 ? (total / allTotal * 100).toFixed(1) : '0.0') + '%';
+    box.appendChild(h);
+    box.appendChild(sub);
+
+    var close = document.createElement('button');
+    close.className = 'btn btn-ghost x2';
+    close.textContent = '关闭';
+    close.addEventListener('click', function () { mask.remove(); });
+    box.appendChild(close);
+
+    if (!list.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = '这个分类下还没有应用（可在表格里给应用指定分类）';
+      box.appendChild(empty);
+    } else {
+      var tb = document.createElement('table');
+      var thead = document.createElement('thead');
+      var trh = document.createElement('tr');
+      ['应用', '进程', '时长', '占比'].forEach(function (name, i) {
+        var th = document.createElement('th');
+        th.textContent = name;
+        if (i >= 2) th.className = 'r';
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tb.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      list.forEach(function (a) {
+        var tr = document.createElement('tr');
+        var td1 = document.createElement('td');
+        td1.textContent = a.appName || a.processName;
+        var td2 = document.createElement('td');
+        td2.className = 'proc';
+        td2.textContent = a.processName;
+        var td3 = document.createElement('td');
+        td3.className = 'r';
+        td3.textContent = fmtMins(a.minutes);
+        var td4 = document.createElement('td');
+        td4.className = 'r';
+        td4.textContent = total > 0 ? ((a.minutes || 0) / total * 100).toFixed(1) + '%' : '—';
+        [td1, td2, td3, td4].forEach(function (td) { tr.appendChild(td); });
+        tbody.appendChild(tr);
+      });
+      tb.appendChild(tbody);
+      box.appendChild(tb);
+    }
+
+    mask.appendChild(box);
+    mask.addEventListener('click', function (ev) { if (ev.target === mask) mask.remove(); });
+    document.addEventListener('keydown', function esc(ev) {
+      if (ev.key === 'Escape') { mask.remove(); document.removeEventListener('keydown', esc); }
+    });
+    document.body.appendChild(mask);
+  }
+
   function render(d) {
     DATA = d;
     var cats = (d && d.categories) || [];
@@ -120,20 +204,28 @@ tr:hover td { background:var(--surface); }
       dot.className = 'dot';
       dot.style.background = c.color || '#666';
       chip.appendChild(dot);
-      chip.appendChild(document.createTextNode((c.icon || '') + ' ' + c.name));
+      var cname = document.createElement('span');
+      cname.textContent = (c.icon || '') + ' ' + c.name;
+      cname.style.cursor = 'pointer';
+      cname.title = '查看该分类下的应用明细';
+      cname.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        showCategoryDetail(c, apps);
+      });
+      chip.appendChild(cname);
       if (c.active) {
         var off = document.createElement('button');
         off.className = 'x';
         off.textContent = '×';
         off.title = '停用这个分类（只置为不启用，不删数据）';
-        off.addEventListener('click', function () { toggleActive(c, false); });
+        off.addEventListener('click', function (ev) { ev.stopPropagation(); toggleActive(c, false); });
         chip.appendChild(off);
       } else {
         var on = document.createElement('button');
         on.className = 'on';
         on.textContent = '启用';
         on.title = '重新启用';
-        on.addEventListener('click', function () { toggleActive(c, true); });
+        on.addEventListener('click', function (ev) { ev.stopPropagation(); toggleActive(c, true); });
         chip.appendChild(on);
       }
       chipBox.appendChild(chip);

@@ -50,6 +50,24 @@
     font-family:inherit; transition:border-color .16s, color .16s; }
   header button:hover { border-color:var(--gold); color:var(--gold-hi); }
   #frame { flex:1; border:0; width:100%; background:var(--bg); }
+  /* ---------- 日志抽屉 ---------- */
+  .drawer {
+    position:fixed; right:0; top:0; bottom:0; width:min(600px,94vw); z-index:70;
+    background:var(--surface); border-left:1px solid var(--border-hi);
+    display:flex; flex-direction:column; transform:translateX(101%);
+    transition:transform .18s ease; box-shadow:var(--shadow);
+  }
+  .drawer.open { transform:none; }
+  .drawer .dh { display:flex; align-items:center; gap:8px; padding:10px 14px;
+    border-bottom:1px solid var(--border); }
+  .drawer .dh b { font-size:12.5px; letter-spacing:.06em; color:var(--gold-hi); font-weight:600; }
+  .drawer .dh .grow { flex:1; }
+  .drawer pre { flex:1; margin:0; padding:10px 14px; overflow:auto;
+    font:11.5px/1.55 Consolas,"Cascadia Mono","Microsoft YaHei",monospace;
+    color:var(--dim); white-space:pre-wrap; word-break:break-all; }
+  .drawer pre::-webkit-scrollbar { width:8px; }
+  .drawer pre::-webkit-scrollbar-thumb { background:var(--border-hi); border-radius:4px; }
+
   /* ---------- 配色切换 ---------- */
   .themebox { position:relative; }
   .themebox > button { display:inline-flex; align-items:center; gap:6px; }
@@ -113,12 +131,54 @@
           <div class="trow" id="tAccents"></div>
         </div>
       </div>
+      <button id="btnLogs" title="查看运行日志（壳 + 采集）">日志</button>
       <button id="refresh" title="重新查库并重算五页载荷">刷新</button>
     </header>
     <iframe id="frame"></iframe>
   </main>
 </div>
+
+<div class="drawer" id="drawer">
+  <div class="dh">
+    <b>运行日志</b>
+    <span class="pill info" id="logHint">壳 + 采集 · 自动刷新</span>
+    <span class="grow"></span>
+    <button class="btn btn-ghost" id="btnLogClose">关闭</button>
+  </div>
+  <pre id="logBody">点「日志」后再点一次可收起。</pre>
+</div>
 <script>
+  // ---------- 日志抽屉 ----------
+  var LOG_OPEN = false;
+  var LOG_TIMER = null;
+
+  function refreshLogs() {
+    if (!window.__TAURI__) return;
+    window.__TAURI__.core.invoke('recent_logs', { lines: 150 }).then(function (d) {
+      var pre = document.getElementById('logBody');
+      var lines = (d && d.lines) || [];
+      pre.textContent = lines.length ? lines.join('\n') : '（还没有日志）';
+      pre.scrollTop = pre.scrollHeight;
+      var hint = document.getElementById('logHint');
+      if (hint) hint.textContent = '共 ' + ((d && d.total) || 0) + ' 行 · 每 3 秒刷新';
+    }).catch(function (e) {
+      document.getElementById('logBody').textContent = '读取日志失败：' + e;
+    });
+  }
+
+  function toggleLogs(force) {
+    var drawer = document.getElementById('drawer');
+    LOG_OPEN = (typeof force === 'boolean') ? force : !LOG_OPEN;
+    drawer.classList.toggle('open', LOG_OPEN);
+    if (LOG_OPEN) {
+      refreshLogs();
+      if (!LOG_TIMER) LOG_TIMER = setInterval(refreshLogs, 3000);
+    } else if (LOG_TIMER) {
+      clearInterval(LOG_TIMER);
+      LOG_TIMER = null;
+    }
+  }
+
   // ---------- 配色方案 ----------
   var THEMES = [
     { k: 'gold', n: '鎏金暗夜' }, { k: 'graphite', n: '石墨灰蓝' },
@@ -203,6 +263,13 @@
     var t = (injected && injected.theme) || (ls && ls.t) || 'gold';
     var a = (injected && injected.accent) || (ls && ls.a) || 'auto';
     applyTheme(t, a, false);
+    var blog = document.getElementById('btnLogs');
+    if (blog) blog.onclick = function (e) { e.stopPropagation(); toggleLogs(); };
+    var blogc = document.getElementById('btnLogClose');
+    if (blogc) blogc.onclick = function () { toggleLogs(false); };
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && LOG_OPEN) toggleLogs(false);
+    });
     var btn = document.getElementById('btnTheme');
     var pop = document.getElementById('themePop');
     if (btn) btn.onclick = function (e) { e.stopPropagation(); pop.classList.toggle('open'); };

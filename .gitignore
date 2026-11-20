@@ -234,3 +234,4 @@ rust/pchabit-shell/dist/pages/*
 !rust/pchabit-shell/dist/pages/theme.css
 !rust/pchabit-shell/dist/pages/tokens.css
 !rust/pchabit-shell/dist/pages/theme-boot.js
+!rust/pchabit-shell/dist/pages/netprocs.html
