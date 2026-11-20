@@ -251,7 +251,7 @@ li:last-child { border-bottom:0; }
       line.appendChild(el('span', null, s.category));
       line.appendChild(el('span', 'muted', (s.percentage || 0).toFixed(1) + '% · ' + fmtMins(s.minutes)));
       box.appendChild(line);
-      var bar = el('div', 'bar');
+      var bar = el('div', 'pbar');
       var fill = el('i');
       fill.style.width = Math.max(2, (s.percentage || 0) / maxPct * 100) + '%';
       bar.appendChild(fill);

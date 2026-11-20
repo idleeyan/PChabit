@@ -181,9 +181,9 @@
 
   // ---------- 配色方案 ----------
   var THEMES = [
-    { k: 'gold', n: '鎏金暗夜' }, { k: 'graphite', n: '石墨灰蓝' },
-    { k: 'warm', n: '暖棕纸墨' }, { k: 'slate', n: '青灰极简' },
-    { k: 'azure', n: '蓝白（浅色）' }
+    { k: 'azure', n: '蓝白（默认）' }, { k: 'gold', n: '鎏金暗夜' },
+    { k: 'graphite', n: '石墨灰蓝' }, { k: 'warm', n: '暖棕纸墨' },
+    { k: 'slate', n: '青灰极简' }
   ];
   var ACCENTS = [
     { k: 'auto', n: '跟随方案', c: '' },
@@ -192,7 +192,7 @@
     { k: 'violet', n: '紫', c: '#a98bd6' }, { k: 'green', n: '绿', c: '#5fb98a' },
     { k: 'amber', n: '琥珀', c: '#e0a94b' }, { k: 'rose', n: '玫', c: '#d17e9a' }
   ];
-  var TH = { theme: 'gold', accent: 'auto' };
+  var TH = { theme: 'azure', accent: 'auto' };
 
   /// 把当前配色写到 iframe 的 <html> 上（同源可直接改；跨帧失败就静默跳过）
   function syncFrameTheme() {
@@ -261,7 +261,7 @@
     var injected = window.__THEME__ || null;
     var ls = null;
     try { ls = { t: localStorage.getItem('pch.theme'), a: localStorage.getItem('pch.accent') }; } catch (e) { }
-    var t = (injected && injected.theme) || (ls && ls.t) || 'gold';
+    var t = (injected && injected.theme) || (ls && ls.t) || 'azure';
     var a = (injected && injected.accent) || (ls && ls.a) || 'auto';
     applyTheme(t, a, false);
     var blog = document.getElementById('btnLogs');

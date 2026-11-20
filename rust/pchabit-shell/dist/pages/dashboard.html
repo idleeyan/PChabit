@@ -297,7 +297,7 @@
       tr.appendChild(el('td', 'nm', a.name));
       tr.appendChild(el('td', 'r', fmtM(a.minutes)));
       var tdS = el('td', 'r', (a.share || 0).toFixed(1) + '%');
-      var bar = el('div', 'bar');
+      var bar = el('div', 'pbar');
       bar.style.cssText = 'margin-top:4px;width:64px;margin-left:auto';
       var fill = el('i');
       fill.style.width = Math.max(2, Math.min(100, a.share || 0)) + '%';

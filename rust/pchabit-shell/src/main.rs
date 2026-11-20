@@ -1641,7 +1641,7 @@ fn payload_settings() -> serde_json::Value {
     // 配色方案：老设置文件里没有这两个键，补默认值让设置页能看到（用户改过才落盘）
     if let Some(o) = v.as_object_mut() {
         if !o.contains_key("ThemePreset") {
-            o.insert("ThemePreset".to_string(), serde_json::json!("gold"));
+            o.insert("ThemePreset".to_string(), serde_json::json!("azure"));
         }
         if !o.contains_key("ThemeAccent") {
             o.insert("ThemeAccent".to_string(), serde_json::json!("auto"));
@@ -1730,7 +1730,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.42";
+const VERSION: &str = "4.12.43";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1913,13 +1913,13 @@ fn make_window(
 }
 
 /// 注入脚本（窗口创建时才需要，故做成函数，托盘开窗时现算）。
-/// 读配色方案（settings.json 的 `ThemePreset` / `ThemeAccent`，缺省 `gold`）。
+/// 读配色方案（settings.json 的 `ThemePreset` / `ThemeAccent`，缺省 `azure` / `auto`）。
 /// 页面侧的 `theme-boot.js` 会据此给 `<html>` 打 `data-theme` / `data-accent`。
 fn read_theme_preset() -> (String, String) {
     let p = std::path::PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default())
         .join("PChabit")
         .join("settings.json");
-    let fallback = ("gold".to_string(), "auto".to_string());
+    let fallback = ("azure".to_string(), "auto".to_string());
     let Ok(text) = std::fs::read_to_string(p) else {
         return fallback;
     };
@@ -1930,7 +1930,7 @@ fn read_theme_preset() -> (String, String) {
         v.get(k)
             .and_then(|x| x.as_str())
             .filter(|s| !s.is_empty())
-            .unwrap_or(if k == "ThemeAccent" { "auto" } else { "gold" })
+            .unwrap_or(if k == "ThemeAccent" { "auto" } else { "azure" })
             .to_string()
     };
     (get("ThemePreset"), get("ThemeAccent"))

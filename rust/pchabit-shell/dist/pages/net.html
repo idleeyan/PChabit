@@ -131,7 +131,7 @@ thead th.r, td.r { text-align:right; }
       var tr = document.createElement('tr');
       var td = el('td');
       td.appendChild(el('span', 'nm', x.name));
-      var bar = el('div', 'bar');
+      var bar = el('div', 'pbar');
       var fill = el('i');
       fill.style.width = Math.max(2, ((x.share || 0) / maxShare) * 100) + '%';
       bar.appendChild(fill);

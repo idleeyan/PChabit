@@ -172,8 +172,8 @@ input:focus { outline:none; border-color:var(--gold); }
   // 配色方案：与 tokens.css 的 data-theme / data-accent 取值一一对应
   var ENUM = {
     ThemePreset: [
-      ['gold', '鎏金暗夜'], ['graphite', '石墨灰蓝'],
-      ['warm', '暖棕纸墨'], ['slate', '青灰极简'], ['azure', '蓝白（浅色）']
+      ['azure', '蓝白（默认·浅色）'], ['gold', '鎏金暗夜'],
+      ['graphite', '石墨灰蓝'], ['warm', '暖棕纸墨'], ['slate', '青灰极简']
     ],
     ThemeAccent: [
       ['auto', '跟随方案'], ['gold', '金'], ['copper', '铜'], ['blue', '蓝'], ['cyan', '青'],
@@ -181,7 +181,7 @@ input:focus { outline:none; border-color:var(--gold); }
     ]
   };
   // 当前选择，改完通过 postMessage 通知导航壳即时切换
-  var THEME_SEL = { theme: 'gold', accent: 'auto' };
+  var THEME_SEL = { theme: 'azure', accent: 'auto' };
 
   // 已决定不做的项：温度受 HVCI 限制（4.11.1 删除）、CollectInShell 是旧架构
   var DEPRECATED = {

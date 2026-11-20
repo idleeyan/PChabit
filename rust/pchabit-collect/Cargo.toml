@@ -1,6 +1,6 @@
 [package]
 name = "pchabit-collect"
-version = "4.12.42"
+version = "4.12.43"
 edition = "2021"
 description = "PChabit 采集宿主：托管 netd、采样硬件/网络、记录应用会话与键鼠，直接写 SQLite"
 

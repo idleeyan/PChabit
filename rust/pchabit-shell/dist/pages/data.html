@@ -8,7 +8,8 @@
 <style>
   .row { display:grid; grid-template-columns:1.05fr .95fr; gap:var(--gap); align-items:start; }
   @media (max-width:1020px){ .row{ grid-template-columns:1fr; } }
-  .tb { color:#9dc0ff; }
+  /* 表名：写死淡蓝在白底上只有 1.84:1，改用主题的名字色（蓝白下深蓝、深色下亮金） */
+  .tb { color:var(--name-color); font-weight:500; }
   .ok { color:var(--green); }
   .bad { color:var(--red); }
   .act-row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
@@ -57,7 +58,7 @@
   </div>
 
   <div id="davResult" style="margin-top:10px;padding:9px 12px;border-radius:9px;
-    background:#0b1424;border:1px solid var(--border);font-size:12.5px;color:var(--dim);
+    background:var(--surface-2);border:1px solid var(--border);font-size:13px;color:var(--text);
     min-height:18px;font-variant-numeric:tabular-nums">
     点上面任一按钮开始；结果会显示在这里。
   </div>
@@ -145,7 +146,8 @@
     backups.forEach(function (b) {
       var tr = document.createElement('tr');
       var td = el('td');
-      var name = String(b.path || '').split('\\').pop();
+      // 兼容不同来源的记录：path/name 都可能缺，缺了给占位而不是留白
+      var name = String(b.path || b.name || '').split('\\').pop() || '（无文件名）';
       td.appendChild(el('span', b.exists ? 'ok' : 'bad', name));
       td.title = (b.path || '') + (b.exists ? '' : '（文件已不存在）') +
         (b.automatic ? ' · 自动' : ' · 手动') + (b.description ? ' · ' + b.description : '');
@@ -224,9 +226,9 @@
     function davRow(k, v) {
       var tr = document.createElement('tr');
       var td1 = el('td', null, k);
-      td1.style.cssText = 'color:var(--mute);width:120px;white-space:nowrap';
+      td1.style.cssText = 'color:var(--dim);width:120px;white-space:nowrap';
       var td2 = el('td', null, v);
-      td2.style.cssText = 'color:#e2e8f0;word-break:break-all';
+      td2.style.cssText = 'color:var(--text);word-break:break-all';
       tr.appendChild(td1); tr.appendChild(td2);
       return tr;
     }
