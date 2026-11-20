@@ -3,68 +3,50 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 仪表盘</title>
+<link rel="stylesheet" href="theme.css" />
 <style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
-  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
-  h1 { font-size:15px; font-weight:600; margin:0; }
-  .hint { color:#94a3b8; font-size:11px; }
+  .row { display:grid; grid-template-columns:1.12fr .88fr; gap:var(--gap); align-items:start; }
+  .row > div { display:flex; flex-direction:column; gap:var(--gap); }
+  @media (max-width:1020px){ .row{ grid-template-columns:1fr; } }
 
-  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); gap:8px; margin-bottom:14px; }
-  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
-  .kpi .n { color:#94a3b8; font-size:10px; }
-  .kpi .v { font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
+  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; align-items:end; height:74px; }
+  .hours i {
+    display:block; border-radius:3px 3px 1px 1px; min-height:2px;
+    background:linear-gradient(180deg, #79a8ff, #2f66d8);
+    transition:filter .15s;
+  }
+  .hours i:hover { filter:brightness(1.25); }
+  .hours i.zero { background:#182640; }
+  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; margin-top:5px;
+    font-size:9.5px; color:var(--mute); text-align:center; }
 
-  .row { display:grid; grid-template-columns:1.1fr .9fr; gap:12px; align-items:start; }
-  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
-  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
-  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
-    display:flex; align-items:center; gap:8px; }
-  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
-
-  table { width:100%; border-collapse:collapse; }
-  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
-    border-bottom:1px solid #223049; white-space:nowrap; }
-  thead th.r, td.r { text-align:right; }
-  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
-  tbody tr:hover { background:#16233a; }
-  .nm { color:#93c5fd; }
-
-  .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; align-items:end; height:64px; }
-  .hours i { display:block; border-radius:2px 2px 0 0; background:#2563eb; min-height:1px; }
-  .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:2px; margin-top:2px;
-    font-size:9px; color:#475569; text-align:center; }
-
-  .trend { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .trend { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
   .trend > div { text-align:center; }
-  .trend .b { height:46px; display:flex; align-items:flex-end; }
-  .trend .b i { display:block; width:100%; background:#2563eb; border-radius:3px; min-height:2px; }
-  .trend .l { font-size:9px; color:#64748b; }
-  .trend .v { font-size:9px; color:#94a3b8; }
-  .empty { color:#64748b; padding:8px 0; }
+  .trend .v { font-size:9.5px; color:var(--dim); margin-bottom:3px; font-variant-numeric:tabular-nums; }
+  .trend .b { height:52px; display:flex; align-items:flex-end; }
+  .trend .b i { display:block; width:100%; border-radius:4px 4px 2px 2px; min-height:3px;
+    background:linear-gradient(180deg, #79a8ff, #2f66d8); }
+  .trend > div.today .b i { background:linear-gradient(180deg, #34d399, #12a97a); }
+  .trend .l { font-size:9.5px; color:var(--mute); margin-top:4px; }
 
-  .hw { margin-top:12px; }
-  .hwgrid { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:14px; align-items:start; }
-  @media (max-width:1000px){ .hwgrid{ grid-template-columns:1fr; } }
-  #hc { width:100%; height:190px; display:block; background:#111827;
-    border:1px solid #1f2937; border-radius:8px; }
-  .legend { display:flex; gap:14px; margin-top:6px; color:#94a3b8; font-size:10px; }
-  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+  .hwgrid { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; align-items:start; }
+  @media (max-width:1020px){ .hwgrid{ grid-template-columns:1fr; } }
+  #hc { width:100%; height:196px; display:block; }
 </style>
 </head>
 <body>
-<header>
+<header class="page-head">
   <h1>仪表盘</h1>
-  <span class="hint" id="meta">加载中…</span>
+  <div class="sub" id="meta">加载中…</div>
+  <div class="grow"></div>
+  <span class="pill info" id="hwPill">硬件采样</span>
 </header>
 
 <div class="kpis" id="kpis"></div>
 
 <div class="row">
   <div>
-    <section style="margin-bottom:12px">
+    <section class="card">
       <h2>今日应用排行 <em>Top 8 · 按活跃时长</em></h2>
       <table>
         <thead><tr><th>应用</th><th class="r">时长</th><th class="r">占比</th></tr></thead>
@@ -72,7 +54,7 @@
       </table>
     </section>
 
-    <section>
+    <section class="card">
       <h2>24 小时活跃 <em>按会话开始时间累计分钟</em></h2>
       <div class="hours" id="hours"></div>
       <div class="hlbl" id="hlbl"></div>
@@ -80,12 +62,12 @@
   </div>
 
   <div>
-    <section style="margin-bottom:12px">
+    <section class="card">
       <h2>近 7 天 <em>活跃分钟</em></h2>
       <div class="trend" id="trend"></div>
     </section>
 
-    <section>
+    <section class="card">
       <h2>今日节奏</h2>
       <table>
         <thead><tr><th>项目</th><th class="r">值</th></tr></thead>
@@ -95,27 +77,25 @@
   </div>
 </div>
 
-<div class="hw">
-  <section>
-    <h2>硬件趋势 <em id="hwMeta">近 7 天 · 按小时（CPU / GPU / 温度）</em></h2>
-    <div class="hwgrid">
-      <div>
-        <canvas id="hc"></canvas>
-        <div class="legend">
-          <span><i class="dot" style="background:#10B981"></i>CPU %</span>
-          <span><i class="dot" style="background:#0EA5E9"></i>GPU %</span>
-          <span><i class="dot" style="background:#F59E0B"></i>GPU 温度（右轴）</span>
-        </div>
-      </div>
-      <div>
-        <table>
-          <thead><tr><th>高负载应用</th><th class="r">CPU</th><th class="r">GPU</th><th class="r">峰温</th></tr></thead>
-          <tbody id="hwapps"></tbody>
-        </table>
+<section class="card hw" style="margin-top:var(--gap)">
+  <h2>硬件趋势 <em id="hwMeta">近 7 天 · 按小时（CPU / GPU / 温度）</em></h2>
+  <div class="hwgrid">
+    <div>
+      <canvas id="hc"></canvas>
+      <div class="legend">
+        <span><i class="dot" style="background:#34d399"></i>CPU %</span>
+        <span><i class="dot" style="background:#4f8cff"></i>GPU %</span>
+        <span><i class="dot" style="background:#fbbf24"></i>GPU 温度（右轴）</span>
       </div>
     </div>
-  </section>
-</div>
+    <div>
+      <table>
+        <thead><tr><th>高负载应用</th><th class="r">CPU</th><th class="r">GPU</th><th class="r">峰温</th></tr></thead>
+        <tbody id="hwapps"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
 <script>
   function fmtM(v) {
@@ -132,16 +112,16 @@
   }
   function n0(v) { return (v == null ? '—' : Math.round(v) + '%'); }
 
-  var HW_HOURS = [];   // 缓存最近一次硬件曲线数据，窗口缩放时重画
+  var HW_HOURS = [];
   window.addEventListener('resize', function () { drawHardware(HW_HOURS); });
 
-  // 硬件趋势曲线：24 个小时桶（近 7 天按小时累计），左轴负载 %，右轴温度 °C
+  // 硬件趋势：CPU 面积 + GPU 折线 + 温度虚线（右轴）
   function drawHardware(hours) {
     var cv = document.getElementById('hc');
     if (!cv || !cv.getContext) return;
     var dpr = window.devicePixelRatio || 1;
     var cssW = Math.max(320, cv.clientWidth || 860);
-    var cssH = 190;
+    var cssH = 196;
     cv.width = Math.round(cssW * dpr);
     cv.height = Math.round(cssH * dpr);
     var ctx = cv.getContext('2d');
@@ -150,58 +130,95 @@
     ctx.font = '10px "Segoe UI","Microsoft YaHei",sans-serif';
 
     if (!hours || !hours.length) {
-      ctx.fillStyle = '#64748b';
-      ctx.fillText('暂无硬件样本', 12, 22);
+      ctx.fillStyle = '#7086a6';
+      ctx.fillText('暂无硬件样本', 14, 26);
       return;
     }
 
-    var padL = 38, padR = 42, padT = 12, padB = 24;
+    var padL = 40, padR = 44, padT = 14, padB = 24;
     var plotW = cssW - padL - padR, plotH = cssH - padT - padB;
     var temps = hours.map(function (h) { return h.temp; })
       .filter(function (t) { return t != null; });
     var maxTemp = temps.length
       ? Math.max(100, Math.ceil(Math.max.apply(null, temps) / 10) * 10) : 100;
 
-    // 网格 + 左右轴刻度
+    // 网格 + 刻度
     for (var g = 0; g <= 4; g++) {
       var y = padT + plotH * g / 4;
-      ctx.strokeStyle = '#1f2937';
+      ctx.strokeStyle = 'rgba(255,255,255,0.055)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
-      ctx.fillStyle = '#64748b';
-      ctx.fillText(Math.round(100 * (1 - g / 4)) + '%', 6, y + 3);
-      var tl = Math.round(maxTemp * (1 - g / 4)) + '°';
-      ctx.fillText(tl, cssW - 30, y + 3);
+      ctx.fillStyle = '#7086a6';
+      ctx.fillText(Math.round(100 * (1 - g / 4)) + '%', 8, y + 3);
+      ctx.fillText(Math.round(maxTemp * (1 - g / 4)) + '°', cssW - 32, y + 3);
     }
 
     var n = hours.length;
     var step = plotW / Math.max(n, 1);
-    function line(key, color, scaleMax) {
+    function xAt(i) { return padL + step * i + step / 2; }
+    function yAt(v, scaleMax) { return padT + plotH * (1 - Math.min(v, scaleMax) / scaleMax); }
+
+    // CPU 面积（渐变）
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      var c = hours[i].cpu;
+      if (c == null) continue;
+      pts.push([xAt(i), yAt(c, 100)]);
+    }
+    if (pts.length > 1) {
+      var grd = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+      grd.addColorStop(0, 'rgba(52,211,153,0.34)');
+      grd.addColorStop(1, 'rgba(52,211,153,0.03)');
       ctx.beginPath();
-      var started = false;
-      for (var i = 0; i < n; i++) {
-        var v = hours[i][key];
-        if (v == null) continue;
-        var x = padL + step * i + step / 2;
-        var y = padT + plotH * (1 - Math.min(v, scaleMax) / scaleMax);
-        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
-      }
-      ctx.strokeStyle = color;
+      ctx.moveTo(pts[0][0], padT + plotH);
+      pts.forEach(function (p) { ctx.lineTo(p[0], p[1]); });
+      ctx.lineTo(pts[pts.length - 1][0], padT + plotH);
+      ctx.closePath();
+      ctx.fillStyle = grd;
+      ctx.fill();
+
+      ctx.beginPath();
+      pts.forEach(function (p, k) { k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
+      ctx.strokeStyle = '#34d399';
       ctx.lineWidth = 2;
       ctx.stroke();
     }
-    line('cpu', '#10B981', 100);
-    line('gpu', '#0EA5E9', 100);
-    line('temp', '#F59E0B', maxTemp);
 
-    // x 轴稀疏标签
-    ctx.fillStyle = '#64748b';
+    // GPU 折线
+    ctx.beginPath();
+    var started = false;
+    for (var j = 0; j < n; j++) {
+      var gv = hours[j].gpu;
+      if (gv == null) continue;
+      if (!started) { ctx.moveTo(xAt(j), yAt(gv, 100)); started = true; }
+      else ctx.lineTo(xAt(j), yAt(gv, 100));
+    }
+    ctx.strokeStyle = '#4f8cff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // 温度虚线（右轴）
+    ctx.beginPath();
+    var t0 = false;
+    for (var k2 = 0; k2 < n; k2++) {
+      var tv = hours[k2].temp;
+      if (tv == null) continue;
+      if (!t0) { ctx.moveTo(xAt(k2), yAt(tv, maxTemp)); t0 = true; }
+      else ctx.lineTo(xAt(k2), yAt(tv, maxTemp));
+    }
+    ctx.strokeStyle = 'rgba(251,191,36,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 横轴标签（稀疏）
+    ctx.fillStyle = '#7086a6';
     var every = Math.ceil(n / 12);
-    for (var i2 = 0; i2 < n; i2++) {
-      if (i2 % every !== 0) continue;
-      var x2 = padL + step * i2 + step / 2;
-      var lab = hours[i2].label || String(i2);
-      ctx.fillText(lab, x2 - 6, cssH - 7);
+    for (var m = 0; m < n; m++) {
+      if (m % every !== 0) continue;
+      var lab = hours[m].label || String(m);
+      ctx.fillText(lab, xAt(m) - 6, cssH - 7);
     }
   }
 
@@ -211,7 +228,7 @@
       return 'error';
     }
     document.getElementById('meta').textContent =
-      (d.label || '') + ' ' + (d.weekday || '') + '　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
+      (d.label || '') + ' ' + (d.weekday || '') + '　·　' + (d.ms ? d.ms.toFixed(0) + ' ms' : '');
 
     var delta = d.deltaPercent;
     var deltaTxt = (delta == null) ? '' : (delta > 0 ? '+' : '') + delta.toFixed(1) + '% 较昨日';
@@ -244,13 +261,13 @@
       var b = el('div', 'kpi');
       b.appendChild(el('div', 'n', k[0]));
       var v = el('div', 'v', k[1]);
-      if (String(k[1]).length > 9) { v.style.fontSize = '12px'; v.title = k[1]; }
+      if (String(k[1]).length > 10) { v.style.fontSize = '15px'; v.title = k[1]; }
       b.appendChild(v);
       b.appendChild(el('div', 's', k[2]));
       kp.appendChild(b);
     });
 
-    // Top 应用
+    // Top 应用（占比列带一条细进度）
     var tb = document.getElementById('apps');
     tb.innerHTML = '';
     var apps = d.topApps || [];
@@ -263,7 +280,14 @@
       var tr = document.createElement('tr');
       tr.appendChild(el('td', 'nm', a.name));
       tr.appendChild(el('td', 'r', fmtM(a.minutes)));
-      tr.appendChild(el('td', 'r', (a.share || 0).toFixed(1) + '%'));
+      var tdS = el('td', 'r', (a.share || 0).toFixed(1) + '%');
+      var bar = el('div', 'bar');
+      bar.style.cssText = 'margin-top:4px;width:64px;margin-left:auto';
+      var fill = el('i');
+      fill.style.width = Math.max(2, Math.min(100, a.share || 0)) + '%';
+      bar.appendChild(fill);
+      tdS.appendChild(bar);
+      tr.appendChild(tdS);
       tb.appendChild(tr);
     });
 
@@ -272,38 +296,34 @@
     var hlbl = document.getElementById('hlbl');
     hours.innerHTML = ''; hlbl.innerHTML = '';
     var arr = Array.isArray(d.hourly) ? d.hourly : [];
-    // 图表画不出来时不再静默：把「数据缺失 / 全 0 / 长度不对」写进结果串，壳的日志能看到
     var hourWarn = '';
     if (arr.length !== 24) {
       hourWarn += ' [hourly 长度 ' + arr.length + ']';
     } else if (arr.every(function (h) { return !h; }) && (d.totalMinutes || 0) > 0) {
       hourWarn += ' [hourly 全 0 但总时长 ' + Math.round(d.totalMinutes) + ' 分]';
     }
-    var maxV = arr.reduce(function (m, h) { return Math.max(m, h || 0); }, 1) || 1;
+    var maxV = arr.reduce(function (m2, h) { return Math.max(m2, h || 0); }, 1) || 1;
     arr.forEach(function (h, i) {
-      var bar = el('i');
-      var hh = Math.max(1, ((h || 0) / maxV) * 58);
-      bar.style.height = hh + 'px';
-      bar.style.background = (h || 0) > 0 ? '#2563eb' : '#182234';
-      bar.title = i + ':00 · ' + fmtM(h);
-      hours.appendChild(bar);
+      var bar2 = el('i', (h || 0) > 0 ? null : 'zero');
+      bar2.style.height = Math.max(2, ((h || 0) / maxV) * 66) + 'px';
+      bar2.title = i + ':00 · ' + fmtM(h);
+      hours.appendChild(bar2);
       hlbl.appendChild(el('span', null, i % 3 === 0 ? String(i) : ''));
     });
 
-    // 7 天趋势
+    // 7 天趋势（今天用绿色高亮）
     var tr2 = document.getElementById('trend');
     tr2.innerHTML = '';
     var trend = Array.isArray(d.trend) ? d.trend : [];
-    if (trend.length !== 7) {
-      hourWarn += ' [trend 长度 ' + trend.length + ']';
-    }
-    var maxD = trend.reduce(function (m, x) { return Math.max(m, x.minutes || 0); }, 1) || 1;
-    trend.forEach(function (x) {
-      var box = el('div');
+    if (trend.length !== 7) hourWarn += ' [trend 长度 ' + trend.length + ']';
+    var maxD = trend.reduce(function (m3, x) { return Math.max(m3, x.minutes || 0); }, 1) || 1;
+    var lastIdx = trend.length - 1;
+    trend.forEach(function (x, idx) {
+      var box = el('div', idx === lastIdx ? 'today' : '');
       box.appendChild(el('div', 'v', fmtM(x.minutes)));
       var b = el('div', 'b');
       var fill = el('i');
-      fill.style.height = Math.max(2, ((x.minutes || 0) / maxD) * 44) + 'px';
+      fill.style.height = Math.max(3, ((x.minutes || 0) / maxD) * 50) + 'px';
       b.appendChild(fill);
       box.appendChild(b);
       box.appendChild(el('div', 'l', x.label || ''));
@@ -334,6 +354,11 @@
     var hwHours = Array.isArray(hw.hours) ? hw.hours : [];
     document.getElementById('hwMeta').textContent =
       hw.summary || (hwHours.length ? hwHours.length + ' 个小时桶' : '暂无硬件样本');
+    var pill = document.getElementById('hwPill');
+    if (pill) {
+      pill.textContent = hwHours.length ? '近 7 天 ' + hwHours.length + ' 个小时桶' : '暂无硬件样本';
+      pill.className = 'pill ' + (hwHours.length ? 'good' : 'bad');
+    }
     HW_HOURS = hwHours;
     drawHardware(hwHours);
 
@@ -362,6 +387,16 @@
 
   window.renderDashboard = renderDashboard;
   document.addEventListener('DOMContentLoaded', function () {
+    // 样式是否真的加载了（theme.css 走 asset 协议，出错会静默变成"裸页面"，这里留一条日志）
+    try {
+      var sheets = document.styleSheets.length;
+      var themed = getComputedStyle(document.body).backgroundColor;
+      if (window.__TAURI__) {
+        window.__TAURI__.core.invoke('note', {
+          msg: 'dashboard 样式表 ' + sheets + ' 张 · body 底色 ' + themed
+        });
+      }
+    } catch (e) {}
     if (window.__DASH_DATA__) {
       try { window.__DASH_RESULT__ = renderDashboard(window.__DASH_DATA__); }
       catch (e) { window.__DASH_RESULT__ = 'error: ' + e.message; }

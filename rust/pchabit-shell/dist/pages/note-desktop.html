@@ -1,0 +1,124 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>便签</title>
+<style>
+  :root { --note: #fff8d6; --ink: #3a3320; --bar: rgba(0,0,0,.06); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    background: var(--note); color: var(--ink);
+    font: 14px/1.55 "Microsoft YaHei UI", "Segoe UI", sans-serif;
+    display: flex; flex-direction: column;
+    border-radius: 10px; border: 1px solid rgba(0,0,0,.12);
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  }
+  body.pink   { --note: #ffe3ec; }
+  body.blue   { --note: #e1f0ff; }
+  body.green  { --note: #e4f7e4; }
+  body.purple { --note: #f0e6ff; }
+  .bar {
+    height: 28px; flex: 0 0 28px; display: flex; align-items: center; gap: 6px;
+    padding: 0 8px; background: var(--bar); border-radius: 10px 10px 0 0;
+    user-select: none; cursor: move;
+  }
+  .bar .dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(0,0,0,.18); }
+  .bar .sp { flex: 1; }
+  .bar button {
+    border: 0; background: transparent; color: var(--ink); cursor: pointer;
+    font: inherit; font-size: 13px; padding: 2px 6px; border-radius: 6px;
+  }
+  .bar button:hover { background: rgba(0,0,0,.10); }
+  textarea {
+    flex: 1; width: 100%; border: 0; outline: 0; resize: none; padding: 10px 12px;
+    background: transparent; color: var(--ink); font: inherit;
+  }
+  .foot {
+    flex: 0 0 22px; font-size: 11px; color: rgba(0,0,0,.42);
+    display: flex; align-items: center; justify-content: flex-end; padding: 0 10px;
+  }
+</style>
+</head>
+<body class="yellow">
+  <div class="bar" data-tauri-drag-region>
+    <span class="dot"></span>
+    <span class="sp" data-tauri-drag-region></span>
+    <button id="pin" title="置顶">置顶</button>
+    <button id="back" title="收回列表">收回</button>
+  </div>
+  <textarea id="txt" placeholder="写点什么…" spellcheck="false"></textarea>
+  <div class="foot"><span id="state">—</span></div>
+
+<script>
+(function () {
+  var qs = new URLSearchParams(location.search);
+  var id = qs.get('note') || '';
+  var inv = (window.__TAURI__ && window.__TAURI__.core) ? window.__TAURI__.core.invoke : null;
+  var txt = document.getElementById('txt');
+  var state = document.getElementById('state');
+  var pinned = false;
+  var timer = null;
+
+  function say(s) { state.textContent = s; }
+
+  function paint(color) {
+    document.body.className = color || 'yellow';
+  }
+
+  function load() {
+    if (!inv) { say('无 IPC'); return; }
+    inv('note_get', { id: id }).then(function (n) {
+      txt.value = n.content || '';
+      pinned = !!n.pinned;
+      paint(n.color);
+      document.getElementById('pin').textContent = pinned ? '已置顶' : '置顶';
+      say('已载入');
+      // 新建空白便签时窗口一出来就把光标放进去，不用再点一下
+      txt.focus();
+      txt.setSelectionRange(txt.value.length, txt.value.length);
+    }).catch(function (e) { say('载入失败：' + e); });
+  }
+
+  function save() {
+    if (!inv || !id) return;
+    inv('notes_update', { id: id, content: txt.value }).then(function () {
+      say('已保存 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false }));
+    }).catch(function (e) { say('保存失败：' + e); });
+  }
+
+  txt.addEventListener('input', function () {
+    say('编辑中…');
+    clearTimeout(timer);
+    timer = setTimeout(save, 700);
+  });
+
+  document.getElementById('pin').addEventListener('click', function () {
+    if (!inv) return;
+    pinned = !pinned;
+    this.textContent = pinned ? '已置顶' : '置顶';
+    inv('notes_pin', { id: id, pinned: pinned })
+      .then(function () { say(pinned ? '已置顶' : '取消置顶'); })
+      .catch(function (e) { say('置顶失败：' + e); });
+  });
+
+  document.getElementById('back').addEventListener('click', function () {
+    if (!inv) return;
+    save();
+    inv('note_desktop_set', { id: id, on: false })
+      .then(function () { say('已收回'); })
+      .catch(function (e) { say('收回失败：' + e); });
+  });
+
+  // 窗口移动/缩放后由 Rust 侧回写位置；这里只做一次兜底
+  window.addEventListener('blur', function () {
+    if (inv && id) inv('note_pos', { id: id }).catch(function () {});
+  });
+
+  load();
+  window.addEventListener('beforeunload', save);
+})();
+</script>
+</body>
+</html>

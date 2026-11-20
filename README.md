@@ -18,19 +18,16 @@
 - **趋势视图**：硬件趋势图与历史对照
 - **应用 × 硬件融合画像**：查看某个应用运行期间的硬件占用情况
 - **进程级流量排行**：点击任务栏网速小窗弹出浮窗，按进程实时 ↓/↑ 排序并给出今日累计（按进程归因需管理员权限）
-- **Rust 采样内核**：进程网络采样、GPU 传感器读取、前台窗口监控由独立 Rust 进程（`rust/pchabit-netd`）承担；可用 `PCHABIT_RUST_NETSAMPLER=0` / `PCHABIT_RUST_GPU=0` / `PCHABIT_RUST_APPMON=0` 分别关闭
-- **Rust 数据面**：应用统计（查询 + 聚合 + 环比）、应用详情（会话 + 键鼠切片 + 硬件归属）、分析页计算（KPI / 日历 / 热力 / 构成 / 洞察 / 硬件画像）与 Excel 导出（xlsx 生成）全部由 `rust/pchabit-datad` 承担；统计、详情、分析页在 Rust 不可用时回退 C# 引擎，导出则直接报错（不再有 EPPlus 兜底，产品已无带许可证的表格库依赖）。可用 `PCHABIT_RUST_STATS=0` / `PCHABIT_RUST_DETAIL=0` / `PCHABIT_RUST_ANALYTICS=0` / `PCHABIT_RUST_XLSX=0` 分别关闭
+- **纯 Rust 架构（4.12.0 起）**：全仓只有四个 Rust crate，无 .NET / Windows App SDK 依赖——`pchabit-shell`（Tauri 2 壳）、`pchabit-collect`（采集宿主）、`pchabit-datad`（只读数据面 + xlsx 导出）、`pchabit-netd`（采样内核）。生产形态是两个进程：`PChabitShell.exe` + `pchabit-netd.exe`，前两者以 path 依赖直接链接，不再有子进程 IPC
+- **Rust 采样内核**：进程网络采样（iphlpapi）、GPU 传感器读取（NVML）、前台窗口监控由独立进程 `pchabit-netd.exe` 承担，命名管道行协议对外提供快照
+- **Rust 数据面**：应用统计（查询 + 聚合 + 环比）、应用详情（会话 + 键鼠切片 + 硬件归属）、分析页计算（KPI / 日历 / 热力 / 构成 / 洞察 / 硬件画像）与 Excel 导出（`rust_xlsxwriter` 生成，不再依赖 EPPlus 等带许可证的表格库）全部由 `pchabit-datad` 承担
 
-- **Tauri 壳预览（P4-2）**：发布包内 `Shell\PChabitShell.exe` 是一个 Tauri 2 的单窗口壳，16 个页面（仪表盘 / 硬件趋势 / 每小时活动 / 时间线 / 分类构成 / 应用切换关系 / 活动分析 / 网页访问 / 网络流量 / 键鼠活动 / 历史报告 / 分类管理 / 应用详情 / 设置概览 / 便签 / 数据管理），数据由壳内的 Rust 直接读 SQLite，16 页冷启动约 0.44 s、体积 5.0 MB。分类可在壳里直接改；应用详情按进程点选、单次计算约 26 ms；网页访问 7 天载荷约 15 ms；网络流量、键鼠活动、历史报告、数据管理均为只读（数据管理不提供备份/清理）。仪表盘为默认首页。默认入口仍是 WPF 版。
+- **主程序**：发布包内 `Shell\PChabitShell.exe` 是 Tauri 2 的单窗口壳，14 个导航页（仪表盘 / 时间线 / 分类构成 / 应用切换关系 / 活动分析 / 网页访问 / 网络流量 / 键鼠活动 / 历史报告 / 分类管理 / 应用详情 / 设置 / 便签 / 数据管理），数据由壳内的 Rust 直接读 SQLite，页面载荷在窗口创建时一次算好注入，渲染阶段不走 IPC。分类可在壳里直接改；应用详情按进程点选；网络流量、键鼠活动、历史报告为只读；数据管理提供备份 / 清理 / WebDAV 同步。仪表盘为默认首页。
 
-- **采集宿主（P5，4.3.0 → 4.6.0 补齐）**：`Shell\PChabitShell.exe --host` 启动时壳**自己当采集宿主**——netd 托管、CPU/内存/GPU/网络/磁盘分钟采样、前台应用会话、键鼠低层钩子、浏览器网页会话（自建 WebSocket `127.0.0.1:8765`，接现有扩展）、例外日汇总（`DailySummaries` / `AppDailyStats`）与落库全部在 Rust 侧完成，关窗时自动收口（最后一分钟、当前应用会话、键鼠增量、在场网页会话都会落库）。单写者约束：`PChabit.exe` 在跑时宿主拒绝启动（两个宿主同时写会让同一分钟出现两份增量）。不带 `--host` 仍是纯只读展示。
+- **采集宿主**：同一进程带 `--host` 启动时**自己当采集宿主**——netd 托管、CPU/内存/GPU/网络/磁盘分钟采样、前台应用会话、键鼠低层钩子、浏览器网页会话（自建 WebSocket `127.0.0.1:8765`，接现有扩展）、日汇总（`DailySummaries` / `AppDailyStats`）与落库全部在 Rust 侧完成，关窗时自动收口（最后一分钟、当前应用会话、键鼠增量、在场网页会话都会落库）。不带 `--host` 则是纯只读展示。
 
-  **默认分工（4.9.0 起）**：采集归 Rust 宿主，界面/托盘/任务栏小窗归 WPF。`settings.json` 里
-  `CollectInShell=true` 时 `PChabit.exe` 只跑界面（硬件内存采样给托盘与小部件用，不落库），
-  采集表全部由 `Shell\PChabitShell.exe --host --headless` 写——它是计划任务「PChabit 采集宿主」在登录时以最高权限拉起。
-  单写者判断用心跳文件（`Data\.wpf-collecting`）：只有真正在采集的 WPF 才写，宿主凭它决定放不放行；
-  netd 已支持多客户端，两边可以同时读。把 `CollectInShell` 置回 `false` 即可一键回退到 WPF 采集。
-  已知代价：小窗点击弹进程网速依赖 WPF 鼠标钩子，只读模式下暂不可用。细节见 `docs/P5-collect-migration.md` §9。
+  **启动方式**：计划任务「PChabit 采集宿主」在登录时以最高权限拉起 `Shell\PChabitShell.exe --host`（ONLOGON / RunLevel Highest），窗口、托盘、任务栏小窗、桌面悬浮窗与采集都在这一进程内；`--headless` 为无窗口常驻形态。
+  单写者约束：靠单实例端口 `127.0.0.1:18765` 与心跳文件 `Data\.wpf-collecting` 判定，已有宿主在写库时第二个宿主拒绝启动（两个宿主同时写会让同一分钟出现两份增量）。细节见 `docs/P5-collect-migration.md`。
 
 ### 数据分析与复盘
 
@@ -97,13 +94,13 @@
 
 - Windows 10 1809 或更高版本
 - Windows 11
-- 无需预装 .NET 运行时（自包含部署）
+- 无需预装 .NET / Windows App SDK 运行时；Windows 10 另需 WebView2 Evergreen Runtime（Windows 11 自带）
 
 ### 下载安装
 
 1. 从 [Releases](https://github.com/idleeyan/PChabit/releases) 页面下载最新版本
 2. 解压到任意目录
-3. 运行 `PChabit.exe`
+3. 运行 `Shell\PChabitShell.exe`（窗口 + 托盘 + 采集同进程；首次使用建议在设置里勾选开机自启，由计划任务拉起）
 
 ## 浏览器扩展
 
@@ -175,7 +172,7 @@ cargo build --release --manifest-path rust/pchabit-netd/Cargo.toml
 ```
 PChabit/
 ├── rust/
-│   ├── pchabit-shell/       # Tauri 2 壳：16 个页面、托盘、任务栏小窗、桌面悬浮窗、桌面便签
+│   ├── pchabit-shell/       # Tauri 2 壳：14 个导航页、托盘、任务栏小窗、桌面悬浮窗、桌面便签
 │   ├── pchabit-collect/     # 采集宿主：键鼠钩子 / 前台进程 / 网页会话 / 磁盘 / 日汇总 / 清理 / WebDAV
 │   ├── pchabit-netd/        # 采样内核：进程网络、GPU（NVML）、系统总量（命名管道）
 │   └── pchabit-datad/       # 只读数据面 + 少量写命令（查询、分类、便签、导出 xlsx）

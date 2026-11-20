@@ -3,85 +3,58 @@
 <head>
 <meta charset="utf-8" />
 <title>PChabit 数据概览</title>
+<link rel="stylesheet" href="theme.css" />
 <style>
-  :root { color-scheme: dark; }
-  html, body { margin:0; background:#0f172a; color:#e2e8f0;
-    font:12px/1.5 "Segoe UI","Microsoft YaHei",sans-serif; padding:14px 16px 24px; }
-  header { display:flex; align-items:baseline; gap:10px; margin-bottom:12px; }
-  h1 { font-size:15px; font-weight:600; margin:0; }
-  .hint { color:#94a3b8; font-size:11px; word-break:break-all; }
-
-  .kpis { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; margin-bottom:14px; }
-  .kpi { background:#141e30; border:1px solid #223049; border-radius:9px; padding:8px 10px; }
-  .kpi .n { color:#94a3b8; font-size:10px; }
-  .kpi .v { font-size:15px; font-weight:600; }
-  .kpi .s { color:#64748b; font-size:10px; margin-top:1px; }
-
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; align-items:start; }
-  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
-  section { background:#121a29; border:1px solid #223049; border-radius:10px; padding:10px 12px; }
-  section h2 { font-size:12px; font-weight:600; margin:0 0 8px; color:#cbd5e1;
-    display:flex; align-items:center; gap:8px; }
-  section h2 em { font-style:normal; color:#64748b; font-weight:400; font-size:10px; }
-
-  table { width:100%; border-collapse:collapse; }
-  thead th { text-align:left; font-weight:500; color:#64748b; font-size:10px; padding:2px 6px 5px;
-    border-bottom:1px solid #223049; white-space:nowrap; }
-  thead th.r, td.r { text-align:right; }
-  tbody td { padding:3px 6px; border-bottom:1px solid #1a2436; font-size:11.5px; }
-  tbody tr:hover { background:#16233a; }
-  .tb { color:#93c5fd; }
-  .ok { color:#22c55e; }
-  .bad { color:#f87171; }
-  .note { color:#64748b; font-size:10px; margin-top:8px; }
-  .empty { color:#64748b; padding:8px 0; }
+  .row { display:grid; grid-template-columns:1.05fr .95fr; gap:var(--gap); align-items:start; }
+  @media (max-width:1020px){ .row{ grid-template-columns:1fr; } }
+  .tb { color:#9dc0ff; }
+  .ok { color:var(--green); }
+  .bad { color:var(--red); }
+  .act-row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
-<header>
-  <h1>数据概览</h1>
-  <span class="hint" id="meta">加载中…</span>
+<header class="page-head">
+  <h1>数据管理</h1>
+  <div class="sub" id="meta">加载中…</div>
+  <div class="grow"></div>
+  <span class="pill info" id="dbPill">只读统计</span>
 </header>
 
 <div class="kpis" id="kpis"></div>
 
 <div class="row">
-  <section>
+  <section class="card">
     <h2>数据表 <em id="tn"></em></h2>
     <table><thead><tr><th>表</th><th class="r">行数</th></tr></thead>
       <tbody id="tables"></tbody></table>
-    <div class="note">只读统计 · 下方「立即备份 / 清理旧数据」由壳直接执行（写库，等价 WPF 的同名操作）</div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-      <button id="btnBackup" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
-        background:#1d4ed8;color:#fff;cursor:pointer">立即备份</button>
-      <button id="btnClean" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
-        background:#7c2d12;color:#fff;cursor:pointer">清理旧数据</button>
+    <div class="note">只读统计 · 下方「立即备份 / 清理旧数据」由壳直接执行（写库，等价旧版的同名操作）</div>
+    <div class="act-row">
+      <button class="btn btn-primary" id="btnBackup">立即备份</button>
+      <button class="btn" id="btnClean">清理旧数据</button>
       <span class="hint" id="actMsg"></span>
     </div>
   </section>
 
-  <section>
+  <section class="card">
     <h2>最近备份 <em id="bn"></em></h2>
     <table><thead><tr><th>文件</th><th class="r">大小</th><th class="r">时间</th></tr></thead>
       <tbody id="backups"></tbody></table>
   </section>
 </div>
 
-<section style="margin-top:12px">
+<section class="card" style="margin-top:var(--gap)">
   <h2>WebDAV 手动同步 <em id="davInfo">读取中…</em></h2>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-    <button id="btnDavUp" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
-      background:#0f766e;color:#fff;cursor:pointer">上传备份到云端</button>
-    <button id="btnDavDown" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
-      background:#1e3a8a;color:#fff;cursor:pointer">下载云端最新备份</button>
-    <button id="btnNotesSync" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
-      background:#3730a3;color:#fff;cursor:pointer">同步便签</button>
-    <button id="btnDavInfo" style="padding:4px 10px;border-radius:6px;border:1px solid #263349;
-      background:#182234;color:#cbd5e1;cursor:pointer">查看云端状态</button>
+  <div class="act-row" style="margin-top:2px">
+    <button class="btn btn-primary" id="btnDavUp">上传备份到云端</button>
+    <button class="btn" id="btnDavDown">下载云端最新备份</button>
+    <button class="btn" id="btnNotesSync">同步便签</button>
+    <button class="btn btn-ghost" id="btnDavInfo">查看云端状态</button>
   </div>
 
-  <div id="davResult" style="margin-top:8px;padding:8px 10px;border-radius:8px;
-    background:#0b1220;border:1px solid #1f2937;font-size:12px;color:#94a3b8;min-height:18px">
+  <div id="davResult" style="margin-top:10px;padding:9px 12px;border-radius:9px;
+    background:#0b1424;border:1px solid var(--border);font-size:12px;color:var(--dim);
+    min-height:18px;font-variant-numeric:tabular-nums">
     点上面任一按钮开始；结果会显示在这里。
   </div>
 
@@ -145,11 +118,10 @@
       var td = el('td');
       td.appendChild(el('span', 'tb', t.table));
       td.title = n(t.rows) + ' 行';
-      var bar = document.createElement('div');
-      bar.style.cssText = 'height:3px;background:#1e3a5f;border-radius:2px;margin-top:3px;';
+      var bar = el('div', 'bar');
+      bar.style.cssText = 'margin-top:4px;height:3px';
       var fill = el('i');
-      fill.style.cssText = 'display:block;height:3px;background:#3b82f6;border-radius:2px;' +
-        'width:' + Math.max(2, ((t.rows || 0) / maxR) * 100) + '%';
+      fill.style.width = Math.max(2, ((t.rows || 0) / maxR) * 100) + '%';
       bar.appendChild(fill);
       td.appendChild(bar);
       tr.appendChild(td);

@@ -230,3 +230,5 @@ rust/pchabit-shell/dist/pages/*
 !rust/pchabit-shell/dist/pages/input.html
 !rust/pchabit-shell/dist/pages/reports.html
 !rust/pchabit-shell/dist/pages/data.html
+!rust/pchabit-shell/dist/pages/note-desktop.html
+!rust/pchabit-shell/dist/pages/theme.css
