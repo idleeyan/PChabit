@@ -28,7 +28,7 @@
 ### 关键约束（硬性）
 
 1. **只 build 不算完成**：必须四个 crate 都 `cargo build --release`，再把产物拷进 `publish\` 并 Robocopy 到 `D:\Tool\PChabit`；用户跑的是 `D:\Tool\PChabit`，不是 `target\release`。
-2. **版本号五处联动**：`rust/pchabit-shell/src/main.rs` 的 `const VERSION`、`rust/pchabit-shell/Cargo.toml`、`rust/pchabit-shell/tauri.conf.json`、`rust/pchabit-collect/Cargo.toml`、`rust/pchabit-netd/Cargo.toml`。
+2. **版本号四处联动**：`rust/pchabit-shell/src/main.rs` 的 `const VERSION`、`rust/pchabit-shell/Cargo.toml`、`rust/pchabit-shell/tauri.conf.json`、`rust/pchabit-collect/Cargo.toml`。`pchabit-netd` 与 `pchabit-datad` 的 `Cargo.toml` 仍是 `0.1.0`（不随产品版本走；要显示版本需另给 `--version`），改它们只会触发无意义的重建。
 3. **改完要重启进程**：`Stop-Process PChabitShell,pchabit-netd` → `schtasks /run /tn "PChabit 采集宿主"`，否则跑的是旧内存镜像。
 4. **GitHub 与本地保持一致**：推送不稳时用 `-c http.sslBackend=openssl -c http.proxy= -c https.proxy= -c http.version=HTTP/1.1`，失败重试 3–4 次。
 
@@ -39,7 +39,7 @@
 | # | 步骤 | 完成判断（做到什么算成功） |
 |---|---|---|
 | 1 | 改代码 | 改动只落在 `rust/` 下的具体 crate，不新增 .NET 依赖 |
-| 2 | 递增版本号（五处） | 五个文件里的版本号一致，且大于上一版 |
+| 2 | 递增版本号（四处） | 四个文件里的版本号一致，且大于上一版（netd / datad 保持 0.1.0，见上节） |
 | 3 | 构建 | 相关 crate `cargo build --release` 0 错误；壳构建约 1m40s、collect 约 12s、datad 约 30–75s |
 | 4 | 组装 publish | 4 个 exe 就位：`publish\*.exe` ×3 + `publish\Shell\PChabitShell.exe` |
 | 5 | 部署 | `Robocopy publish D:\Tool\PChabit /MIR /XD *.WebView2 /NFL /NDL /NP /R:1 /W:1` |
