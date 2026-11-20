@@ -67,6 +67,24 @@
   </section>
 </div>
 
+<section style="margin-top:12px">
+  <h2>WebDAV 手动同步 <em id="davInfo">未读取</em></h2>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <button id="btnDavUp" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
+      background:#0f766e;color:#fff;cursor:pointer">上传备份到云端</button>
+    <button id="btnDavDown" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
+      background:#1e3a8a;color:#fff;cursor:pointer">下载云端最新备份</button>
+    <button id="btnNotesSync" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
+      background:#3730a3;color:#fff;cursor:pointer">同步便签</button>
+    <button id="btnDavInfo" style="padding:4px 10px;border-radius:6px;border:1px solid #263349;
+      background:#182234;color:#cbd5e1;cursor:pointer">查看云端状态</button>
+    <span class="hint" id="davMsg"></span>
+  </div>
+  <div class="note">需要先在「设置 → 网络与同步」填 WebDAV 地址 / 账号 / 密码并勾上「WebDAV 同步」；
+    上传=把最新本地备份 PUT 到云端并按「云端保留份数」清理旧文件，下载=把云端最新一份落到临时目录（不覆盖当前库），
+    便签同步=远端 pchabit_notes.json 与本地按 Id 合并（更新更晚的赢）后整份传回</div>
+</section>
+
 <script>
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -179,6 +197,77 @@
     var c = document.getElementById('btnClean');
     if (b) b.addEventListener('click', function () { act('backup'); });
     if (c) c.addEventListener('click', function () { act('clean'); });
+
+    // WebDAV 手动同步
+    function davMsg(t) {
+      var m = document.getElementById('davMsg');
+      if (m) m.textContent = t;
+      window.__DATA_RESULT__ = 'dav: ' + t;
+    }
+    function davInfo() {
+      if (!window.__TAURI__) return;
+      window.__TAURI__.core.invoke('cloud_latest_info').then(function (r) {
+        var el2 = document.getElementById('davInfo');
+        if (!el2) return;
+        el2.textContent = (r && r.enabled ? '已启用' : '未启用') +
+          (r && r.latest ? ' · 云端最新 ' + r.latest : ' · 云端无备份') +
+          (r && r.lastSync ? ' · 上次同步 ' + r.lastSync : '') +
+          (r && r.ok === false && r.error ? ' · ' + r.error : '');
+      }).catch(function (e) {
+        var el2 = document.getElementById('davInfo');
+        if (el2) el2.textContent = '读取失败：' + e;
+      });
+    }
+    function davAct(kind) {
+      if (!window.__TAURI__) { davMsg('壳未注入 IPC，无法执行'); return; }
+      var cmds = {
+        up: 'cloud_backup_now', down: 'cloud_restore_download', notes: 'notes_sync'
+      };
+      davMsg('执行中…');
+      window.__TAURI__.core.invoke(cmds[kind]).then(function (r) {
+        davMsg(String(r));
+        davInfo();
+        if (kind === 'down' || kind === 'up') {
+          return window.__TAURI__.core.invoke('page_data', { page: 'data' })
+            .then(function (d) {
+              window.__DATA_DATA__ = d;
+              var rr = renderData(d);
+              window.__DATA_RESULT__ = 'dav: ' + r + ' / ' + rr;
+            });
+        }
+      }).catch(function (e) {
+        davMsg('失败：' + e);
+      });
+    }
+    var up = document.getElementById('btnDavUp');
+    var down = document.getElementById('btnDavDown');
+    var ns = document.getElementById('btnNotesSync');
+    var inf = document.getElementById('btnDavInfo');
+    if (up) up.addEventListener('click', function () { davAct('up'); });
+    if (down) down.addEventListener('click', function () { davAct('down'); });
+    if (ns) ns.addEventListener('click', function () { davAct('notes'); });
+    if (inf) inf.addEventListener('click', function () { davInfo(); });
+    davInfo();
+
+    // 自测钩子（无 GUI 下点不到按钮）：?davtest=down|info|up 直接跑一次并把结果写进壳日志
+    var dt = new URLSearchParams(location.search).get('davtest');
+    if (dt && window.__TAURI__) {
+      function nlog(m) {
+        try { window.__TAURI__.core.invoke('note', { msg: 'davtest ' + m }); } catch (e) {}
+      }
+      var p;
+      if (dt === 'down') {
+        p = window.__TAURI__.core.invoke('cloud_restore_download');
+      } else if (dt === 'up') {
+        p = window.__TAURI__.core.invoke('cloud_backup_now');
+      } else {
+        p = window.__TAURI__.core.invoke('cloud_latest_info').then(function (r) {
+          return JSON.stringify(r);
+        });
+      }
+      p.then(function (r) { nlog(dt + ' ok: ' + r); davMsg(String(r)); })
+       .catch(function (e) { nlog(dt + ' 失败: ' + e); davMsg('失败：' + e); });
+    }
   });
   document.addEventListener('DOMContentLoaded', function () {
     if (window.__DATA_DATA__) {

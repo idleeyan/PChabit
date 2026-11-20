@@ -222,7 +222,13 @@
     current = page;
     setActive(page);
     document.getElementById('meta').textContent = '加载中…';
-    frame.src = ASSET[page];
+    var src = ASSET[page];
+    // 自测参数透传：?davtest=down|info|up 交给数据页自己执行（正常打开不带这些参数）
+    var dtv = new URLSearchParams(location.search).get('davtest');
+    if (page === 'data' && dtv) {
+      src += (src.indexOf('?') < 0 ? '?' : '&') + 'davtest=' + encodeURIComponent(dtv);
+    }
+    frame.src = src;
   }
 
   frame.addEventListener('load', function () {

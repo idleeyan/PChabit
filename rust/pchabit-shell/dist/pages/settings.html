@@ -168,19 +168,23 @@
     DesktopWidgetShowGpu: 1, DesktopWidgetShowVram: 1, DesktopWidgetShowDisk: 1,
     DesktopWidgetShowUsage: 1, DesktopWidgetShowCurrentApp: 1,
     DesktopWidgetClampToScreen: 1, DesktopWidgetScreen: 1,
-    StickyNotesRetentionDays: 1, StickyNotesQuickDismissOnFocusLost: 1,
+    StickyNotesQuickDismissOnFocusLost: 1,
     StickyNotesSyncEnabled: 1, StickyNotesLastSync: 1
   };
 
   // 已决定不做的项：温度受 HVCI 限制（4.11.1 删除）、CollectInShell 是旧架构
-  var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1 };
+  var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1, StickyNotesRetentionDays: 1 };
 
   // Rust 侧还没接线的键：能改、会写进 settings.json，但当前壳/采集不读它（旧 WPF 功能尚未迁移）
   var INACTIVE = {
     CurrentLanguage: 1,
     MonitoringInterval: 1, IdleThreshold: 1,
-    BrowserSyncEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1,
-    StickyNotesSyncEnabled: 1
+    BrowserSyncEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1
+  };
+
+  // 废弃项各自的说明（不写就用默认文案）
+  var DEPRECATED_TXT = {
+    StickyNotesRetentionDays: '已废弃（便签永久保存）'
   };
 
   var GROUPS = [
@@ -243,7 +247,7 @@
     } else if (DEPRECATED[it.key]) {
       var tag4 = document.createElement('span');
       tag4.className = 'tag idle';
-      tag4.textContent = '已废弃（不再生效）';
+      tag4.textContent = DEPRECATED_TXT[it.key] || '已废弃（不再生效）';
       k.appendChild(tag4);
     } else if (INACTIVE[it.key]) {
       var tag3 = document.createElement('span');

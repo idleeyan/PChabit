@@ -324,26 +324,10 @@ impl Store {
         Ok(())
     }
 
-    /// 便签保留期清理：只清「正文为空」或「已归档」的旧便签。
+    /// 便签永久保存：这里**不再**提供按保留期清理的入口。
     ///
-    /// 有正文的便签**永不自动删**——2026-11-20 曾按 `UpdatedAt` 一刀切，把用户两张月前
-    /// 的笔记静默软删了（已在库里恢复）。空白便签才是随手点出来没写东西的残留。
-    pub fn notes_purge_old(&self, cutoff: &str, now: &str) -> usize {
-        if cutoff.is_empty() {
-            return 0;
-        }
-        self.conn
-            .execute(
-                "UPDATE StickyNotes SET IsDeleted = 1, DeletedAt = ?2 \
-                 WHERE IsDeleted = 0 AND ifnull(IsPinned,0) = 0 AND UpdatedAt < ?1 \
-                   AND (trim(ifnull(Content,'')) = '' OR ifnull(IsArchived,0) = 1)",
-                params![cutoff, now],
-            )
-            .unwrap_or(0)
-    }
-
-    /// 把整库快照写到指定文件（`VACUUM INTO`，与 `pchabit-datad::backup_now` 同一手法）。
-    /// 用于「清理前归档」：先落一份完整备份，再删旧数据。
+    /// 历史：4.12.25 曾按 `UpdatedAt < 今天-N天` 软删，把用户两张月前的笔记静默删掉（4.12.28 已恢复）；
+    /// 4.12.31 起彻底移除，`StickyNotesRetentionDays` 在设置页标「已废弃」。
     pub fn vacuum_into(&self, path: &str) -> Result<u64, String> {
         let escaped = path.replace('\'', "''");
         self.conn

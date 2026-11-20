@@ -920,22 +920,7 @@ fn daily_loop(ctx: Arc<Ctx>) {
                         ctx.say(format!("无过期数据需要清理（保留 {retention} 天）"));
                     }
 
-                    // 便签保留期：`StickyNotesRetentionDays` > 0 才清理（0/负数=永久保留）
-                    let note_days = crate::settings::i64_of("StickyNotesRetentionDays", 0);
-                    if note_days > 0 {
-                        let note_cutoff = crate::dt::date_ms(
-                            crate::dt::local_ms_now() - note_days * 86_400_000,
-                        );
-                        let cutoff_stamp = format!("{note_cutoff} 00:00:00");
-                        let now_stamp = crate::timefmt::stamp7(&crate::timefmt::now());
-                        let now_stamp = now_stamp.split('.').next().unwrap_or("").to_string();
-                        let gone = store.notes_purge_old(&cutoff_stamp, &now_stamp);
-                        if gone > 0 {
-                            ctx.say(format!(
-                                "便签清理：软删除 {gone} 张 {note_days} 天前的空白/已归档便签（有正文的不动）"
-                            ));
-                        }
-                    }
+                    // 便签永久保存：不再有保留期清理（`StickyNotesRetentionDays` 已废弃，见设置页）
                 }
             }
         }

@@ -2,6 +2,29 @@
 
 所有重要的更改都将记录在此文件中。
 
+## [4.12.31] - 2026-11-20
+
+### 便签改为永久保存（彻底去掉时限）
+
+- 采集宿主 `daily_loop` 里的便签保留期清理整段删除，`Store::notes_purge_old` 一并移除；
+  便签不再有任何按时间的自动删除路径（只剩用户自己点删除）。
+- 设置页 `StickyNotesRetentionDays` 从「立即生效」改标 **「已废弃（便签永久保存）」**，
+  值仍可查看（本机为 0），但改它不再有任何效果。
+  顺带把 `StickyNotesSyncEnabled` 从 INACTIVE 里摘掉（4.12.26 已经接好，标签归位为立即生效）。
+
+### 数据管理页增加 WebDAV 手动同步
+
+- 「数据管理」页底部新增 **WebDAV 手动同步** 区块，四个按钮：
+  - **上传备份到云端** → `cloud_backup_now`（本地备份 → PUT 到 WebDAV → 按「云端保留份数」清旧文件 → 回写 `WebDAVLastSync`）
+  - **下载云端最新备份** → 新命令 `cloud_restore_download`（PROPFIND 取最新 `pchabit_backup_*.db` → GET 落到 `%TEMP%\PChabitRestore\`，**不覆盖当前库**）
+  - **同步便签** → `notes_sync`（远端 `pchabit_notes.json` 与本地按 Id 合并，更新更晚的赢，再把整份传回）
+  - **查看云端状态** → `cloud_latest_info`（是否启用 / 云端最新文件名 / 上次同步时间）
+- 区块里直接写清前置条件（设置 → 网络与同步 里填地址/账号/密码并勾「WebDAV 同步」）与三个动作各自的语义。
+- 实测（NAS `192.168.31.89:5005` 在线）：
+  - 上传：日志 `[云备份] 已上传 pchabit_backup_20261120_122822.db`
+  - 下载：`[云备份] 已下载云端最新备份：…\PChabitRestore\pchabit_backup_20261120_122822.db（192 MB）`，
+    文件 200,884,224 字节，PROPFIND 可见远端 5 份 `.db`
+
 ## [4.12.28 ~ 4.12.30] - 2026-11-20
 
 ### 便签被自动清理导致"数据丢失"（已修）

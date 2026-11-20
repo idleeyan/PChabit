@@ -487,6 +487,27 @@ fn cloud_latest_info() -> serde_json::Value {
     })
 }
 
+/// 云端的最新备份下载到本地临时目录（**不覆盖当前库**，供用户自己决定要不要替换）。
+#[tauri::command]
+fn cloud_restore_download() -> Result<String, String> {
+    match backup::cloud_fetch_latest()? {
+        Some(path) => {
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            log_line(&format!(
+                "[云备份] 已下载云端最新备份：{}（{} MB）",
+                path.display(),
+                (size as f64 / 1048576.0).round()
+            ));
+            Ok(format!(
+                "已下载到 {}（{} MB）",
+                path.display(),
+                (size as f64 / 1048576.0).round()
+            ))
+        }
+        None => Err("云端没有可用备份（先上传一次，或检查 WebDAV 设置）".to_string()),
+    }
+}
+
 /// 前端要数据：一次同步查库 + 聚合，返回该页面需要的那份 JSON。
 #[tauri::command]
 fn page_data(page: String) -> Result<serde_json::Value, String> {
@@ -1415,7 +1436,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.30";
+const VERSION: &str = "4.12.31";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -1821,6 +1842,7 @@ fn main() {
             cloud_backup_now,
             notes_sync,
             cloud_latest_info,
+            cloud_restore_download,
             notes_create,
             notes_update,
             notes_pin,
