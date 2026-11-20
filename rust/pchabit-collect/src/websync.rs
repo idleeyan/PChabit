@@ -177,8 +177,12 @@ impl Engine {
 
         // 设置页开关（每条消息读一次，改了立刻生效）：
         //   TrackWebBrowsing        -> 关掉就不记网页会话（页面访问、标签切换）
+        //   BrowserSyncEnabled        -> 总开关（旧版语义：总开关关掉，历史也不收）
         //   BrowserHistoryIngestEnabled -> 关掉就不收浏览器历史
-        if ty == "history" && !crate::settings::bool_of("BrowserHistoryIngestEnabled", true) {
+        if ty == "history"
+            && !(crate::settings::bool_of("BrowserSyncEnabled", true)
+                && crate::settings::bool_of("BrowserHistoryIngestEnabled", true))
+        {
             return;
         }
         if matches!(ty.as_str(), "pageview" | "tabactivate" | "tabswitch" | "idle" | "focus")

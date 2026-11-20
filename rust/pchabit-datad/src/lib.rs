@@ -587,6 +587,159 @@ pub fn stats_json(db: &Path, req: &serde_json::Value) -> Result<serde_json::Valu
     Ok(report)
 }
 
+/// 效率评分：复刻旧版 `EfficiencyCalculator` 的算法（4.12.39）。
+/// 四项加权：专注 1/3、任务完成 5/18、劳逸平衡 2/9、抗打断 1/6。
+/// 返回当日明细 + 近 7 天总分（前端画趋势）。
+pub fn efficiency_json(db: &Path, date: &str) -> Result<serde_json::Value, String> {
+    if !db.exists() {
+        return Err(format!("数据库不存在：{}", db.display()));
+    }
+    let conn = open_readonly(db)?;
+    let mut day = efficiency_for(&conn, date)?;
+    let mut week = Vec::new();
+    for i in (0..7).rev() {
+        let d = date_shift(date, -(i as i64));
+        let total = efficiency_for(&conn, &d)
+            .map(|v| v["total"].as_f64().unwrap_or(0.0))
+            .unwrap_or(0.0);
+        week.push(serde_json::json!({ "date": d, "total": (total * 10.0).round() / 10.0 }));
+    }
+    day["week"] = serde_json::Value::Array(week);
+    Ok(day)
+}
+
+/// 单日评分。空数据返回 0 分但保留字段，前端好画。
+fn efficiency_for(conn: &rusqlite::Connection, date: &str) -> Result<serde_json::Value, String> {
+    let start = format!("{date} 00:00:00");
+    let end = format!("{} 00:00:00", date_shift(date, 1));
+    let mut sessions = load_sessions(conn, &start, &end)?;
+    sessions.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+
+    let total_minutes: f64 = sessions.iter().map(|s| s.minutes()).sum();
+    if sessions.is_empty() || total_minutes <= 0.0 {
+        return Ok(serde_json::json!({
+            "date": date, "total": 0.0, "focus": 0.0, "task": 0.0,
+            "balance": 50.0, "interrupt": 100.0, "focusMinutes": 0.0,
+            "deepWorkMinutes": 0.0, "switches": 0, "productivityRatio": 0.0,
+            "breakRatio": 0.0,
+        }));
+    }
+
+    // ---- 专注块：相邻会话间隔 ≤5 分钟且该会话 ≥1 分钟就并入，块 ≥25 分钟才算数 ----
+    let dur_of = |s: &Session| s.end.unwrap_or(s.start + 60.0);
+    let mut blocks: Vec<(f64, f64, u32)> = Vec::new();
+    let mut cur_start = sessions[0].start;
+    let mut cur_end = dur_of(&sessions[0]);
+    let mut cur_switches: u32 = 0;
+    for s in sessions.iter().skip(1) {
+        let gap_min = (s.start - cur_start) / 60.0;
+        if gap_min <= 5.0 && s.minutes() >= 1.0 {
+            cur_end = dur_of(s);
+            cur_switches += 1;
+        } else {
+            if (cur_end - cur_start) / 60.0 >= 25.0 {
+                blocks.push((cur_start, cur_end, cur_switches));
+            }
+            cur_start = s.start;
+            cur_end = dur_of(s);
+            cur_switches = 0;
+        }
+    }
+    if (cur_end - cur_start) / 60.0 >= 25.0 {
+        blocks.push((cur_start, cur_end, cur_switches));
+    }
+
+    let block_minutes = |b: &(f64, f64, u32)| (b.1 - b.0) / 60.0;
+    let focus_minutes: f64 = blocks.iter().map(block_minutes).sum();
+    let deep_minutes: f64 = blocks
+        .iter()
+        .filter(|b| block_minutes(b) >= 25.0 && b.2 <= 2)
+        .map(block_minutes)
+        .sum();
+
+    // 专注分：占比封顶 80，深工作另加最多 20
+    let focus_ratio = focus_minutes / total_minutes;
+    let deep_bonus = (deep_minutes / 120.0).min(1.0) * 20.0;
+    let focus_score = ((focus_ratio * 100.0).min(80.0) + deep_bonus).min(100.0);
+
+    // 任务完成分：生产力类（开发/办公/生产力/工作）时长占比
+    let is_productive = |c: &str| {
+        ["开发", "办公", "生产力", "工作"]
+            .iter()
+            .any(|k| c.contains(k))
+    };
+    let productive_minutes: f64 = sessions
+        .iter()
+        .filter(|s| s.category.as_deref().map(is_productive).unwrap_or(false))
+        .map(|s| s.minutes())
+        .sum();
+    let productivity_ratio = productive_minutes / total_minutes;
+    let task_score = (productivity_ratio * 100.0).min(100.0);
+
+    // 劳逸平衡：休息占比越接近 15% 越好
+    let mut break_minutes = 0.0;
+    for i in 1..sessions.len() {
+        let prev_end = dur_of(&sessions[i - 1]);
+        let gap = (sessions[i].start - prev_end) / 60.0;
+        if gap > 0.0 {
+            break_minutes += gap;
+        }
+    }
+    let break_ratio = break_minutes / total_minutes;
+    let deviation = (break_ratio - 0.15).abs();
+    let balance_score = if deviation <= 0.05 {
+        100.0
+    } else if deviation <= 0.10 {
+        80.0
+    } else if deviation <= 0.20 {
+        60.0
+    } else {
+        (100.0 - deviation * 200.0).max(40.0)
+    };
+
+    // 抗打断：每小时切换次数
+    let switches = sessions.len().saturating_sub(1);
+    let first = sessions.first().map(|s| s.start).unwrap_or(0.0);
+    let last = sessions.last().map(|s| dur_of(s)).unwrap_or(0.0);
+    let hours = (last - first) / 3600.0;
+    let interrupt_score = if switches == 0 || hours <= 0.0 {
+        100.0
+    } else {
+        let per_hour = switches as f64 / hours;
+        if per_hour <= 5.0 {
+            100.0
+        } else if per_hour <= 10.0 {
+            90.0
+        } else if per_hour <= 20.0 {
+            70.0
+        } else if per_hour <= 30.0 {
+            50.0
+        } else {
+            (100.0 - per_hour * 2.0).max(20.0)
+        }
+    };
+
+    let total_score = focus_score / 3.0
+        + task_score * 5.0 / 18.0
+        + balance_score * 2.0 / 9.0
+        + interrupt_score / 6.0;
+
+    let round1 = |v: f64| (v * 10.0).round() / 10.0;
+    Ok(serde_json::json!({
+        "date": date,
+        "total": round1(total_score),
+        "focus": round1(focus_score),
+        "task": round1(task_score),
+        "balance": round1(balance_score),
+        "interrupt": round1(interrupt_score),
+        "focusMinutes": round1(focus_minutes),
+        "deepWorkMinutes": round1(deep_minutes),
+        "switches": switches,
+        "productivityRatio": round1(productivity_ratio * 100.0),
+        "breakRatio": round1(break_ratio * 100.0),
+    }))
+}
+
 pub fn run_analytics(db: &Path) -> Result<(), String> {
     let mut buf = String::new();
     std::io::stdin()

@@ -137,7 +137,7 @@ input:focus { outline:none; border-color:var(--gold); }
 
   // 改了当拍就生效的键（其余标「重启生效」或「未接入」）
   var LIVE = {
-    ThemePreset: 1, ThemeAccent: 1,
+    ThemePreset: 1, ThemeAccent: 1, BrowserSyncEnabled: 1,
     TaskbarEnabled: 1, TaskbarShowCpu: 1, TaskbarShowMemory: 1, TaskbarShowNet: 1,
     TaskbarShowGpu: 1, TaskbarShowVram: 1, TaskbarShowDisk: 1, TaskbarShowUsage: 1,
     DataRetentionDays: 1, RetentionDays: 1,
@@ -176,19 +176,27 @@ input:focus { outline:none; border-color:var(--gold); }
   var THEME_SEL = { theme: 'gold', accent: 'auto' };
 
   // 已决定不做的项：温度受 HVCI 限制（4.11.1 删除）、CollectInShell 是旧架构
-  var DEPRECATED = { TaskbarShowTemp: 1, CollectInShell: 1, StickyNotesRetentionDays: 1, CurrentTheme: 1 };
+  var DEPRECATED = {
+    TaskbarShowTemp: 1, CollectInShell: 1, StickyNotesRetentionDays: 1, CurrentTheme: 1,
+    // 以下五项在旧版 C# 里同样只有设置项、没有使用点；不接成可配，避免继续误导
+    CurrentLanguage: 1, MonitoringInterval: 1, IdleThreshold: 1,
+    BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1
+  };
 
   // Rust 侧还没接线的键：能改、会写进 settings.json，但当前壳/采集不读它（旧 WPF 功能尚未迁移）
   var INACTIVE = {
-    CurrentLanguage: 1,
-    MonitoringInterval: 1, IdleThreshold: 1,
-    BrowserSyncEnabled: 1, BrowserSyncIntervalMinutes: 1, BrowserAutoPush: 1
+    // 目前没有「已实现但未接线」的开关；保留机制供后续新增项使用
   };
 
   // 废弃项各自的说明（不写就用默认文案）
   var DEPRECATED_TXT = {
     StickyNotesRetentionDays: '已废弃（便签永久保存）',
-    CurrentTheme: '已废弃（界面固定深色）'
+    CurrentTheme: '已废弃（界面固定深色）',
+    CurrentLanguage: '已废弃（界面仅中文）',
+    MonitoringInterval: '已废弃（固定 1 秒采样）',
+    IdleThreshold: '已废弃（未接入空闲判定）',
+    BrowserSyncIntervalMinutes: '已废弃（改由扩展推送）',
+    BrowserAutoPush: '已废弃（旧书签同步已下线）'
   };
 
   var GROUPS = [

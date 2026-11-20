@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.38**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
+| 当前版本 | **4.12.39**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.39 | 补回第三批：效率评分（复刻旧版四项加权，实测 20.1 分，分析页新增卡片与 7 天趋势）；回查旧版代码确认 5 个设置项（多语言/监控间隔/空闲阈值/同步间隔/自动推送）在 C# 时代也只有 UI 没有实现，如实标废弃；BrowserSyncEnabled 接到采集侧作为总开关 |
 | 2026-11-20 | 4.12.38 | 补回第二批：任务栏小窗点击弹「进程网速排行」浮窗（net_procs 直问 netd，已验证并发可用）、分类详情弹窗、运行日志抽屉（读日志文件尾部）；修正「netd 单客户端」的过时记录 |
 | 2026-11-20 | 4.12.37 | 补回旧版能力第一批：应用图标（GDI 直取 + 五路路径兜底，实测 42/96）、多格式导出（JSON/MD/CSV）、关于区块、open_url 外链、便签简易 Markdown |
 | 2026-11-20 | 4.12.36 | 修「界面发灰」：卡片/底色 1.07→1.16、边框/卡片 1.33→2.2（靠描边分层而非提亮卡片）、底色压近纯黑、卡片改纯色、去掉鎏金顶部光晕、正文 13px/行高 1.6、小字与表头同步提亮 |
@@ -202,7 +203,9 @@ enderDetail 绘制函数被 window.renderDetail（列表入口）覆盖 → 改�
 **未完成事项（截至 4.12.37）**
 
 - [x] **旧版能力补全（第二批）** 4.12.38：进程网速浮窗、分类详情弹窗、运行日志抽屉
-- [ ] **效率评分**（旧 `EfficiencyScore`）：需要先定口径（按专注时长？按切换次数？），口径不同结论差很远
+- [x] **效率评分** 4.12.39：已按旧版 `EfficiencyCalculator` 复刻（四项加权），无需再定口径
+- [x] **多语言 / 监控间隔 / 空闲阈值 / 浏览器同步 2 项**：回查旧版 C# 代码，这 5 项只有设置项、没有业务使用点，
+      已在设置页标「已废弃」；`BrowserSyncEnabled` 有真实调用，已接到采集侧做总开关
 - [ ] **旧版能力补全（第三批，需新实现而非迁移）**：多语言（`CurrentLanguage` 仍 INACTIVE）、
       监控间隔 / 空闲阈值（`MonitoringInterval` / `IdleThreshold` 仍 INACTIVE）、浏览器同步三项
       （对应已下线的书签同步模块，需先决定是否恢复）

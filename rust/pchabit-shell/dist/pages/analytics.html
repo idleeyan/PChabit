@@ -33,7 +33,27 @@ li:last-child { border-bottom:0; }
 .insight.warning { border-left-color:var(--amber); }
 .insight.critical { border-left-color:#ef4444; }
 .insight b { display:block; font-size:11px; margin-bottom:2px; }
-.insight span { color:var(--dim); font-size:11px; }</style>
+.insight span { color:var(--dim); font-size:11px; }  /* 效率评分 */
+  .eff { display:grid; grid-template-columns:130px minmax(0,1fr) 230px; gap:18px; align-items:center; }
+  @media (max-width:1000px){ .eff { grid-template-columns:1fr; } }
+  .eff-score {
+    font-family:var(--font-display); font-size:40px; font-weight:700; line-height:1;
+    font-variant-numeric:tabular-nums;
+    background:var(--grad-gold); -webkit-background-clip:text; background-clip:text;
+    -webkit-text-fill-color:transparent;
+  }
+  .eff-label { color:var(--mute); font-size:11px; margin-top:7px; line-height:1.6; }
+  .eff-items { display:grid; gap:7px; }
+  .eff-row { display:grid; grid-template-columns:64px 1fr 46px; gap:10px; align-items:center; font-size:11.5px; }
+  .eff-row .n { color:var(--dim); }
+  .eff-row .v { text-align:right; color:var(--gold-hi); font-variant-numeric:tabular-nums; }
+  .eff-week { display:flex; gap:5px; align-items:flex-end; height:62px; }
+  .eff-week .col { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; height:100%; justify-content:flex-end; }
+  .eff-week .col i { width:100%; border-radius:3px 3px 1px 1px; min-height:2px;
+    background:linear-gradient(180deg, var(--gold-hi), var(--gold-deep)); opacity:.55; }
+  .eff-week .col.today i { opacity:1; }
+  .eff-week .col span { font-size:9px; color:var(--mute); }
+</style>
 <script src="theme-boot.js"></script>
 <link rel="stylesheet" href="theme.css" />
 </head>
@@ -43,6 +63,23 @@ li:last-child { border-bottom:0; }
   <div class="sub" id="period">等待数据…</div>
 
   <div class="kpis" id="kpis"></div>
+
+  <section class="card" id="effCard" style="margin-bottom:var(--gap)">
+    <h2>效率评分 <em id="effDate"></em><span class="spacer"></span><span class="pill info" id="effPill">—</span></h2>
+    <div class="eff">
+      <div class="eff-main">
+        <div class="eff-score" id="effScore">—</div>
+        <div class="eff-label" id="effLabel">等待数据…</div>
+      </div>
+      <div class="eff-items" id="effItems"></div>
+      <div class="eff-week" id="effWeek"></div>
+    </div>
+    <div class="note" style="margin-top:10px">
+      总分 = 专注 × 1/3 + 任务 × 5/18 + 平衡 × 2/9 + 抗打断 × 1/6。
+      「任务完成」按分类名含 <b>开发 / 办公 / 生产力 / 工作</b> 的时长占比计算，
+      没有这类分类时恒为 0（可在分类管理里调整命名）。
+    </div>
+  </section>
 
   <div class="row">
     <section>
@@ -84,6 +121,78 @@ li:last-child { border-bottom:0; }
     return d === 'up' ? 'up' : (d === 'down' ? 'down' : 'flat');
   }
 
+  /// 效率评分：总分 + 四项分项条 + 近 7 天趋势（算法见 datad::efficiency_json）
+  function renderEfficiency(e) {
+    var score = document.getElementById('effScore');
+    var label = document.getElementById('effLabel');
+    var pill = document.getElementById('effPill');
+    var items = document.getElementById('effItems');
+    var week = document.getElementById('effWeek');
+    if (!e || e.total === undefined) {
+      score.textContent = '—';
+      label.textContent = '今天还没有可评分的数据';
+      pill.textContent = '无数据';
+      items.innerHTML = '';
+      week.innerHTML = '';
+      return;
+    }
+    var total = Number(e.total) || 0;
+    score.textContent = total.toFixed(1);
+    document.getElementById('effDate').textContent = '今日 · ' + (e.date || '');
+
+    var level = total >= 80 ? ['优秀', 'good'] : total >= 65 ? ['良好', 'info']
+      : total >= 50 ? ['一般', 'info'] : ['待改善', 'bad'];
+    pill.textContent = level[0];
+    pill.className = 'pill ' + level[1];
+
+    label.textContent = '专注 ' + Math.round(e.focusMinutes || 0) + ' 分钟（其中深度 ' +
+      Math.round(e.deepWorkMinutes || 0) + '）· 切换 ' + (e.switches || 0) + ' 次';
+
+    var rows = [
+      ['专注度', e.focus, '连续 ≥25 分钟的专注块时长占比，深度工作另加分，权重 1/3'],
+      ['任务完成', e.task, '生产力类（开发/办公/生产力/工作）时长占比，权重 5/18'],
+      ['劳逸平衡', e.balance, '休息占比越接近 15% 分越高，权重 2/9'],
+      ['抗打断', e.interrupt, '每小时应用切换次数，越少分越高，权重 1/6']
+    ];
+    items.innerHTML = '';
+    rows.forEach(function (r) {
+      var row = document.createElement('div');
+      row.className = 'eff-row';
+      var n = document.createElement('span');
+      n.className = 'n';
+      n.textContent = r[0];
+      n.title = r[2];
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      var fill = document.createElement('i');
+      fill.style.width = Math.max(2, Math.min(100, Number(r[1]) || 0)) + '%';
+      bar.appendChild(fill);
+      var v = document.createElement('span');
+      v.className = 'v';
+      v.textContent = (Number(r[1]) || 0).toFixed(1);
+      v.title = r[2];
+      row.appendChild(n); row.appendChild(bar); row.appendChild(v);
+      items.appendChild(row);
+    });
+
+    week.innerHTML = '';
+    (e.week || []).forEach(function (d, idx, arr) {
+      var col = document.createElement('div');
+      col.className = 'col' + (idx === arr.length - 1 ? ' today' : '');
+      var bar = document.createElement('i');
+      bar.style.height = Math.max(3, (Number(d.total) || 0)) + '%';
+      bar.title = d.date + '：' + (Number(d.total) || 0).toFixed(1);
+      var lb = document.createElement('span');
+      lb.textContent = (d.date || '').slice(5);
+      col.appendChild(bar);
+      col.appendChild(lb);
+      week.appendChild(col);
+    });
+    if (!(e.week || []).length) {
+      week.innerHTML = '<span style="color:var(--mute);font-size:11px">暂无趋势</span>';
+    }
+  }
+
   function render(data) {
     if (!data) return 'error: no data';
 
@@ -94,6 +203,8 @@ li:last-child { border-bottom:0; }
       '　有数据 ' + (data.dayCountWithData || 0) + ' 天';
 
     // KPI
+    renderEfficiency(data.efficiency);
+
     var kp = document.getElementById('kpis');
     kp.innerHTML = '';
     (data.kpis || []).forEach(function (k) {

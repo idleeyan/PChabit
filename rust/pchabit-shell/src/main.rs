@@ -199,6 +199,24 @@ fn payload_analytics() -> serde_json::Value {
         Ok(mut v) => {
             v["period"]["label"] = serde_json::json!("近 7 天");
             v["previous"]["label"] = serde_json::json!("前 7 天");
+            // 效率评分（复刻旧版 EfficiencyCalculator 的四项加权）
+            match pchabit_datad::efficiency_json(&pchabit_datad::default_db(), &today) {
+                Ok(e) => {
+                    log_line(&format!(
+                        "efficiency: {} 分（专注 {:.0} / 任务 {:.0} / 平衡 {:.0} / 抗打断 {:.0}）",
+                        e["total"].as_f64().unwrap_or(0.0),
+                        e["focus"].as_f64().unwrap_or(0.0),
+                        e["task"].as_f64().unwrap_or(0.0),
+                        e["balance"].as_f64().unwrap_or(0.0),
+                        e["interrupt"].as_f64().unwrap_or(0.0)
+                    ));
+                    v["efficiency"] = e;
+                }
+                Err(e) => {
+                    log_line(&format!("efficiency: 计算失败 {e}"));
+                    v["efficiency"] = serde_json::Value::Null;
+                }
+            }
             log_line(&format!(
                 "analytics: {} KPI / {} 洞察 / {} 天有数据",
                 v["kpis"].as_array().map(|a| a.len()).unwrap_or(0),
@@ -1712,7 +1730,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.38";
+const VERSION: &str = "4.12.39";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
