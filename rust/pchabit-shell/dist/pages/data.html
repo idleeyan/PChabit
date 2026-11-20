@@ -68,7 +68,7 @@
 </div>
 
 <section style="margin-top:12px">
-  <h2>WebDAV 手动同步 <em id="davInfo">未读取</em></h2>
+  <h2>WebDAV 手动同步 <em id="davInfo">读取中…</em></h2>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <button id="btnDavUp" style="padding:4px 10px;border-radius:6px;border:1px solid #223049;
       background:#0f766e;color:#fff;cursor:pointer">上传备份到云端</button>
@@ -78,8 +78,17 @@
       background:#3730a3;color:#fff;cursor:pointer">同步便签</button>
     <button id="btnDavInfo" style="padding:4px 10px;border-radius:6px;border:1px solid #263349;
       background:#182234;color:#cbd5e1;cursor:pointer">查看云端状态</button>
-    <span class="hint" id="davMsg"></span>
   </div>
+
+  <div id="davResult" style="margin-top:8px;padding:8px 10px;border-radius:8px;
+    background:#0b1220;border:1px solid #1f2937;font-size:12px;color:#94a3b8;min-height:18px">
+    点上面任一按钮开始；结果会显示在这里。
+  </div>
+
+  <table style="margin-top:10px;max-width:760px">
+    <tbody id="davRows"></tbody>
+  </table>
+
   <div class="note">需要先在「设置 → 网络与同步」填 WebDAV 地址 / 账号 / 密码并勾上「WebDAV 同步」；
     上传=把最新本地备份 PUT 到云端并按「云端保留份数」清理旧文件，下载=把云端最新一份落到临时目录（不覆盖当前库），
     便签同步=远端 pchabit_notes.json 与本地按 Id 合并（更新更晚的赢）后整份传回</div>
@@ -198,45 +207,89 @@
     if (b) b.addEventListener('click', function () { act('backup'); });
     if (c) c.addEventListener('click', function () { act('clean'); });
 
-    // WebDAV 手动同步
-    function davMsg(t) {
-      var m = document.getElementById('davMsg');
-      if (m) m.textContent = t;
-      window.__DATA_RESULT__ = 'dav: ' + t;
+    // WebDAV 手动同步：结果写在明显的结果条里，状态写进下方表格
+    function stamp() {
+      var d = new Date();
+      function p2(x) { return (x < 10 ? '0' : '') + x; }
+      return p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+    }
+    function davMsg(text, tone) {
+      var m = document.getElementById('davResult');
+      if (m) {
+        m.textContent = '[' + stamp() + '] ' + text;
+        m.style.color = tone === 'bad' ? '#f87171' : (tone === 'good' ? '#4ade80' : '#94a3b8');
+        m.style.borderColor = tone === 'bad' ? '#7f1d1d' : (tone === 'good' ? '#166534' : '#1f2937');
+      }
+      window.__DATA_RESULT__ = 'dav: ' + text;
+    }
+    function davRow(k, v) {
+      var tr = document.createElement('tr');
+      var td1 = el('td', null, k);
+      td1.style.cssText = 'color:#64748b;width:120px;white-space:nowrap';
+      var td2 = el('td', null, v);
+      td2.style.cssText = 'color:#e2e8f0;word-break:break-all';
+      tr.appendChild(td1); tr.appendChild(td2);
+      return tr;
     }
     function davInfo() {
-      if (!window.__TAURI__) return;
+      if (!window.__TAURI__) {
+        davMsg('壳未注入 IPC，无法读取云端状态', 'bad');
+        return;
+      }
       window.__TAURI__.core.invoke('cloud_latest_info').then(function (r) {
         var el2 = document.getElementById('davInfo');
-        if (!el2) return;
-        el2.textContent = (r && r.enabled ? '已启用' : '未启用') +
-          (r && r.latest ? ' · 云端最新 ' + r.latest : ' · 云端无备份') +
-          (r && r.lastSync ? ' · 上次同步 ' + r.lastSync : '') +
-          (r && r.ok === false && r.error ? ' · ' + r.error : '');
+        if (el2) {
+          el2.textContent = (r && r.enabled ? '已启用' : '未启用') +
+            (r && r.countOk ? ' · 云端 ' + r.count + ' 份' : ' · 云端份数未知') +
+            (r && r.latest ? ' · 最新 ' + r.latest : '');
+        }
+        var rows = document.getElementById('davRows');
+        if (!rows) return;
+        rows.innerHTML = '';
+        rows.appendChild(davRow('开关', r && r.enabled ? 'WebDAV 同步已启用' : '未启用（去设置里勾上）'));
+        rows.appendChild(davRow('地址', (r && r.url) || '（空）'));
+        rows.appendChild(davRow('账号', (r && r.user) || '（空）'));
+        rows.appendChild(davRow('云端备份份数', r && r.countOk ? String(r.count) : '读取失败'));
+        rows.appendChild(davRow('云端最新', (r && r.latest) || '无'));
+        rows.appendChild(davRow('上次同步', (r && r.lastSync) || '无'));
+        if (r && r.ok === false && r.error) rows.appendChild(davRow('错误', r.error));
+        if (!r || r.ok === false) {
+          davMsg('云端状态读取失败：' + ((r && r.error) || '未知错误'), 'bad');
+        }
       }).catch(function (e) {
         var el2 = document.getElementById('davInfo');
-        if (el2) el2.textContent = '读取失败：' + e;
+        if (el2) el2.textContent = '读取失败';
+        davMsg('读取云端状态失败：' + e, 'bad');
       });
     }
     function davAct(kind) {
-      if (!window.__TAURI__) { davMsg('壳未注入 IPC，无法执行'); return; }
+      if (!window.__TAURI__) { davMsg('壳未注入 IPC，无法执行', 'bad'); return; }
       var cmds = {
         up: 'cloud_backup_now', down: 'cloud_restore_download', notes: 'notes_sync'
       };
-      davMsg('执行中…');
+      var names = {
+        up: '上传备份', down: '下载云端备份', notes: '同步便签'
+      };
+      var btn = document.getElementById(
+        kind === 'up' ? 'btnDavUp' : (kind === 'down' ? 'btnDavDown' : 'btnNotesSync'));
+      var old = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = names[kind] + '…'; }
+      davMsg(names[kind] + '：执行中…');
       window.__TAURI__.core.invoke(cmds[kind]).then(function (r) {
-        davMsg(String(r));
+        davMsg(names[kind] + ' 成功：' + r, 'good');
         davInfo();
         if (kind === 'down' || kind === 'up') {
           return window.__TAURI__.core.invoke('page_data', { page: 'data' })
             .then(function (d) {
               window.__DATA_DATA__ = d;
-              var rr = renderData(d);
-              window.__DATA_RESULT__ = 'dav: ' + r + ' / ' + rr;
+              renderData(d);
             });
         }
       }).catch(function (e) {
-        davMsg('失败：' + e);
+        davMsg(names[kind] + ' 失败：' + e, 'bad');
+        davInfo();
+      }).then(function () {
+        if (btn) { btn.disabled = false; btn.textContent = old; }
       });
     }
     var up = document.getElementById('btnDavUp');

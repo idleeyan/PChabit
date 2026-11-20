@@ -163,6 +163,19 @@ fn remote_backups(d: &Dav) -> Vec<String> {
     names
 }
 
+/// 远端全部备份名（按时间序）。给「查看云端状态」显示份数用。
+pub fn cloud_names() -> Result<Vec<String>, String> {
+    let d = dav()?;
+    d.list("").map(|all| {
+        let mut names: Vec<String> = all
+            .into_iter()
+            .filter(|n| n.starts_with("pchabit_backup_") && n.ends_with(".db"))
+            .collect();
+        names.sort();
+        names
+    })
+}
+
 /// 上传最新一份本地备份，并清理远端多余份数。返回上传的文件名。
 pub fn cloud_backup() -> Result<String, String> {
     let d = dav()?;

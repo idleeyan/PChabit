@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.31**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
+| 当前版本 | **4.12.32**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；五个位置同步改） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -72,6 +72,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-20 | 4.12.32 | 数据页 WebDAV 结果条 + 状态表（云端份数/最新/上次同步），状态查询加日志 |
 | 2026-11-20 | 4.12.31 | 便签永久保存（去掉保留期清理）+ 数据管理页 WebDAV 手动同步（上传/下载/便签/状态） |
 | 2026-11-20 | 4.12.30 | 恢复被保留期误删的便签 + 清理只动空白/归档便签；小窗网速固定占位不再推挤 |
 | 2026-11-20 | 4.12.27 | 硬件趋势并入仪表盘（曲线 + 高负载应用榜），删除独立硬件页 |

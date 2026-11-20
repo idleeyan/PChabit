@@ -474,17 +474,30 @@ fn cloud_backup_now() -> Result<String, String> {    let name = backup::cloud_ba
     Ok(format!("已上传 {name}"))
 }
 
-/// 云端的备份状态：最新文件 + 上次同步时间。
+/// 云端的备份状态：最新文件 + 份数 + 上次同步时间。
 #[tauri::command]
 fn cloud_latest_info() -> serde_json::Value {
     let latest = backup::cloud_latest();
-    serde_json::json!({
+    let count = backup::cloud_names().map(|n| n.len() as i64).unwrap_or(-1);
+    let v = serde_json::json!({
         "ok": latest.is_ok(),
         "latest": latest.clone().unwrap_or_default(),
+        "count": count,
+        "countOk": count >= 0,
         "error": latest.err().unwrap_or_default(),
         "lastSync": setting_str("WebDAVLastSync", ""),
         "enabled": setting_bool_default("WebDAVEnabled", false),
-    })
+        "url": setting_str("WebDAVUrl", ""),
+        "user": setting_str("WebDAVUsername", ""),
+    });
+    log_line(&format!(
+        "[云备份] 状态查询：启用={} 云端 {} 份 最新={} 上次同步={}",
+        v["enabled"],
+        if count >= 0 { count.to_string() } else { "?".to_string() },
+        if v["latest"].as_str().unwrap_or("").is_empty() { "无" } else { v["latest"].as_str().unwrap_or("") },
+        if v["lastSync"].as_str().unwrap_or("").is_empty() { "无" } else { v["lastSync"].as_str().unwrap_or("") }
+    ));
+    v
 }
 
 /// 云端的最新备份下载到本地临时目录（**不覆盖当前库**，供用户自己决定要不要替换）。
@@ -1436,7 +1449,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.31";
+const VERSION: &str = "4.12.32";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
