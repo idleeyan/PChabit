@@ -281,8 +281,11 @@ tbody tr:last-child td { border-bottom: 0; }
   background: var(--gold-soft);
 }
 
-/* ---------- 进度条 ---------- */
-.bar {
+/* ---------- 进度条 ----------
+ * 类名叫 .pbar 而不是 .bar：设置页的按钮行、便签顶栏、浮窗标题栏都叫 .bar，
+ * 以前同名把它们的样式压成 4px 高并 overflow:hidden，按钮直接被裁掉。
+ */
+.pbar {
   display: block;
   width: 100%;
   height: 4px;
@@ -290,7 +293,7 @@ tbody tr:last-child td { border-bottom: 0; }
   background: var(--gold-soft);
   overflow: hidden;
 }
-.bar > i {
+.pbar > i {
   display: block;
   height: 100%;
   border-radius: 2px;

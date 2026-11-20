@@ -54,6 +54,7 @@
   --name-color: #ffdf9e;
   --nav-bg: #131009;
   --grid: rgba(217, 180, 90, 0.08);
+  --divider: rgba(255, 255, 255, 0.075);
   --zebra: rgba(255, 255, 255, 0.028);
   --row-hover: rgba(255, 255, 255, 0.06);
   --on-accent: #1a1408;
@@ -99,6 +100,7 @@
   --name-color: #cfe2f5;
   --nav-bg: #101318;
   --grid: rgba(255, 255, 255, 0.08);
+  --divider: rgba(255, 255, 255, 0.07);
   --zebra: rgba(255, 255, 255, 0.03);
   --row-hover: rgba(255, 255, 255, 0.065);
   --on-accent: #0d1116;
@@ -135,6 +137,7 @@
   --name-color: #f0cf9a;
   --nav-bg: #17120d;
   --grid: rgba(238, 230, 216, 0.08);
+  --divider: rgba(255, 255, 255, 0.07);
   --zebra: rgba(255, 255, 255, 0.028);
   --row-hover: rgba(255, 255, 255, 0.06);
   --on-accent: #1a1208;
@@ -171,6 +174,7 @@
   --name-color: #b8e4e8;
   --nav-bg: #0e1317;
   --grid: rgba(230, 234, 238, 0.08);
+  --divider: rgba(255, 255, 255, 0.07);
   --zebra: rgba(255, 255, 255, 0.03);
   --row-hover: rgba(255, 255, 255, 0.06);
   --on-accent: #0a1013;
@@ -217,6 +221,7 @@
   --name-color: #1d4ed8;
   --nav-bg: linear-gradient(180deg, #f9fbff 0%, #eef4fc 100%);
   --grid: rgba(16, 26, 38, 0.09);
+  --divider: rgba(16, 26, 38, 0.10);
   --zebra: rgba(16, 26, 38, 0.024);
   --row-hover: rgba(47, 111, 235, 0.06);
   --on-accent: #ffffff;

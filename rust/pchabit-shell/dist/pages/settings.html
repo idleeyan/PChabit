@@ -8,9 +8,10 @@
 .hint { background:var(--surface-3); border-left:3px solid var(--gold); border-radius:8px;
     padding:8px 10px; color:var(--dim); font-size:11px; margin-bottom:14px; line-height:1.7; }
 .hint b { color:var(--text); font-weight:600; }
-.grid { column-width:380px; column-gap:12px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(368px, 1fr));
+    gap:12px; align-items:start; }
 .row { display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center;
-    padding:5px 0; border-bottom:1px solid rgba(58,48,29,.55); }
+    padding:5px 0; border-bottom:1px solid var(--divider); }
 .row:last-child { border-bottom:0; }
 .k { color:var(--dim); font-size:11px; min-width:0; }
 .k .name { color:var(--text); }
@@ -30,16 +31,23 @@ input:focus { outline:none; border-color:var(--gold); }
 .ro { color:var(--dim); font-size:11px; max-width:150px; word-break:break-all; text-align:right;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .tag { font-size:10px; padding:1px 6px; border-radius:4px; border:1px solid var(--border); color:var(--mute); }
-.tag.live { color:var(--green); border-color:#1e4634; background:#0f2a22; }
-.tag.restart { color:var(--amber); border-color:#4a3a1c; background:#261f10; }
-.tag.idle { color:var(--dim); border-color:#2b374b; background:#1a2334; }
+.tag.live { color:var(--green); border-color:rgba(95,185,138,.45); background:rgba(95,185,138,.14); }
+.tag.restart { color:var(--amber); border-color:rgba(227,154,61,.45); background:rgba(227,154,61,.14); }
+.tag.idle { color:var(--mute); border-color:var(--border); background:var(--surface-3); }
+/* 浅色主题：深底标签在白底上会发脏、字也糊，换成浅底深字 */
+:root[data-theme="azure"] .tag.live { color:#0f6b3f; border-color:rgba(15,107,63,.32); background:rgba(22,121,74,.09); }
+:root[data-theme="azure"] .tag.restart { color:#8a5600; border-color:rgba(154,98,0,.30); background:rgba(154,98,0,.09); }
+:root[data-theme="azure"] .tag.idle { color:#5f7085; border-color:#cddaea; background:#f2f6fb; }
+:root[data-theme="azure"] .badge.set { color:#0f6b3f; background:rgba(22,121,74,.09); border-color:rgba(15,107,63,.30); }
+:root[data-theme="azure"] .badge.unset { color:#5f7085; background:#f2f6fb; border-color:#cddaea; }
+:root[data-theme="azure"] .smallbtn:hover { background:#e8f0fe; border-color:var(--gold); color:#1743a8; }
 .badge { font-size:10px; padding:1px 6px; border-radius:4px; }
-.badge.set { background:#0f2a22; color:var(--green); border:1px solid #1e4634; }
-.badge.unset { background:#1a2334; color:var(--mute); border:1px solid var(--border); }
+.badge.set { background:rgba(95,185,138,.14); color:var(--green); border:1px solid rgba(95,185,138,.45); }
+.badge.unset { background:var(--surface-3); color:var(--mute); border:1px solid var(--border); }
 .smallbtn { background:var(--surface-3); border:1px solid var(--border); color:var(--text); border-radius:6px;
     padding:2px 9px; font-size:11px; cursor:pointer; }
-.smallbtn:hover { background:#20304a; border-color:var(--gold); color:#fff; }
-.bar { display:flex; gap:8px; align-items:center; margin:0 0 12px; }</style>
+.smallbtn:hover { background:var(--gold-soft); border-color:var(--gold); color:var(--gold-hi); }
+.bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }</style>
 <script src="theme-boot.js"></script>
 <link rel="stylesheet" href="theme.css" />
 </head>
