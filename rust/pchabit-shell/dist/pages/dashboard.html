@@ -13,11 +13,11 @@
   .hours { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; align-items:end; height:74px; }
   .hours i {
     display:block; border-radius:3px 3px 1px 1px; min-height:2px;
-    background:linear-gradient(180deg, #f2d492, #a9812f);
+    background:linear-gradient(180deg, var(--gold-hi), var(--gold-deep));
     transition:filter .15s;
   }
   .hours i:hover { filter:brightness(1.25); }
-  .hours i.zero { background:#241e14; }
+  .hours i.zero { background:var(--surface-3); }
   .hlbl { display:grid; grid-template-columns:repeat(24,1fr); gap:3px; margin-top:5px;
     font-size:9.5px; color:var(--mute); text-align:center; }
 
@@ -26,8 +26,8 @@
   .trend .v { font-size:9.5px; color:var(--dim); margin-bottom:3px; font-variant-numeric:tabular-nums; }
   .trend .b { height:52px; display:flex; align-items:flex-end; }
   .trend .b i { display:block; width:100%; border-radius:4px 4px 2px 2px; min-height:3px;
-    background:linear-gradient(180deg, #f2d492, #a9812f); }
-  .trend > div.today .b i { background:linear-gradient(180deg, #e8c46a, #a9812f); }
+    background:linear-gradient(180deg, var(--gold-hi), var(--gold-deep)); }
+  .trend > div.today .b i { background:linear-gradient(180deg, var(--cyan), var(--gold-deep)); }
   .trend .l { font-size:9.5px; color:var(--mute); margin-top:4px; }
 
   .hwgrid { display:grid; grid-template-columns:minmax(0,1fr) 320px; gap:16px; align-items:start; }
@@ -84,9 +84,9 @@
     <div>
       <canvas id="hc"></canvas>
       <div class="legend">
-        <span><i class="dot" style="background:#e8c46a"></i>CPU %</span>
-        <span><i class="dot" style="background:#5fb3c4"></i>GPU %</span>
-        <span><i class="dot" style="background:#e0665f"></i>GPU 温度（右轴）</span>
+        <span><i class="dot" style="background:var(--gold)"></i>CPU %</span>
+        <span><i class="dot" style="background:var(--cyan)"></i>GPU %</span>
+        <span><i class="dot" style="background:var(--red)"></i>GPU 温度（右轴）</span>
       </div>
     </div>
     <div>
@@ -117,6 +117,21 @@
   window.addEventListener('resize', function () { drawHardware(HW_HOURS); });
 
   // 硬件趋势：CPU 面积 + GPU 折线 + 温度虚线（右轴）
+  // canvas 颜色跟随 tokens.css（浅色主题下金色曲线在白底上看不清，必须动态取）
+  function cssVar(name, fb) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fb;
+    } catch (e) { return fb; }
+  }
+  function hexToRgba(hex, alpha) {
+    var h = String(hex || '').replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (h.length !== 6) return 'rgba(217,180,90,' + alpha + ')';
+    var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+  }
+
   function drawHardware(hours) {
     var cv = document.getElementById('hc');
     if (!cv || !cv.getContext) return;
@@ -131,7 +146,7 @@
     ctx.font = '10px "Segoe UI","Microsoft YaHei",sans-serif';
 
     if (!hours || !hours.length) {
-      ctx.fillStyle = '#7e7464';
+      ctx.fillStyle = cssVar('--mute', '#7e7464');
       ctx.fillText('暂无硬件样本', 14, 26);
       return;
     }
@@ -146,10 +161,10 @@
     // 网格 + 刻度
     for (var g = 0; g <= 4; g++) {
       var y = padT + plotH * g / 4;
-      ctx.strokeStyle = 'rgba(217,180,90,0.07)';
+      ctx.strokeStyle = cssVar('--grid', 'rgba(217,180,90,0.08)');
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
-      ctx.fillStyle = '#7e7464';
+      ctx.fillStyle = cssVar('--mute', '#7e7464');
       ctx.fillText(Math.round(100 * (1 - g / 4)) + '%', 8, y + 3);
       ctx.fillText(Math.round(maxTemp * (1 - g / 4)) + '°', cssW - 32, y + 3);
     }
@@ -168,8 +183,8 @@
     }
     if (pts.length > 1) {
       var grd = ctx.createLinearGradient(0, padT, 0, padT + plotH);
-      grd.addColorStop(0, 'rgba(232,196,106,0.30)');
-      grd.addColorStop(1, 'rgba(232,196,106,0.02)');
+      grd.addColorStop(0, hexToRgba(cssVar('--gold', '#d9b45a'), 0.32));
+      grd.addColorStop(1, hexToRgba(cssVar('--gold', '#d9b45a'), 0.03));
       ctx.beginPath();
       ctx.moveTo(pts[0][0], padT + plotH);
       pts.forEach(function (p) { ctx.lineTo(p[0], p[1]); });
@@ -180,7 +195,7 @@
 
       ctx.beginPath();
       pts.forEach(function (p, k) { k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); });
-      ctx.strokeStyle = '#e8c46a';
+      ctx.strokeStyle = cssVar('--gold', '#d9b45a');
       ctx.lineWidth = 2;
       ctx.stroke();
     }
@@ -194,7 +209,7 @@
       if (!started) { ctx.moveTo(xAt(j), yAt(gv, 100)); started = true; }
       else ctx.lineTo(xAt(j), yAt(gv, 100));
     }
-    ctx.strokeStyle = '#5fb3c4';
+    ctx.strokeStyle = cssVar('--cyan', '#5fb3c4');
     ctx.lineWidth = 2;
     ctx.stroke();
 
@@ -207,7 +222,7 @@
       if (!t0) { ctx.moveTo(xAt(k2), yAt(tv, maxTemp)); t0 = true; }
       else ctx.lineTo(xAt(k2), yAt(tv, maxTemp));
     }
-    ctx.strokeStyle = 'rgba(224,102,95,0.85)';
+    ctx.strokeStyle = hexToRgba(cssVar('--red', '#e0665f'), 0.9);
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 3]);
     ctx.stroke();

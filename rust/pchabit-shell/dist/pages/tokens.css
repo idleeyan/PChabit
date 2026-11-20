@@ -1,12 +1,16 @@
-/* PChabit 配色令牌（4.12.35）
+/* PChabit 配色令牌（4.12.40）
  *
  * 结构尺度与字体在这里定一次；颜色按主题分块，全部以变量暴露。
  * theme.css 通过 @import 引入本文件，页面不要直接 link。
  * app.html（导航壳）直接 link pages/tokens.css 取同一套变量。
  *
  * 切换方式（写在 <html> 上）：
- *   <html data-theme="gold|graphite|warm|slate" data-accent="gold|copper|blue|cyan|violet|green|amber|rose">
- * 未指定时 = gold（鎏金暗夜）。
+ *   <html data-theme="gold|graphite|warm|slate|azure" data-accent="gold|copper|blue|cyan|violet|green|amber|rose">
+ * 未指定时 = gold（鎏金暗夜）。azure 是浅色主题，忽略 data-accent（用自带蓝）。
+ *
+ * 对比度口径（WCAG 相对亮度比）：
+ *   深色：卡片/底色 ≥1.28、边框/底色 ≥3.5、正文 ≥19、小字 ≥8
+ *   浅色：边框/底色 ≥2.2、正文 ≥16、小字 ≥4.5（白卡叠白底，靠边框与阴影分层）
  */
 
 :root {
@@ -20,7 +24,7 @@
   --font: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
   --font-display: Georgia, "Songti SC", "STSong", "SimSun", serif;
 
-  /* ---------- 语义色：各主题共用（已降饱和） ---------- */
+  /* ---------- 语义色：暗色版，浅色主题会覆盖 ---------- */
   --green: #5fb98a;
   --amber: #e39a3d;
   --red: #e0665f;
@@ -28,33 +32,38 @@
   --cyan: #5fb3c4;
 
   /* ---------- 默认主题：鎏金暗夜 ---------- */
-  --bg: #060504;
+  --bg: #030303;
   --bg-image: none;
-  --surface: #1e1810;
-  --surface-2: #241d12;
-  --surface-3: #2b2316;
-  --border: #5f4b2b;
-  --border-hi: #8a6f3f;
-  --text: #f6f1e7;
-  --dim: #c3b8a5;
-  --mute: #a3977f;
+  --surface: #292117;
+  --surface-2: #302619;
+  --surface-3: #382c1d;
+  --border: #7a6238;
+  --border-hi: #9c7f4a;
+  --text: #ffffff;
+  --dim: #ddd5c8;
+  --mute: #b8ab97;
 
   --card-bg: var(--surface);
   --kpi-bg: var(--surface-2);
   --card-line: linear-gradient(90deg, transparent, rgba(247, 230, 180, 0.50), transparent);
-  --title-glow: drop-shadow(0 2px 12px rgba(217, 180, 90, 0.30));
-  --shadow: 0 18px 42px rgba(0, 0, 0, 0.70);
-  --shadow-sm: 0 6px 16px rgba(0, 0, 0, 0.55);
-  --ring: inset 0 1px 0 rgba(247, 230, 180, 0.08);
-  --table-head: #c0a878;
-  --name-color: #f0d69a;
+  --title-glow: drop-shadow(0 2px 12px rgba(217, 180, 90, 0.34));
+  --shadow: 0 18px 42px rgba(0, 0, 0, 0.72);
+  --shadow-sm: 0 6px 16px rgba(0, 0, 0, 0.58);
+  --ring: inset 0 1px 0 rgba(247, 230, 180, 0.10);
+  --table-head: #d0b884;
+  --name-color: #ffdf9e;
   --nav-bg: #131009;
+  --grid: rgba(217, 180, 90, 0.08);
+  --zebra: rgba(255, 255, 255, 0.028);
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --on-accent: #1a1408;
+  --input-bg: #0b0906;
 
   /* ---------- 强调色：默认金 ---------- */
   --gold: #d9b45a;
   --gold-hi: #f7e6b4;
   --gold-deep: #b08a34;
-  --gold-soft: rgba(217, 180, 90, 0.12);
+  --gold-soft: rgba(217, 180, 90, 0.14);
   --gold-line: rgba(247, 230, 180, 0.55);
   --grad-gold: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 52%, var(--gold-deep) 100%);
   --grad-gold-line: linear-gradient(90deg, transparent, var(--gold-line), transparent);
@@ -64,132 +73,194 @@
   color-scheme: dark;
 }
 
-/* ================= 预置主题 ================= */
+/* ================= 预置主题（深色） ================= */
 
-/* 石墨灰蓝：中性灰底 + 淡蓝，去光晕去渐变，长时间看最省眼 */
+/* 石墨灰蓝：中性灰底 + 淡蓝，去光晕去渐变 */
 :root[data-theme="graphite"] {
-  --bg: #0e1013;
+  --bg: #070809;
   --bg-image: none;
-  --surface: #1c222a;
-  --surface-2: #222933;
-  --surface-3: #282f3a;
-  --border: #4b5563;
-  --border-hi: #6f7d8e;
-  --text: #eef1f4;
-  --dim: #b7c0ca;
-  --mute: #9ea8b6;
+  --surface: #232a33;
+  --surface-2: #29313b;
+  --surface-3: #303844;
+  --border: #6b7684;
+  --border-hi: #8b96a4;
+  --text: #ffffff;
+  --dim: #ccd3db;
+  --mute: #a3adb9;
 
   --card-bg: var(--surface);
   --kpi-bg: var(--surface-2);
-  --card-line: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  --card-line: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
   --title-glow: none;
-  --shadow: 0 14px 32px rgba(0, 0, 0, 0.60);
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.45);
-  --ring: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --table-head: #a9b4c1;
-  --name-color: #b6d0e8;
-  --nav-bg: #121519;
+  --shadow: 0 14px 32px rgba(0, 0, 0, 0.66);
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --ring: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --table-head: #b8c2cf;
+  --name-color: #cfe2f5;
+  --nav-bg: #101318;
+  --grid: rgba(255, 255, 255, 0.08);
+  --zebra: rgba(255, 255, 255, 0.03);
+  --row-hover: rgba(255, 255, 255, 0.065);
+  --on-accent: #0d1116;
+  --input-bg: #14181d;
 
   --gold: #7fa8cc;
   --gold-hi: #a8c6e2;
   --gold-deep: #6b96bb;
-  --gold-soft: rgba(127, 168, 204, 0.14);
-  --gold-line: rgba(168, 198, 226, 0.40);
+  --gold-soft: rgba(127, 168, 204, 0.16);
+  --gold-line: rgba(168, 198, 226, 0.45);
 }
 
-/* 暖棕纸墨：暖褐底 + 赭色，最低对比，接近纸质阅读 */
+/* 暖棕纸墨：暖褐底 + 赭色 */
 :root[data-theme="warm"] {
-  --bg: #100d0a;
+  --bg: #050403;
   --bg-image: none;
-  --surface: #221b14;
-  --surface-2: #282019;
-  --surface-3: #2f261d;
-  --border: #6a563c;
-  --border-hi: #8a7050;
-  --text: #f2ebde;
-  --dim: #c0b5a3;
-  --mute: #a89c89;
+  --surface: #2b2318;
+  --surface-2: #322819;
+  --surface-3: #3a2f1f;
+  --border: #7d6440;
+  --border-hi: #a08152;
+  --text: #fffaf0;
+  --dim: #d6c9b4;
+  --mute: #b1a48d;
 
   --card-bg: var(--surface);
   --kpi-bg: var(--surface-2);
-  --card-line: linear-gradient(90deg, transparent, rgba(238, 230, 216, 0.14), transparent);
+  --card-line: linear-gradient(90deg, transparent, rgba(238, 230, 216, 0.16), transparent);
   --title-glow: none;
-  --shadow: 0 14px 30px rgba(0, 0, 0, 0.58);
-  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.42);
-  --ring: inset 0 1px 0 rgba(238, 230, 216, 0.06);
-  --table-head: #bfae95;
-  --name-color: #e2bb85;
-  --nav-bg: #15110d;
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.64);
+  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.48);
+  --ring: inset 0 1px 0 rgba(238, 230, 216, 0.07);
+  --table-head: #c9b699;
+  --name-color: #f0cf9a;
+  --nav-bg: #17120d;
+  --grid: rgba(238, 230, 216, 0.08);
+  --zebra: rgba(255, 255, 255, 0.028);
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --on-accent: #1a1208;
+  --input-bg: #0d0a07;
 
   --gold: #b98a52;
   --gold-hi: #d8ab74;
   --gold-deep: #9a7340;
-  --gold-soft: rgba(185, 138, 82, 0.14);
-  --gold-line: rgba(216, 171, 116, 0.38);
+  --gold-soft: rgba(185, 138, 82, 0.16);
+  --gold-line: rgba(216, 171, 116, 0.42);
 }
 
-/* 青灰极简：冷灰底 + 青，冷调低饱和 */
+/* 青灰极简：冷灰底 + 青 */
 :root[data-theme="slate"] {
-  --bg: #0c0f12;
+  --bg: #050708;
   --bg-image: none;
-  --surface: #1a2129;
-  --surface-2: #202730;
-  --surface-3: #262e38;
-  --border: #45505c;
-  --border-hi: #66747f;
-  --text: #ecf0f4;
-  --dim: #b3bdc7;
-  --mute: #9ba6b2;
+  --surface: #202830;
+  --surface-2: #262f38;
+  --surface-3: #2d3741;
+  --border: #5f6b78;
+  --border-hi: #7e8b98;
+  --text: #ffffff;
+  --dim: #c6cfd8;
+  --mute: #9ea9b4;
 
   --card-bg: var(--surface);
   --kpi-bg: var(--surface-2);
-  --card-line: linear-gradient(90deg, transparent, rgba(230, 234, 238, 0.14), transparent);
+  --card-line: linear-gradient(90deg, transparent, rgba(230, 234, 238, 0.16), transparent);
   --title-glow: none;
-  --shadow: 0 14px 30px rgba(0, 0, 0, 0.58);
-  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.42);
-  --ring: inset 0 1px 0 rgba(230, 234, 238, 0.06);
-  --table-head: #a6b2be;
-  --name-color: #a5d8dc;
-  --nav-bg: #101418;
+  --shadow: 0 14px 30px rgba(0, 0, 0, 0.64);
+  --shadow-sm: 0 4px 13px rgba(0, 0, 0, 0.48);
+  --ring: inset 0 1px 0 rgba(230, 234, 238, 0.07);
+  --table-head: #b3bfcb;
+  --name-color: #b8e4e8;
+  --nav-bg: #0e1317;
+  --grid: rgba(230, 234, 238, 0.08);
+  --zebra: rgba(255, 255, 255, 0.03);
+  --row-hover: rgba(255, 255, 255, 0.06);
+  --on-accent: #0a1013;
+  --input-bg: #12181d;
 
   --gold: #6fb3b8;
   --gold-hi: #93cfd3;
   --gold-deep: #5f9a9f;
-  --gold-soft: rgba(111, 179, 184, 0.14);
-  --gold-line: rgba(147, 207, 211, 0.38);
+  --gold-soft: rgba(111, 179, 184, 0.16);
+  --gold-line: rgba(147, 207, 211, 0.42);
+}
+
+/* ================= 蓝白（浅色） ================= */
+
+/* 纯白底 + 白卡 + 浅蓝分隔；卡片靠 1px 边框与轻阴影浮起，不用灰底 */
+:root[data-theme="azure"] {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --bg-image: linear-gradient(180deg, #f7fbff 0%, #ffffff 46%);
+  --surface: #ffffff;
+  --surface-2: #f6f9fd;
+  --surface-3: #eaf1fa;
+  --border: #c9d8ea;
+  --border-hi: #8fabcb;
+  --text: #0f1a26;
+  --dim: #45566a;
+  --mute: #5f7085;
+
+  --green: #16794a;
+  --amber: #9a6200;
+  --red: #c1362b;
+  --violet: #6544b8;
+  --cyan: #0e7490;
+
+  --card-bg: #ffffff;
+  --kpi-bg: linear-gradient(180deg, #fbfdff 0%, #f4f8fd 100%);
+  --card-line: linear-gradient(90deg, transparent, rgba(47, 111, 235, 0.32), transparent);
+  --title-glow: none;
+  --shadow: 0 10px 28px rgba(23, 43, 77, 0.10);
+  --shadow-sm: 0 1px 2px rgba(23, 43, 77, 0.05), 0 8px 22px rgba(23, 43, 77, 0.06);
+  --ring: inset 0 1px 0 #ffffff;
+  --table-head: #5a6d84;
+  --name-color: #1d4ed8;
+  --nav-bg: linear-gradient(180deg, #f9fbff 0%, #eef4fc 100%);
+  --grid: rgba(16, 26, 38, 0.09);
+  --zebra: rgba(16, 26, 38, 0.024);
+  --row-hover: rgba(47, 111, 235, 0.06);
+  --on-accent: #ffffff;
+  --input-bg: #ffffff;
+
+  --gold: #2f6feb;
+  --gold-hi: #1b4fd0;
+  --gold-deep: #1743a8;
+  --gold-soft: rgba(47, 111, 235, 0.10);
+  --gold-line: rgba(47, 111, 235, 0.34);
 }
 
 /* ================= 强调色（覆盖 --gold 系） ================= */
+/* 浅色主题用自带蓝；强调色覆盖只对深色主题生效，否则白底上的浅金文字看不清 */
 
-:root[data-accent="gold"] {
+:root[data-accent="gold"]:not([data-theme="azure"]) {
   --gold: #d9b45a; --gold-hi: #f7e6b4; --gold-deep: #b08a34;
-  --gold-soft: rgba(217, 180, 90, 0.12); --gold-line: rgba(247, 230, 180, 0.55);
+  --gold-soft: rgba(217, 180, 90, 0.14); --gold-line: rgba(247, 230, 180, 0.55);
 }
-:root[data-accent="copper"] {
+:root[data-accent="copper"]:not([data-theme="azure"]) {
   --gold: #c98b4b; --gold-hi: #e8b483; --gold-deep: #a8723a;
-  --gold-soft: rgba(201, 139, 75, 0.14); --gold-line: rgba(232, 180, 131, 0.45);
+  --gold-soft: rgba(201, 139, 75, 0.16); --gold-line: rgba(232, 180, 131, 0.45);
 }
-:root[data-accent="blue"] {
+:root[data-accent="blue"]:not([data-theme="azure"]) {
   --gold: #7fa8cc; --gold-hi: #a8c6e2; --gold-deep: #6b96bb;
-  --gold-soft: rgba(127, 168, 204, 0.14); --gold-line: rgba(168, 198, 226, 0.42);
+  --gold-soft: rgba(127, 168, 204, 0.16); --gold-line: rgba(168, 198, 226, 0.42);
 }
-:root[data-accent="cyan"] {
+:root[data-accent="cyan"]:not([data-theme="azure"]) {
   --gold: #5fb3c4; --gold-hi: #96d6e0; --gold-deep: #4f9aa6;
-  --gold-soft: rgba(95, 179, 196, 0.14); --gold-line: rgba(150, 214, 224, 0.42);
+  --gold-soft: rgba(95, 179, 196, 0.16); --gold-line: rgba(150, 214, 224, 0.42);
 }
-:root[data-accent="violet"] {
+:root[data-accent="violet"]:not([data-theme="azure"]) {
   --gold: #a98bd6; --gold-hi: #cbb3ec; --gold-deep: #8a72bb;
-  --gold-soft: rgba(169, 139, 214, 0.14); --gold-line: rgba(203, 179, 236, 0.42);
+  --gold-soft: rgba(169, 139, 214, 0.16); --gold-line: rgba(203, 179, 236, 0.42);
 }
-:root[data-accent="green"] {
+:root[data-accent="green"]:not([data-theme="azure"]) {
   --gold: #5fb98a; --gold-hi: #93d9b3; --gold-deep: #46a071;
-  --gold-soft: rgba(95, 185, 138, 0.14); --gold-line: rgba(147, 217, 179, 0.42);
+  --gold-soft: rgba(95, 185, 138, 0.16); --gold-line: rgba(147, 217, 179, 0.42);
 }
-:root[data-accent="amber"] {
+:root[data-accent="amber"]:not([data-theme="azure"]) {
   --gold: #e0a94b; --gold-hi: #f2cf8c; --gold-deep: #bf8c38;
-  --gold-soft: rgba(224, 169, 75, 0.14); --gold-line: rgba(242, 207, 140, 0.48);
+  --gold-soft: rgba(224, 169, 75, 0.16); --gold-line: rgba(242, 207, 140, 0.48);
 }
-:root[data-accent="rose"] {
+:root[data-accent="rose"]:not([data-theme="azure"]) {
   --gold: #d17a97; --gold-hi: #eaaec2; --gold-deep: #b56283;
-  --gold-soft: rgba(209, 122, 151, 0.14); --gold-line: rgba(234, 174, 194, 0.42);
+  --gold-soft: rgba(209, 122, 151, 0.16); --gold-line: rgba(234, 174, 194, 0.42);
 }

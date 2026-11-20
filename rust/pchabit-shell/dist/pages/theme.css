@@ -18,7 +18,7 @@ body {
   margin: 0;
   padding: 18px 20px 26px;
   color: var(--text);
-  font: 13px/1.6 var(--font);
+  font: 13.5px/1.62 var(--font);
   /* 纯色打底：背景图只是叠加层，任何一层失效也不会露出透明底 */
   background-color: var(--bg);
   background-image: var(--bg-image);
@@ -180,7 +180,8 @@ thead th {
   text-align: left;
   font-weight: 500;
   color: var(--table-head);
-  font-size: 10.5px;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   padding: 4px 8px 7px;
   border-bottom: 1px solid var(--border);
@@ -188,14 +189,14 @@ thead th {
 }
 thead th.r, td.r { text-align: right; }
 tbody td {
-  padding: 7px 8px;
-  font-size: 12.5px;
+  padding: 8px; 
+  font-size: 13px;
   border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
-tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.022); }
-tbody tr:hover { background: rgba(255, 255, 255, 0.055); }
+tbody tr:nth-child(even) { background: var(--zebra); }
+tbody tr:hover { background: var(--row-hover); }
 tbody tr:last-child td { border-bottom: 0; }
 .nm { color: var(--name-color); }
 .empty { color: var(--mute); padding: 10px 2px; }
@@ -217,11 +218,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .btn-primary {
   background: var(--grad-gold);
   border-color: var(--gold-deep);
-  color: #1a1408;
+  color: var(--on-accent);
   font-weight: 600;
 }
-.btn-primary:hover { filter: brightness(1.08); color: #1a1408; border-color: var(--gold); }
-.btn-primary:disabled { color: #1a1408; filter: none; }
+.btn-primary:hover { filter: brightness(1.08); color: var(--on-accent); border-color: var(--gold); }
+.btn-primary:disabled { color: var(--on-accent); filter: none; }
 .btn-ghost { background: transparent; border-color: var(--border); color: var(--dim); }
 .btn-ghost:hover { border-color: var(--gold-deep); color: var(--gold-hi); background: transparent; }
 
@@ -324,11 +325,11 @@ input[type="password"],
 input[type="search"],
 select,
 textarea {
-  background: var(--bg);
+  background: var(--input-bg);
   border: 1px solid var(--border);
   border-radius: var(--r-xs);
   color: var(--text);
-  font: 12px var(--font);
+  font: 12.5px var(--font);
   padding: 5px 9px;
   transition: border-color 0.16s, box-shadow 0.16s;
 }
@@ -354,6 +355,30 @@ section,
 @media (prefers-reduced-motion: reduce) {
   .card, section, .kpi { animation: none; }
   .kpi { transition: none; }
+}
+
+/* ---------- 浅色主题（蓝白）专项：卡片靠边框与阴影分层 ---------- */
+:root[data-theme="azure"] .card,
+:root[data-theme="azure"] section {
+  box-shadow: 0 1px 2px rgba(23, 43, 77, 0.05), 0 8px 22px rgba(23, 43, 77, 0.06);
+}
+:root[data-theme="azure"] .kpi:hover {
+  box-shadow: 0 2px 6px rgba(23, 43, 77, 0.08), 0 10px 24px rgba(47, 111, 235, 0.10);
+  border-color: var(--border-hi);
+}
+:root[data-theme="azure"] tbody td { border-bottom: 1px solid #e3ecf6; }
+:root[data-theme="azure"] thead th { border-bottom: 1px solid var(--border); }
+:root[data-theme="azure"] .pill { background: #f2f7fd; }
+:root[data-theme="azure"] .pill.info {
+  background: rgba(47, 111, 235, 0.08);
+  border-color: rgba(47, 111, 235, 0.35);
+  color: #1b4fd0;
+}
+:root[data-theme="azure"] .ranges button.on,
+:root[data-theme="azure"] .seg button.on {
+  background: #e8f0fe;
+  border-color: var(--gold);
+  color: #1743a8;
 }
 
 /* ---------- 通用布局（页面可按需覆盖） ---------- */
