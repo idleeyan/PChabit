@@ -23,7 +23,7 @@
 input[type=checkbox] { width:15px; height:15px; accent-color:var(--gold); cursor:pointer; }
 input[type=number], input[type=text], input[type=password] {
     background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:5px;
-    padding:3px 7px; font:12px/1.4 "Segoe UI","Microsoft YaHei",sans-serif; }
+    padding:4px 7px; font:13px/1.45 "Segoe UI","Microsoft YaHei",sans-serif; }
 input[type=number] { width:78px; }
 input[type=text] { width:172px; }
 input[type=password] { width:112px; }
@@ -41,6 +41,30 @@ input:focus { outline:none; border-color:var(--gold); }
 :root[data-theme="azure"] .badge.set { color:#0f6b3f; background:rgba(22,121,74,.09); border-color:rgba(15,107,63,.30); }
 :root[data-theme="azure"] .badge.unset { color:#5f7085; background:#f2f6fb; border-color:#cddaea; }
 :root[data-theme="azure"] .smallbtn:hover { background:#e8f0fe; border-color:var(--gold); color:#1743a8; }
+
+/* ---------- 分组折叠 ----------
+ * 标题行即开关，箭头指向「右侧=已折叠 / 下方=已展开」；
+ * 状态存 localStorage（键 pch.settingCollapsed），页面自动刷新后仍保持。
+ */
+/* 提示条里的行内标签会把行高挤扁，单独给行高与基线 */
+.note .tag, .hint .tag { display:inline-block; line-height:1.45; vertical-align:baseline; }
+section > h2 { cursor:pointer; user-select:none; }
+section > h2::before {
+    content:''; flex:none; width:0; height:0;
+    border-left:5px solid var(--gold-deep);
+    border-top:4px solid transparent;
+    border-bottom:4px solid transparent;
+    transform:rotate(90deg);
+    transition:transform .16s ease;
+}
+section.collapsed > h2::before { transform:none; }
+section > h2:hover::before { border-left-color:var(--gold); }
+section.collapsed .row { display:none; }
+section.collapsed { padding-bottom:12px; }
+section.collapsed > h2 { margin-bottom:0; }
+/* 折叠时在标题后提示还有多少项没显示 */
+section.collapsed > h2 em::after { content:' · 已折叠'; color:var(--mute); }
+
 .badge { font-size:11.5px; padding:1px 6px; border-radius:4px; }
 .badge.set { background:rgba(95,185,138,.14); color:var(--green); border:1px solid rgba(95,185,138,.45); }
 .badge.unset { background:var(--surface-3); color:var(--mute); border:1px solid var(--border); }
@@ -66,6 +90,9 @@ input:focus { outline:none; border-color:var(--gold); }
     <button class="smallbtn" id="cloudInfo">查看云端状态</button>
     <button class="smallbtn" id="notesSync">同步便签</button>
     <span id="cloudMsg" class="sub"></span>
+    <span style="flex:1"></span>
+    <button class="smallbtn" id="grpAllOpen">全部展开</button>
+    <button class="smallbtn" id="grpAllClose">全部折叠</button>
   </div>
   <div class="grid" id="grid"></div>
 </div>
@@ -386,7 +413,50 @@ input:focus { outline:none; border-color:var(--gold); }
     h.appendChild(n);
     s.appendChild(h);
     items.forEach(function (it) { row(it, s); });
+    makeCollapsible(s, title);
     grid.appendChild(s);
+  }
+
+  // ---------- 分组折叠（用户自选状态，记在 localStorage）----------
+  var COLLAPSE_KEY = 'pch.settingCollapsed';
+
+  function collapsedList() {
+    try {
+      var raw = localStorage.getItem(COLLAPSE_KEY);
+      var v = raw ? JSON.parse(raw) : [];
+      return Object.prototype.toString.call(v) === '[object Array]' ? v : [];
+    } catch (e) { return []; }
+  }
+
+  function saveCollapsed(arr) {
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(arr)); } catch (e) { }
+  }
+
+  /// 把分组标题行变成展开/折叠开关，并按上次的选择复原
+  function makeCollapsible(sec, title) {
+    sec.dataset.group = title;
+    if (collapsedList().indexOf(title) >= 0) sec.classList.add('collapsed');
+    var h = sec.querySelector('h2');
+    if (!h) return;
+    h.title = '点击「' + title + '」展开或折叠';
+    h.addEventListener('click', function () {
+      var nowClosed = sec.classList.toggle('collapsed');
+      var arr = collapsedList().filter(function (x) { return x !== title; });
+      if (nowClosed) arr.push(title);
+      saveCollapsed(arr);
+    });
+  }
+
+  /// 全部展开 / 全部折叠：一次写回，避免多次读写存储
+  function setAllCollapsed(closed) {
+    var arr = [];
+    Array.prototype.forEach.call(document.querySelectorAll('#grid section'), function (sec) {
+      var g = sec.dataset.group;
+      if (!g) return;
+      sec.classList.toggle('collapsed', closed);
+      if (closed) arr.push(g);
+    });
+    saveCollapsed(arr);
   }
 
   /// 关于：版本 / 技术栈 / 目录 / 项目地址（只读展示，便于排查时一眼取到路径）
@@ -431,6 +501,7 @@ input:focus { outline:none; border-color:var(--gold); }
       r.appendChild(st);
       s.appendChild(r);
     });
+    makeCollapsible(s, '关于');
     grid.appendChild(s);
   }
 
@@ -472,6 +543,11 @@ input:focus { outline:none; border-color:var(--gold); }
   };
 
   document.addEventListener('DOMContentLoaded', function () {
+    var allOpen = document.getElementById('grpAllOpen');
+    var allClose = document.getElementById('grpAllClose');
+    if (allOpen) allOpen.addEventListener('click', function () { setAllCollapsed(false); });
+    if (allClose) allClose.addEventListener('click', function () { setAllCollapsed(true); });
+
     if (window.__SET_DATA__) {
       try { window.__SET_RESULT__ = render(window.__SET_DATA__); }
       catch (e) { window.__SET_RESULT__ = 'error: ' + e.message; }
