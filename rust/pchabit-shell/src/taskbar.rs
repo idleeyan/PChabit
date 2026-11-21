@@ -797,7 +797,8 @@ fn tick_loop() {
     // 磁盘：活动率 / 读 / 写（PDH，口径与 HardwareSamples 的 DiskActivity/DiskRead/DiskWrite 一致）
     let mut disk_meter = pchabit_collect::netif::DiskMeter::new();
     let mut tick: u32 = 0;
-    // netd 管道：GPU 每秒问一次，断了就下一拍重连（不阻塞采集）
+    // netd 管道：GPU 每秒问一次。首连失败不能就此放弃——netd 被关掉/崩掉时，
+    // 小窗要还能自己把守护进程拉回来（每 30 拍补一次，连不上才算真没 N 卡）
     let mut gpu_pipe: Option<pchabit_collect::netd::Pipe> = pchabit_collect::netd::Pipe::connect(1);
     let mut gpu_logged = false;
 
@@ -850,6 +851,20 @@ fn tick_loop() {
             None => (0.0, 0.0, 0.0),
         };
 
+        // 管道一直没连上：每 30 拍试一次重连，连不上就让 ensure_daemon 把 netd 拉起来
+        if gpu_pipe.is_none() && tick % 30 == 0 {
+            if let Some(p) = pchabit_collect::netd::Pipe::connect(1) {
+                gpu_pipe = Some(p);
+                gpu_logged = false;
+            } else if let Some((p, spawned)) = pchabit_collect::netd::ensure_daemon() {
+                gpu_pipe = Some(p);
+                gpu_logged = false;
+                if spawned {
+                    crate::log_line("[小窗] netd 未运行，已自动拉起");
+                }
+            }
+        }
+
         // GPU：向 netd 问一次快照（NVML 直读；无 N 卡时 avail=false）
         let (gpu_load, vram_used, vram_total) = {
             let reply = match gpu_pipe.as_mut() {
@@ -897,7 +912,8 @@ fn tick_loop() {
         let show_usage = setting_bool("TaskbarShowUsage", false);
 
         // 顺序：先网速（下行放大加粗、排最前），再竖分隔线，最后 CPU / 内存 / GPU / 显存 / 磁盘
-        let has_gpu = gpu_avail && (show_gpu || show_vram);
+        // 勾了 GPU/显存就一定占位：取不到数时显示「—」，别让开关看起来没生效
+        let has_gpu = show_gpu || show_vram;
         let vram_pct = if vram_total > 0.0 { (vram_used / vram_total * 100.0).clamp(0.0, 100.0) } else { 0.0 };
         let mut segments: Vec<Segment> = Vec::with_capacity(6);
         if show_net {
@@ -946,8 +962,8 @@ fn tick_loop() {
             if has_gpu && show_gpu {
                 segments.push(Segment {
                     label: "GPU".into(),
-                    value: format!("{:.0}%", gpu_load),
-                    tone: load_tone(gpu_load),
+                    value: if gpu_avail { format!("{:.0}%", gpu_load) } else { "—".into() },
+                    tone: if gpu_avail { load_tone(gpu_load) } else { Tone::Label },
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
                 slot: Slot::Percent,
@@ -957,8 +973,8 @@ fn tick_loop() {
             if has_gpu && show_vram {
                 segments.push(Segment {
                     label: "显存".into(),
-                    value: format!("{:.0}%", vram_pct),
-                    tone: load_tone(vram_pct),
+                    value: if gpu_avail { format!("{:.0}%", vram_pct) } else { "—".into() },
+                    tone: if gpu_avail { load_tone(vram_pct) } else { Tone::Label },
                     value_pt: VALUE_PT,
                     divider_before: show_net && first_of_group,
                 slot: Slot::Percent,

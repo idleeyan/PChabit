@@ -11,7 +11,7 @@
 | 源码目录 | `E:\SYNC\My VS\PChabit` |
 | 发布输出 | `E:\SYNC\My VS\PChabit\publish`（4 个 exe + `Assets\`） |
 | 安装运行目录 | `D:\Tool\PChabit`（计划任务「PChabit 采集宿主」跑 `Shell\PChabitShell.exe --host`） |
-| 当前版本 | **4.12.48**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
+| 当前版本 | **4.12.49**（`rust/pchabit-shell/src/main.rs` 的 `const VERSION`；四处同步改，见第 2 节） |
 | 技术栈 | **Rust**（cargo 1.9x，MSVC 链接器）+ Tauri 2 + WebView2 + rusqlite(bundled) + rust_xlsxwriter；无 .NET 依赖 |
 | 代码仓库 | `github.com/idleeyan/PChabit` |
 | 进程构成 | 生产只有两个进程：`PChabitShell.exe`（窗口+托盘+采集宿主）与 `pchabit-netd.exe`（内核采样） |
@@ -73,6 +73,7 @@
 
 | 日期 | 版本 | 关键操作与结果 |
 |---|---|---|
+| 2026-11-21 | 4.12.49 | 修任务栏小窗 GPU/显存不显示：netd 守护进程缺失时小窗的 GPU 管道只首连一次、永不重连；改为每 30 拍重试并 `ensure_daemon` 自愈（手动 kill netd 实测恢复 6%/1294MB÷8192MB）；勾选后固定占位，取不到数据显示「—」 |
 | 2026-11-20 | 4.12.48 | 浮窗响应提速：点击不再等每秒 tick 消费标志（原来平均 500ms、最坏 1s），改为在 WM_LBUTTONUP 直接投递主线程 → 点击→显示 14–19 ms；显示后主动刷一次数据；日志加「点击→显示」延迟度量 |
 | 2026-11-20 | 4.12.47 | 修网速浮窗两处：关闭按钮失效（Tauri 2 的 core:window:default 不含 allow-hide，补 `capabilities/default.json` + 关闭改走 `netprocs_hide` 命令双保险）；唤起卡顿（改启动后预创建隐藏窗口、注入脚本减负、失焦保护改按每次显示计时、隐藏时暂停轮询） |
 | 2026-11-20 | 4.12.46 | 应用切换关系图支持日期范围（新增 `sankey_data` 命令 + 顶部工具栏五档，记住上次选择，并挡住壳每分钟注入的近 7 天载荷）；顺带修 tooltip 深浅主题配色 |
