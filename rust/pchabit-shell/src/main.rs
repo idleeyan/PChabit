@@ -1822,7 +1822,7 @@ fn payload_settings() -> serde_json::Value {
 }
 
 // 壳的版本号（与 WPF 版对齐，发布时一起改）
-const VERSION: &str = "4.12.49";
+const VERSION: &str = "4.12.51";
 
 // ===== 桌面便签（WPF 的 StickyNotes 悬浮窗在 Rust 侧的替代实现）=====
 
@@ -2186,6 +2186,31 @@ fn signal_existing_instance(cmd: Option<&str>) -> bool {
 }
 
 fn main() {
+    // panic = "abort"：任何线程一 panic 就是整壳退出（0xc0000409），且 release 下 stderr 是空的，
+    // 现场什么也留不下（4.12.51 在 11:57 就这么死过一次）。先挂钩子把 panic 内容/线程/位置写进日志。
+    {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let loc = info
+                .location()
+                .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+                .unwrap_or_else(|| "?".to_string());
+            let msg = match info.payload().downcast_ref::<&str>() {
+                Some(s) => s.to_string(),
+                None => match info.payload().downcast_ref::<String>() {
+                    Some(s) => s.clone(),
+                    None => "<非字符串 payload>".to_string(),
+                },
+            };
+            let thread = std::thread::current()
+                .name()
+                .unwrap_or("<未命名>")
+                .to_string();
+            log_line(&format!("[panic] 线程 {thread}：{msg} @ {loc}"));
+            default_hook(info);
+        }));
+    }
+
     // 命令行先读：第二实例可能带 `--cmd TASKBAR_OFF` 这类控制指令
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
     let ctl_cmd = raw_args
@@ -2469,7 +2494,10 @@ fn main() {
                 Some(w)
             };
 
-            if host_mode {
+            // 无论带不带 --host 都启动采集：过去只有 --host 才采集，一旦计划任务那一路的进程崩掉，
+            // 用户手动打开的 GUI 只读不采，数据就整段空白（4.12.48 崩溃后 11:57→14:30 就是空档）。
+            // 单写者约束仍在 Host 内部：已有宿主在采会返回错误，日志里写清楚。
+            {
                 let db = pchabit_collect::default_db();
                 let log: pchabit_collect::host::LogFn = std::sync::Arc::new(|m: String| {
                     log_line(&format!("[collect] {m}"));
@@ -2485,7 +2513,8 @@ fn main() {
                 match pchabit_collect::Host::start(cfg) {
                     Ok(h) => {
                         log_line(&format!(
-                            "[collect] 采集宿主已随壳启动，库 {}",
+                            "[collect] 采集宿主已随壳启动（{}），库 {}",
+                            if host_mode { "--host" } else { "GUI 模式自动托管" },
                             db.display()
                         ));
                         if let Some(state) = app.try_state::<HostState>() {
@@ -2494,8 +2523,6 @@ fn main() {
                     }
                     Err(e) => log_line(&format!("[collect] 采集宿主未启动：{e}")),
                 }
-            } else {
-                log_line("[collect] 未带 --host，本次只做只读展示");
             }
 
             if let Some(window) = window {
